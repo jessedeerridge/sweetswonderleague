@@ -579,9 +579,11 @@
   .sweets-backdrop{
     position:fixed; inset:0;
     background:rgba(0,0,0,.35);
-    display:flex; align-items:center; justify-content:center;
+    display:flex; flex-direction:column;
+    align-items:center; justify-content:center;
     z-index:560;
     padding:16px;
+    gap:12px;
   }
   .sweets-backdrop.hidden{display:none;}
   .sweets-panel{
@@ -635,11 +637,30 @@
   }
 
   /* ★ スイーツドラッグ中の見た目 */
-  .sweets-dragging{
+ .sweets-dragging{
     position:fixed !important;
     z-index:99999 !important;
     pointer-events:none;
     animation:none !important;
+  }
+  .sweets-drop-zone{
+    width:min(800px, calc(100% - 32px));
+    min-height:1px;
+    border:2px dashed rgba(0,0,0,.25);
+    border-radius:14px;
+    background:rgba(255,255,255,.88);
+    display:flex;
+    align-items:center;
+    justify-content:center;
+    font-weight:800;
+    color:#555;
+    text-align:center;
+    padding:8px 12px;
+  }
+  .sweets-drop-zone.active{
+    border-color:#22c55e;
+    color:#15803d;
+    background:rgba(240,253,244,.95);
   }
 </style>
 </head>
@@ -787,12 +808,15 @@
 <div id="sweetsBackdrop" class="sweets-backdrop hidden">
   <div class="sweets-panel" role="dialog" aria-modal="true" aria-label="スイーツ一覧">
     <div class="sweets-panel-header">
-      <div class="sweets-panel-title">スイーツ（ドラッグで獲得）</div>
+      <div class="sweets-panel-title">スイーツ（下の獲得エリアにドラッグ）</div>
       <button id="btnSweetsClose" class="btn ghost" style="padding:2px 6px;font-size:12px;">×</button>
     </div>
     <div class="sweets-panel-body">
       <div id="sweetsGrid" class="sweets-grid"></div>
     </div>
+  </div>
+  <div id="sweetsDropZone" class="sweets-drop-zone" aria-label="スイーツ獲得エリア">
+    ここにカードを出すと獲得
   </div>
 </div>
 
@@ -879,6 +903,7 @@ const sweetsDeckCountEl = document.getElementById('sweetsDeckCount');
 
 /* スイーツ一覧（ローカル） */
 const sweetsBackdrop = document.getElementById('sweetsBackdrop');
+const sweetsDropZone = document.getElementById('sweetsDropZone');
 const btnSweetsClose = document.getElementById('btnSweetsClose');
 const sweetsGrid = document.getElementById('sweetsGrid');
 
@@ -2239,7 +2264,14 @@ function onSweetsDragMove(e){
   const y = e.clientY - sweetsDrag.offsetY;
   sweetsDrag.ghost.style.left = `${x}px`;
   sweetsDrag.ghost.style.top  = `${y}px`;
+
+  if(sweetsDropZone){
+    const zoneR = sweetsDropZone.getBoundingClientRect();
+    const inZone = (e.clientX >= zoneR.left && e.clientX <= zoneR.right && e.clientY >= zoneR.top && e.clientY <= zoneR.bottom);
+    sweetsDropZone.classList.toggle('active', inZone);
+  }
 }
+
 
 async function onSweetsDragEnd(e){
   if(!sweetsDrag.active) return;
@@ -2247,14 +2279,17 @@ async function onSweetsDragEnd(e){
   const gx = e.clientX;
   const gy = e.clientY;
 
-  const areaR = myAreaEl.getBoundingClientRect();
-  const inMyArea = (gx >= areaR.left && gx <= areaR.right && gy >= areaR.top && gy <= areaR.bottom);
+  const zoneR = sweetsDropZone?.getBoundingClientRect();
+  const inDropZone = zoneR
+    ? (gx >= zoneR.left && gx <= zoneR.right && gy >= zoneR.top && gy <= zoneR.bottom)
+    : false;
 
-  if(inMyArea){
+  if(inDropZone){
     await acquireSweetsCard(sweetsDrag.card);
     cleanupSweetsDrag();
     return;
   }
+
 
   // 失敗：戻す（消すだけ）
   cleanupSweetsDrag();
@@ -2267,6 +2302,7 @@ function cleanupSweetsDrag(){
     sweetsDrag.ghost.removeEventListener('pointercancel', onSweetsDragEnd);
     sweetsDrag.ghost.remove();
   }
+  sweetsDropZone?.classList.remove('active');
   sweetsDrag.active = false;
   sweetsDrag.card = null;
   sweetsDrag.srcEl = null;
