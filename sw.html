@@ -1,0 +1,2429 @@
+<!DOCTYPE html> 
+<html lang="ja">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>テンプレ</title>
+<style>
+  html, body{height:100%; overflow:hidden;}
+  body{margin:0;font-family:system-ui,-apple-system,Segoe UI,Roboto,sans-serif;background:#fff;color:#111;}
+  header{display:flex;justify-content:space-between;align-items:center;padding:10px 12px;border-bottom:1px solid #eee; position:sticky; top:0; z-index:400; background:#fff;}
+  h1{margin:0;font-size:18px;}
+  .small{font-size:12px;opacity:.75;}
+  .join-box{display:flex;gap:6px;flex-wrap:wrap;align-items:center;padding:12px; position:relative; z-index:2;}
+  .join-box input{padding:8px;border:1px solid #ddd;border-radius:6px;font-size:16px;}
+  .btn{padding:6px 10px;border:1px solid #ddd;border-radius:6px;background:#f8f8f8;cursor:pointer;}
+  .btn.primary{background:#111;color:#fff;border-color:#111;}
+  .btn.ghost{background:transparent;}
+  .btn:disabled{opacity:.45; cursor:not-allowed;}
+  .hidden{display:none;}
+  #lobby{padding:20px;border-top:1px solid #eee; position:relative; z-index:2;}
+  .copy-btn.copied, .btn.ghost.copied{background:#16a34a;color:#fff;border-color:#16a34a;}
+
+  /* ★ main背景：入室前/入室後で切替 */
+  main{
+    position:relative;
+    height:calc(100vh - 60px);
+    overflow:auto;
+    -webkit-overflow-scrolling:touch;
+    background-size:cover;
+    background-position:center;
+    background-repeat:no-repeat;
+  }
+  main.prejoin{ background-image:url('maemain.jpg'); }
+  main.joined{ background-image:url('maingazo.jpg'); }
+
+  /* ★ 着席ポップ */
+  .seat-pop{
+    position:fixed;left:50%;bottom:10px;transform:translateX(-50%);
+    background:orange;border:1px solid #eee;border-radius:12px;
+    box-shadow:0 12px 28px rgba(0,0,0,.12);
+    padding:10px;z-index:220;display:flex;flex-direction:column;gap:10px;min-width:280px;
+  }
+  .seat-pop.hidden{display:none;}
+  .seat-pop .row{display:flex;gap:8px;align-items:center;}
+  .seat-pop label{width:84px;font-size:13px;}
+  .seat-pop .tabs{display:flex;gap:6px;flex-wrap:wrap;}
+  .tab{padding:6px 10px;border:1px solid #ddd;border-radius:999px;cursor:pointer;user-select:none;position:relative;}
+  .tab.disabled{opacity:.45; pointer-events:none;}
+  .tab.disabled::after{content:'✕';position:absolute;inset:0;display:grid;place-items:center;font-size:18px;font-weight:700;color:#b91c1c;pointer-events:none;}
+  .tab.active{background:#111;color:#fff;border-color:#111;}
+
+  /* ★ ホスト人数選択中：参加者に出す黒ポップ（下固定） */
+  .host-selecting-pop{
+    position:fixed;left:50%;bottom:10px;transform:translateX(-50%);
+    background:rgba(20,20,20,.92);color:#fff;
+    padding:12px 16px;border-radius:14px;
+    box-shadow:0 18px 40px rgba(0,0,0,.35);
+    z-index:225;font-weight:800;white-space:nowrap;
+    pointer-events:none;
+  }
+  .host-selecting-pop.hidden{display:none;}
+
+  /* ★ プレイヤー円配置用 */
+  .player-circle{
+    position:relative;width:260px;height:260px;
+    margin:20px auto 0;border-radius:50%;
+    box-sizing:border-box;border:none;
+  }
+
+  /* ★ 中央：プレイサークル（※スイーツ山札クリックのため pointer-events を有効に） */
+  .play-circle{
+    position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);
+    width:86px;height:86px;border-radius:50%;
+    border:2px dashed rgba(0,0,0,.35);
+    background:rgba(255,255,255,.20);
+    box-shadow:0 8px 20px rgba(0,0,0,.12) inset;
+    pointer-events:auto;
+  }
+  .play-circle::after{
+    content:'PLAY';
+    position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);
+    font-weight:900;font-size:12px;letter-spacing:.08em;opacity:.65;
+    pointer-events:none;
+  }
+  .play-circle.hint-ok{border-style:solid; border-color:rgba(34,197,94,.65);}
+  .play-circle.hint-ng{border-color:rgba(239,68,68,.65);}
+
+  /* =========================
+     ★★ 中央：アクション山札（左）＋スイーツ山札（右）
+     - 2つの山札の“間”がサークル中心になる配置
+     ========================= */
+  .center-decks{
+    position:absolute;
+    left:50%; top:50%;
+    transform:translate(-50%,-50%);
+    display:flex;
+    gap:14px;              /* ここで左右の距離を調整 */
+    align-items:center;
+    justify-content:center;
+    pointer-events:auto;
+  }
+  .center-decks.hidden{display:none;}
+
+  /* アクション山札（見た目専用） */
+  .action-deck{
+    position:relative;
+    width:28px; height:40px;
+    pointer-events:none;
+  }
+  .action-deck.hidden{display:none;}
+  .action-deck .stack{position:absolute; inset:0;}
+  .action-deck .card{
+    position:absolute;
+    width:28px; height:40px;
+    border-radius:7px;
+    border:1px solid rgba(0,0,0,.18);
+    background:url('swactionura.jpg') center/cover no-repeat;
+    box-shadow:none;
+  }
+  .action-deck .card.c2{ transform:translate(1px,-1px); opacity:.95; }
+  .action-deck .card.c3{ transform:translate(2px,-2px); opacity:.90; }
+  .action-deck .card.c4{ transform:translate(3px,-3px); opacity:.86; }
+  .action-deck .card.c5{ transform:translate(4px,-4px); opacity:.82; }
+
+  .action-deck .count{
+    position:absolute;
+    right:-8px; top:-8px;
+    font-size:11px;
+    font-weight:900;
+    padding:2px 6px;
+    border-radius:999px;
+    background:rgba(255,255,255,.92);
+    border:1px solid rgba(0,0,0,.18);
+    color:#111;
+    line-height:1.1;
+  }
+
+  /* スイーツ山札（クリック可能） */
+  .sweets-deck{
+    position:relative;
+    width:28px; height:40px;
+    pointer-events:auto;
+    cursor:pointer;
+    user-select:none;
+    touch-action:none;
+  }
+  .sweets-deck.hidden{display:none;}
+  .sweets-deck .stack{position:absolute; inset:0;}
+  .sweets-deck .card{
+    position:absolute;
+    width:28px; height:40px;
+    border-radius:7px;
+    border:1px solid rgba(0,0,0,.18);
+    background:url('swura.jpg') center/cover no-repeat; /* ★ 裏：swura.jpg */
+    box-shadow:none; /* 影不要 */
+  }
+  .sweets-deck .card.c2{ transform:translate(1px,-1px); opacity:.95; }
+  .sweets-deck .card.c3{ transform:translate(2px,-2px); opacity:.90; }
+  .sweets-deck .card.c4{ transform:translate(3px,-3px); opacity:.86; }
+  .sweets-deck .card.c5{ transform:translate(4px,-4px); opacity:.82; }
+  .sweets-deck .count{
+    position:absolute;
+    right:-8px; top:-8px;
+    font-size:11px;
+    font-weight:900;
+    padding:2px 6px;
+    border-radius:999px;
+    background:rgba(255,255,255,.92);
+    border:1px solid rgba(0,0,0,.18);
+    color:#111;
+    line-height:1.1;
+    pointer-events:none;
+  }
+
+  /* ★ 自分のターンだけ「大小アニメ（鼓動）」 */
+  @keyframes pulseCard {
+    0%{transform:scale(1);}
+    50%{transform:scale(1.06);}
+    100%{transform:scale(1);}
+  }
+  .sweets-deck.pulsing{ animation:pulseCard 1.05s ease-in-out infinite; }
+  .sweets-deck.pulsing:hover{ animation:none; transform:scale(1.08); }
+
+  /* ★ 他プレイヤー：ネームタグ＋カード周りを円で囲む（otherplayerscircle） */
+  .otherplayerscircle{
+    position:absolute;
+    left:0; top:0;
+    width:126px; height:126px;
+    transform:translate(-50%,-50%);
+    border-radius:50%;
+    border:2px solid rgba(0,0,0,.22);
+    background:rgba(255,255,255,.10);
+    display:flex;align-items:center;justify-content:center;
+    box-sizing:border-box;
+  }
+  .otherplayerscircle.hint-ok{ border-color:rgba(34,197,94,.75); }
+  .otherplayerscircle.hint-ng{ border-color:rgba(239,68,68,.75); }
+
+  /* ★★ 重要：手番の青枠は「サークル」には付けない（無効化） */
+  .otherplayerscircle.active-turn{
+    outline:none !important;
+    outline-offset:0 !important;
+  }
+
+  .player-tag{
+    position:absolute;transform:translate(-50%,-50%);
+    padding:4px 8px;border-radius:999px;background:#f8f8f8;
+    border:1px solid #ddd;font-size:12px;white-space:nowrap;
+    display:flex;align-items:center;gap:6px;
+  }
+  .player-tag.me{ background:#111;color:#fff;border-color:#111; }
+
+  /* ★ 手番の青枠：ネームタグ輪郭の外側 */
+  .player-tag.active-turn{
+    outline:3px solid rgba(59,130,246,.65);
+    outline-offset:3px;
+  }
+
+  /* otherplayerscircle 内のタグは「中央配置」扱い */
+  .player-tag.in-othercircle{
+    position:relative;
+    transform:none;
+    left:auto; top:auto;
+  }
+
+  /* ★ リーダーチップ（ネームタグの右／タグ内じゃない） */
+  .leader-chip{
+    position:absolute;
+    width:18px;height:18px;
+    background:url('swleader.png') center/contain no-repeat;
+    filter:drop-shadow(0 2px 6px rgba(0,0,0,.35));
+    pointer-events:none;
+  }
+
+  /* 他プレイヤー：正体カード（裏） */
+  .role-mini{
+    position:absolute;
+    left:-22px; top:50%;
+    transform:translateY(-50%);
+    width:18px;height:26px;border-radius:5px;
+    border:1px solid #bbb;
+    background:url('swroleura.jpg') center/cover no-repeat;
+    box-shadow:0 2px 6px rgba(0,0,0,.15);
+    pointer-events:none;
+  }
+
+  /* ★★ 他プレイヤー：ミニスイーツ（裏）＋周りを円で囲む＝スイーツエリア */
+  .sweets-area{
+    position:absolute;
+    left:-50px; top:50%;
+    transform:translateY(-50%);
+    width:30px;height:30px;
+    border-radius:50%;
+    border:2px solid rgba(0,0,0,.22);
+    background:rgba(255,255,255,.10);
+    display:flex;align-items:center;justify-content:center;
+    box-sizing:border-box;
+    pointer-events:none;
+  }
+  .sweets-area.empty{
+    border-style:dashed;
+    opacity:.35;
+  }
+  .sweets-mini{
+    width:18px;height:26px;border-radius:5px;
+    border:1px solid #bbb;
+    background:url('swura.jpg') center/cover no-repeat; /* 裏 */
+    box-shadow:0 2px 6px rgba(0,0,0,.15);
+  }
+  .sweets-mini.hidden{display:none;}
+
+  /* 他プレイヤーのミニカード（ネームタグの下に扇状） */
+  .player-tag .mini-hand{
+    position:absolute;left:50%;top:100%;
+    transform:translate(-50%,3px);
+    width:60px;height:30px;pointer-events:none;
+  }
+  .player-tag .mini-card{
+    position:absolute;left:50%;top:0;width:16px;height:22px;
+    border-radius:4px;border:1px solid #bbb;
+    background:url('swactionura.jpg') center/cover no-repeat;
+    transform-origin:bottom center;
+    box-shadow:0 2px 6px rgba(0,0,0,.15);
+  }
+
+  /* 自分の手札表示（大きめ横並び） */
+  .my-hand-wrapper{margin-top:16px;text-align:center; position:relative;}
+  .my-hand-title{display:none;}
+  .my-area{
+    display:flex;gap:10px;justify-content:center;align-items:flex-start;
+    margin-top:8px;
+  }
+
+  /* ★ 自分の正体カード（自分のアクションカードの左側） */
+  .my-role{
+    width:78px;height:118px;border-radius:12px;border:1px solid #ddd;
+    box-shadow:0 10px 24px rgba(0,0,0,.18);
+    background:#fff;
+    overflow:hidden;
+    flex:0 0 auto;
+  }
+  .my-role img{width:100%;height:100%;object-fit:cover;display:block;}
+
+  /* ★★ 自分のスイーツ（正体カードの左／同サイズ） */
+  .my-sweets{
+    width:78px;height:118px;border-radius:12px;border:1px solid #ddd;
+    box-shadow:0 10px 24px rgba(0,0,0,.18);
+    background:#fff;
+    overflow:hidden;
+    flex:0 0 auto;
+  }
+  .my-sweets.hidden{display:none;}
+  .my-sweets img{width:100%;height:100%;object-fit:cover;display:block;}
+
+  /* =========================
+     ★ 受け取った指示カードスロット（正体カードの左）
+     ========================= */
+  .my-received-slot{
+    flex:0 0 auto;
+    display:flex;align-items:flex-start;justify-content:center;
+  }
+
+  .my-hand{
+    display:flex;justify-content:center;gap:10px;flex-wrap:wrap;
+    min-height:130px;
+  }
+
+  /* ★ アクションカード（自分の手札） */
+  .action-card{
+    position:relative;
+    width:90px;height:135px;border-radius:12px;border:1px solid #ddd;background:#fff;
+    box-shadow:0 10px 24px rgba(0,0,0,.18);
+    overflow:hidden;
+    user-select:none;
+    touch-action:none;
+    cursor:grab;
+    transform-origin:center;
+  }
+  .action-card:active{cursor:grabbing;}
+  .action-card img.card-img{
+    position:absolute;inset:0;width:100%;height:100%;object-fit:cover; /* ★ 画像はカードいっぱい */
+    display:block;
+  }
+  .action-card .card-name{
+    position:absolute;left:8px;top:6px;
+    font-weight:900;font-size:14px;
+    color:#1d4ed8;
+    text-shadow:0 2px 6px rgba(255,255,255,.7);
+    pointer-events:none;
+  }
+  .action-card .effect-frame{
+    position:absolute;left:0;right:0;bottom:0;height:50%;
+    background:rgba(255,255,255,.55);
+    border-top:1px solid rgba(0,0,0,.15);
+    padding:8px 8px 8px;
+    display:flex;align-items:flex-start;justify-content:flex-start;
+    box-sizing:border-box;
+    pointer-events:none;
+  }
+  .action-card .effect-text{
+    width:100%;
+    font-weight:800;
+    line-height:1.25;
+    color:#111;
+    font-size:13px;
+    overflow:hidden;
+    display:-webkit-box;
+    -webkit-line-clamp:6;
+    -webkit-box-orient:vertical;
+  }
+
+  .my-turn-free .action-card{ animation:pulseCard 1.05s ease-in-out infinite; }
+  .my-turn-free .action-card:hover{ animation:none; transform:scale(1.08); }
+
+  /* ★ 受け取り指示カードがある間：通常手札は無効＆アニメ停止 */
+  .my-turn-blocked .my-hand .action-card{
+    animation:none !important;
+    cursor:not-allowed;
+    filter:grayscale(.25);
+    opacity:.72;
+  }
+
+  /* ★ 指示カードスロット内のカードだけ鼓動させる */
+  .my-turn-blocked .my-received-slot .action-card.pulse-only{
+    animation:pulseCard 1.05s ease-in-out infinite;
+    cursor:grab;
+    filter:none;
+    opacity:1;
+  }
+  .my-turn-blocked .my-received-slot .action-card.pulse-only:hover{
+    animation:none;
+    transform:scale(1.08);
+  }
+
+  /* ★ 無視カード：ブロック中でも鼓動＆使用可（手札内） */
+  .my-turn-blocked .my-hand .action-card.can-ignore{
+    animation:pulseCard 1.05s ease-in-out infinite !important;
+    cursor:grab !important;
+    filter:none !important;
+    opacity:1 !important;
+  }
+  .my-turn-blocked .my-hand .action-card.can-ignore:hover{
+    animation:none !important;
+    transform:scale(1.08);
+  }
+
+  /* ★ ドラッグ中の見た目 */
+  .dragging{
+    position:fixed !important;
+    z-index:9999 !important;
+    margin:0 !important;
+    animation:none !important;
+    pointer-events:none;
+  }
+
+  /* ★ 追い出し確認ダイアログ */
+  .dialog-backdrop{
+    position:fixed;inset:0;background:rgba(0,0,0,.35);
+    display:flex;align-items:center;justify-content:center;z-index:300;
+  }
+  .dialog-backdrop.hidden{display:none;}
+  .dialog-box{
+    background:#fff;border-radius:12px;padding:16px 18px;
+    box-shadow:0 18px 40px rgba(0,0,0,.35);
+    max-width:320px;width:calc(100% - 40px);
+  }
+  .dialog-box p{margin:0 0 12px;font-size:14px;line-height:1.6;}
+  .dialog-buttons{display:flex;justify-content:flex-end;gap:8px;}
+
+  /* ★ ホスト用 設定ボタン（右下固定） */
+  .host-settings-btn{
+    position:fixed;right:16px;bottom:16px;width:44px;height:44px;border-radius:50%;
+    border:1px solid #ddd;background:#fff;box-shadow:0 8px 20px rgba(0,0,0,.18);
+    display:none;align-items:center;justify-content:center;font-size:22px;cursor:pointer;z-index:230;
+  }
+  .host-settings-btn.visible{display:flex;}
+
+  /* ★ 設定ポップ（ホスト専用パネル） */
+  .start-pop{
+    position:fixed;right:16px;bottom:72px;background:#fff;border:1px solid #ddd;border-radius:12px;
+    box-shadow:0 12px 28px rgba(0,0,0,.16);padding:10px 12px;z-index:240;min-width:260px;
+    display:flex;flex-direction:column;gap:8px;
+  }
+  .start-pop.hidden{display:none;}
+  .start-pop-header{display:flex;justify-content:space-between;align-items:center;gap:8px;}
+  .start-pop-title{font-size:14px;font-weight:600;}
+  .start-pop-main{font-size:13px;line-height:1.5;}
+  .start-pop-actions{display:flex;justify-content:flex-end;gap:8px;margin-top:4px;flex-wrap:wrap;}
+
+  /* 詳細情報消す用 */
+  #roomInfoLobby, #lobby h2, #lobby p {display:none;}
+  #lobby.entered{
+    display:flex;flex-direction:column;align-items:center;justify-content:center;
+    min-height:calc(100vh - 60px);
+  }
+
+  /* =========================
+     ★ 左下「？」ボタン
+     ========================= */
+  .help-btn{
+    position:fixed;left:16px;bottom:16px;width:44px;height:44px;border-radius:50%;
+    border:1px solid #111;background:#111;color:#fff;
+    box-shadow:0 8px 20px rgba(0,0,0,.18);
+    display:none;align-items:center;justify-content:center;
+    font-size:22px;font-weight:800;cursor:pointer;z-index:230;
+  }
+  .help-btn.visible{display:flex;}
+
+  /* ★ ヘルプ一覧ポップ */
+  .help-pop-backdrop{
+    position:fixed;inset:0;background:rgba(0,0,0,.35);
+    display:flex;align-items:flex-end;justify-content:center;
+    z-index:310;
+    padding:16px;
+  }
+  .help-pop-backdrop.hidden{display:none;}
+  .help-pop{
+    width:min(520px, calc(100% - 0px));
+    max-height:min(70vh, 640px);
+    background:#fff;border:1px solid #ddd;border-radius:16px;
+    box-shadow:0 18px 40px rgba(0,0,0,.35);
+    overflow:hidden;
+  }
+  .help-pop-header{
+    display:flex;align-items:center;justify-content:space-between;
+    padding:10px 12px;border-bottom:1px solid #eee;
+  }
+  .help-pop-title{font-weight:800;font-size:14px;}
+  .help-pop-body{padding:12px;overflow:auto;max-height:calc(70vh - 48px);}
+  .role-row{
+    display:flex;gap:12px;align-items:flex-start;
+    padding:10px 0;
+  }
+  .role-card{
+    width:72px;height:108px;border-radius:10px;border:1px solid #ddd;background:#f8f8f8;
+    box-shadow:0 6px 16px rgba(0,0,0,.10);
+    flex:0 0 auto;
+    display:flex;align-items:center;justify-content:center;
+    font-size:12px;font-weight:700;color:#444;
+    overflow:hidden;
+  }
+  .role-card img{width:100%;height:100%;object-fit:cover;display:block;}
+  .role-desc{flex:1 1 auto;}
+  .role-desc .name{font-weight:900;margin-bottom:4px;}
+  .role-desc .text{font-size:13px;line-height:1.55;color:#222;white-space:pre-wrap;}
+
+  /* =========================
+     ★ ターン操作バー（後で4要素を追加していく場所）
+     ========================= */
+  .turn-bar{
+    position:fixed; left:50%; bottom:14px; transform:translateX(-50%);
+    z-index:228;
+    display:flex; gap:8px; align-items:center; justify-content:center;
+    background:rgba(255,255,255,.85);
+    border:1px solid #ddd;
+    border-radius:999px;
+    padding:6px 10px;
+    box-shadow:0 10px 24px rgba(0,0,0,.18);
+    backdrop-filter: blur(6px);
+  }
+  .turn-bar.hidden{display:none;}
+  .turn-badge{
+    font-size:12px;font-weight:900;opacity:.85;
+    padding:4px 8px;border-radius:999px;border:1px solid #ddd;background:#fff;
+  }
+
+  /* =========================
+     ★ 全員に見せる「中央拡大」(1秒)
+     ========================= */
+  .reveal-overlay{
+    position:fixed; inset:0;
+    background:rgba(0,0,0,.35);
+    display:flex; align-items:center; justify-content:center;
+    z-index:500;
+  }
+  .reveal-overlay.hidden{display:none;}
+  .reveal-card{
+    width:min(260px, 78vw);
+    aspect-ratio: 2 / 3;
+    border-radius:18px;
+    border:1px solid rgba(255,255,255,.35);
+    box-shadow:0 26px 70px rgba(0,0,0,.45);
+    background:#fff;
+    overflow:hidden;
+    position:relative;
+  }
+  .reveal-card img{width:100%;height:100%;object-fit:cover;display:block;}
+  .reveal-card .label{
+    position:absolute; left:10px; top:10px;
+    font-weight:900; color:#1d4ed8;
+    text-shadow:0 2px 10px rgba(255,255,255,.75);
+  }
+
+  /* ★ 指示カード移動アニメ用（小さい裏カード） */
+  .fly-card{
+    position:fixed;
+    width:22px;height:32px;border-radius:6px;
+    border:1px solid rgba(0,0,0,.2);
+    background:url('swactionura.jpg') center/cover no-repeat;
+    box-shadow:0 8px 18px rgba(0,0,0,.25);
+    z-index:520;
+    pointer-events:none;
+  }
+
+  /* ★ 自分の手札サイズ統一（60x90） */
+  :root{
+    --myCardW: 60px;
+    --myCardH: 90px;
+    --myCardR: 10px;
+  }
+
+  .my-role{ width: var(--myCardW); height: var(--myCardH); border-radius: var(--myCardR); }
+  .action-card{ width: var(--myCardW); height: var(--myCardH); border-radius: var(--myCardR); }
+  .my-sweets{ width: var(--myCardW); height: var(--myCardH); border-radius: var(--myCardR); }
+
+  /* =========================
+     ★ スイーツ一覧（ローカル表示）
+     ========================= */
+  .sweets-backdrop{
+    position:fixed; inset:0;
+    background:rgba(0,0,0,.35);
+    display:flex; align-items:center; justify-content:center;
+    z-index:560;
+    padding:16px;
+  }
+  .sweets-backdrop.hidden{display:none;}
+  .sweets-panel{
+    width:min(760px, calc(100% - 32px));
+    background:#fff;
+    border:1px solid #ddd;
+    border-radius:16px;
+    box-shadow:0 18px 40px rgba(0,0,0,.35);
+    overflow:hidden;
+    position:relative;
+  }
+  .sweets-panel-header{
+    display:flex;align-items:center;justify-content:space-between;
+    padding:10px 12px;border-bottom:1px solid #eee;
+  }
+  .sweets-panel-title{
+    font-weight:900;font-size:14px;
+  }
+  .sweets-panel-body{
+    padding:12px;
+    overflow:auto;
+    max-height:min(70vh, 640px);
+  }
+  .sweets-grid{
+    display:grid;
+    gap:10px;
+    justify-content:center;
+    align-content:center;
+  }
+  .sweets-pick-card{
+    width:90px; height:135px;
+    border-radius:12px;
+    border:1px solid #ddd;
+    background:#fff;
+    box-shadow:0 10px 24px rgba(0,0,0,.18);
+    overflow:hidden;
+    position:relative;
+    cursor:grab;
+    user-select:none;
+    touch-action:none;
+    animation:pulseCard 1.05s ease-in-out infinite; /* ★ カード大小アニメ */
+    transform-origin:center;
+  }
+  .sweets-pick-card:active{cursor:grabbing;}
+  .sweets-pick-card:hover{ animation:none; transform:scale(1.06); }
+  .sweets-pick-card img{
+    position:absolute; inset:0;
+    width:100%; height:100%;
+    object-fit:cover; /* ★ 画像はカードいっぱい */
+    display:block;
+  }
+
+  /* ★ スイーツドラッグ中の見た目 */
+  .sweets-dragging{
+    position:fixed !important;
+    z-index:99999 !important;
+    pointer-events:none;
+    animation:none !important;
+  }
+
+  /* =========================
+     ★★★ 追加：スイーツ獲得ドロップゾーン（一覧ボックスの「下」）
+     - ここにドロップしたら獲得
+     ========================= */
+  .sweets-dropzone{
+    border-top:1px solid #eee;
+    background:linear-gradient(to bottom, rgba(0,0,0,.02), rgba(0,0,0,.00));
+    padding:12px;
+    display:flex;
+    align-items:center;
+    justify-content:center;
+    gap:10px;
+    user-select:none;
+  }
+  .sweets-dropzone .badge{
+    font-size:12px;
+    font-weight:900;
+    padding:6px 10px;
+    border-radius:999px;
+    border:1px solid rgba(0,0,0,.18);
+    background:rgba(255,255,255,.92);
+  }
+  .sweets-dropzone .hint{
+    font-size:12px;
+    opacity:.75;
+    font-weight:700;
+  }
+  .sweets-dropzone.hint-ok{
+    outline:3px solid rgba(34,197,94,.55);
+    outline-offset:-3px;
+    background:rgba(34,197,94,.08);
+  }
+  .sweets-dropzone.hint-ng{
+    outline:3px solid rgba(239,68,68,.50);
+    outline-offset:-3px;
+    background:rgba(239,68,68,.06);
+  }
+</style>
+</head>
+<body>
+
+<header>
+  <h1>テンプレ</h1>
+  <div style="display:flex;align-items:center;gap:6px;">
+    <div class="small" id="roomInfo"></div>
+    <button class="btn ghost" id="copyLinkBtn">COPY</button>
+  </div>
+</header>
+
+<main id="main" class="prejoin">
+  <div class="join-box" id="joinBox">
+    <input id="userName" placeholder="名前（4文字以内）" maxlength="4" />
+    <input id="roomCode" placeholder="ルームコード（未入力で自動生成）" maxlength="12" />
+    <button class="btn primary" id="btnJoin">入室</button>
+  </div>
+
+  <div id="lobby" class="hidden">
+    <h2>ロビー</h2>
+    <div id="roomInfoLobby" style="margin-bottom:8px;"></div>
+    <p>ここにテーブルや情報が表示されます。</p>
+
+    <div id="playerCircle" class="player-circle">
+      <div id="playCircle" class="play-circle">
+        <!-- ★ 中央：アクション山札（左）＋スイーツ山札（右） -->
+        <div id="centerDecks" class="center-decks hidden" aria-hidden="false">
+          <div id="actionDeckUI" class="action-deck hidden" aria-hidden="true">
+            <div class="stack" aria-hidden="true">
+              <div class="card c5"></div>
+              <div class="card c4"></div>
+              <div class="card c3"></div>
+              <div class="card c2"></div>
+              <div class="card c1"></div>
+            </div>
+            <div id="actionDeckCount" class="count">0</div>
+          </div>
+
+          <div id="sweetsDeckUI" class="sweets-deck hidden" aria-label="スイーツ山札">
+            <div class="stack" aria-hidden="true">
+              <div class="card c5"></div>
+              <div class="card c4"></div>
+              <div class="card c3"></div>
+              <div class="card c2"></div>
+              <div class="card c1"></div>
+            </div>
+            <div id="sweetsDeckCount" class="count">0</div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="my-hand-wrapper">
+      <div class="my-hand-title">自分のカード</div>
+
+      <!-- ★ ownarea（※もうスイーツ獲得の判定には使わない） -->
+      <div class="my-area" id="myArea">
+        <div id="myReceived" class="my-received-slot"></div>
+        <div id="mySweets" class="my-sweets hidden"></div>
+        <div id="myRole" class="my-role hidden"></div>
+        <div id="myHand" class="my-hand"></div>
+      </div>
+    </div>
+  </div>
+</main>
+
+<div id="hostSelectingPop" class="host-selecting-pop hidden">ホストが人数を選択中</div>
+
+<div id="seatPop" class="seat-pop hidden">
+  <div class="row"><label>席を選択</label><div id="seatTabs" class="tabs"></div></div>
+  <div class="row" style="justify-content:flex-end">
+    <button class="btn small ghost" id="btnSeatCancel">観戦</button>
+  </div>
+</div>
+
+<div id="kickDialog" class="dialog-backdrop hidden">
+  <div class="dialog-box" id="kickDialogBox">
+    <p id="kickMessage">既存のプレイヤーを追い出して、着席しますか？</p>
+    <div class="dialog-buttons">
+      <button class="btn ghost" id="btnKickNo">いいえ</button>
+      <button class="btn primary" id="btnKickYes">はい</button>
+    </div>
+  </div>
+</div>
+
+<button id="hostSettingsBtn" class="host-settings-btn" title="設定">⚙</button>
+
+<button id="helpBtn" class="help-btn" title="正体カード一覧">？</button>
+
+<div id="helpBackdrop" class="help-pop-backdrop hidden">
+  <div class="help-pop" role="dialog" aria-modal="true" aria-label="正体カード一覧">
+    <div class="help-pop-header">
+      <div class="help-pop-title">正体カード</div>
+      <button id="btnHelpClose" class="btn ghost" style="padding:2px 6px;font-size:12px;">×</button>
+    </div>
+    <div class="help-pop-body" id="helpBody"></div>
+  </div>
+</div>
+
+<div id="startPop" class="start-pop hidden">
+  <div class="start-pop-header">
+    <div class="start-pop-title">ホスト設定</div>
+    <button id="btnStartPopClose" class="btn ghost" style="padding:2px 6px;font-size:12px;">×</button>
+  </div>
+  <div class="start-pop-main">
+    「スタート」で正体カード＋アクションカード配布＋手番決定。<br>
+    「リセット」で人数選択へ戻します（内容は後で）。
+  </div>
+  <div class="start-pop-actions">
+    <button id="btnResetRoom" class="btn ghost">リセット</button>
+    <button id="btnGameStart" class="btn primary">スタート</button>
+  </div>
+</div>
+
+<div id="turnBar" class="turn-bar hidden">
+  <span id="turnBadge" class="turn-badge">TURN</span>
+  <button id="btnPass" class="btn">パス</button>
+  <button id="btnDrawSweets" class="btn" disabled>スイーツドロー（後で）</button>
+  <button id="btnVote" class="btn" disabled>投票（後で）</button>
+</div>
+
+<div id="revealOverlay" class="reveal-overlay hidden">
+  <div class="reveal-card">
+    <img id="revealImg" alt="" />
+    <div id="revealLabel" class="label"></div>
+  </div>
+</div>
+
+<!-- ★ スイーツ一覧（ローカル表示） -->
+<div id="sweetsBackdrop" class="sweets-backdrop hidden">
+  <div class="sweets-panel" role="dialog" aria-modal="true" aria-label="スイーツ一覧">
+    <div class="sweets-panel-header">
+      <div class="sweets-panel-title">スイーツ（ドラッグで獲得）</div>
+      <button id="btnSweetsClose" class="btn ghost" style="padding:2px 6px;font-size:12px;">×</button>
+    </div>
+
+    <div class="sweets-panel-body">
+      <div id="sweetsGrid" class="sweets-grid"></div>
+    </div>
+
+    <!-- ★★★ ここが「一覧ボックスの下」：この中にドロップしたら獲得 -->
+    <div id="sweetsDropZone" class="sweets-dropzone" aria-label="スイーツ獲得ゾーン">
+      <span class="badge">ここにドロップで獲得</span>
+      <span class="hint">（スイーツ一覧の下）</span>
+    </div>
+  </div>
+</div>
+
+<script type="module">
+import { initializeApp } from "https://www.gstatic.com/firebasejs/9.23.0/firebase-app.js";
+import {
+  getDatabase, ref, set, get, update, onDisconnect, onValue, remove,
+  push, onChildAdded, serverTimestamp
+} from "https://www.gstatic.com/firebasejs/9.23.0/firebase-database.js";
+
+/* =========================
+   Firebase
+   ========================= */
+const firebaseConfig = {
+  apiKey: "AIzaSyAMeKfMoHt9qOQ2VuUBpkrKuei7yGBbEi8",
+  authDomain: "cheesetheft-fd52f.firebaseapp.com",
+  databaseURL: "https://cheesetheft-fd52f-default-rtdb.firebaseio.com",
+  projectId: "cheesetheft-fd52f",
+  storageBucket: "cheesetheft-fd52f.firebasestorage.app",
+  messagingSenderId: "298688959395",
+  appId: "1:298688959395:web:6ac2c3eb214201f2020016",
+  measurementId: "G-HPDFTCLR8H"
+};
+const app = initializeApp(firebaseConfig);
+const db  = getDatabase(app);
+
+// ★ userId をタブ単位で固定（タブごとに別ID）
+const savedUserId = sessionStorage.getItem('bbUserId') || crypto.randomUUID();
+sessionStorage.setItem('bbUserId', savedUserId);
+
+/* =========================
+   状態
+   ========================= */
+const state = {
+  userId: savedUserId,
+  userName: null,
+  roomCode: null,
+  seatedTable: null,
+  isHost: false,
+
+  room: {},
+  hands: {},     // rooms/{room}/hands
+  roles: {},     // rooms/{room}/roles
+  game: {},      // rooms/{room}/game
+  turn: null,    // game.turn の便利参照
+};
+let latestPlayers = []; // [{id,name,seatIndex}]
+
+/* =========================
+   DOM
+   ========================= */
+const mainEl = document.getElementById('main');
+const joinBox = document.getElementById('joinBox');
+const inputName = document.getElementById('userName');
+const inputCode = document.getElementById('roomCode');
+const btnJoin = document.getElementById('btnJoin');
+const lobby = document.getElementById('lobby');
+const roomInfo = document.getElementById('roomInfo');
+const roomInfoLobby = document.getElementById('roomInfoLobby');
+const copyLinkBtn = document.getElementById('copyLinkBtn');
+
+const hostSelectingPop = document.getElementById('hostSelectingPop');
+
+const seatPop = document.getElementById('seatPop');
+const seatTabs = document.getElementById('seatTabs');
+const btnSeatCancel = document.getElementById('btnSeatCancel');
+const seatLabel = seatPop.querySelector('label');
+
+const playerCircle = document.getElementById('playerCircle');
+const playCircleEl = document.getElementById('playCircle');
+const myHandEl = document.getElementById('myHand');
+const myRoleEl = document.getElementById('myRole');
+const myReceivedEl = document.getElementById('myReceived');
+const mySweetsEl = document.getElementById('mySweets');
+const myAreaEl = document.getElementById('myArea');
+
+const centerDecksEl = document.getElementById('centerDecks');
+
+/* 中央の山札UI */
+const actionDeckUI = document.getElementById('actionDeckUI');
+const actionDeckCountEl = document.getElementById('actionDeckCount');
+const sweetsDeckUI = document.getElementById('sweetsDeckUI');
+const sweetsDeckCountEl = document.getElementById('sweetsDeckCount');
+
+/* スイーツ一覧（ローカル） */
+const sweetsBackdrop = document.getElementById('sweetsBackdrop');
+const btnSweetsClose = document.getElementById('btnSweetsClose');
+const sweetsGrid = document.getElementById('sweetsGrid');
+
+/* ★★ 追加：スイーツ獲得ドロップゾーン（一覧ボックスの下） */
+const sweetsDropZone = document.getElementById('sweetsDropZone');
+
+const kickDialog = document.getElementById('kickDialog');
+const kickMessage = document.getElementById('kickMessage');
+const btnKickYes = document.getElementById('btnKickYes');
+const btnKickNo = document.getElementById('btnKickNo');
+
+const hostSettingsBtn = document.getElementById('hostSettingsBtn');
+const startPop = document.getElementById('startPop');
+const btnStartPopClose = document.getElementById('btnStartPopClose');
+const btnGameStart = document.getElementById('btnGameStart');
+const btnResetRoom = document.getElementById('btnResetRoom');
+
+/* ヘルプ */
+const helpBtn = document.getElementById('helpBtn');
+const helpBackdrop = document.getElementById('helpBackdrop');
+const btnHelpClose = document.getElementById('btnHelpClose');
+const helpBody = document.getElementById('helpBody');
+
+/* ターン操作バー */
+const turnBar = document.getElementById('turnBar');
+const turnBadge = document.getElementById('turnBadge');
+const btnPass = document.getElementById('btnPass');
+const btnDrawSweets = document.getElementById('btnDrawSweets');
+const btnVote = document.getElementById('btnVote');
+
+/* 中央拡大 */
+const revealOverlay = document.getElementById('revealOverlay');
+const revealImg = document.getElementById('revealImg');
+const revealLabel = document.getElementById('revealLabel');
+
+/* =========================
+   ユーティリティ
+   ========================= */
+function generateRoomCode(length = 6){
+  const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
+  let code = '';
+  for(let i=0;i<length;i++) code += chars.charAt(Math.floor(Math.random()*chars.length));
+  return code;
+}
+function shuffle(arr){
+  const a = [...arr];
+  for(let i=a.length-1;i>0;i--){
+    const j = Math.floor(Math.random()*(i+1));
+    [a[i],a[j]] = [a[j],a[i]];
+  }
+  return a;
+}
+function clamp(n,min,max){ return Math.max(min, Math.min(max, n)); }
+function now(){ return Date.now(); }
+
+function refreshRoomLabels(){
+  if (!state.roomCode || !state.userName) return;
+  const label = state.isHost ? '（ホスト）' : '';
+  const infoText = ` ${state.roomCode},  ${state.userName}${label}`;
+  roomInfo.textContent = infoText;
+  roomInfoLobby.textContent = infoText;
+}
+function updateHostUI(){
+  refreshRoomLabels();
+  if (state.isHost){
+    hostSettingsBtn.classList.add('visible');
+  } else {
+    hostSettingsBtn.classList.remove('visible');
+    startPop.classList.add('hidden');
+  }
+  helpBtn.classList.add('visible');
+}
+
+/* =========================
+   ★ 中央：アクション山札UI
+   ========================= */
+function updateActionDeckUI(){
+  const deck = state.room?.decks?.action;
+  const count = Array.isArray(deck) ? deck.length : 0;
+
+  const started = !!state.room?.gameStarted;
+  centerDecksEl.classList.toggle('hidden', !started);
+
+  actionDeckUI.classList.toggle('hidden', !started);
+  actionDeckCountEl.textContent = String(count);
+
+  const stackN =
+    count >= 20 ? 5 :
+    count >= 12 ? 4 :
+    count >= 6  ? 3 :
+    count >= 2  ? 2 :
+    count >= 1  ? 1 : 0;
+
+  const cards = actionDeckUI.querySelectorAll('.card');
+  cards.forEach((el) => {
+    const cls = [...el.classList].find(c => /^c[1-5]$/.test(c));
+    const idx = cls ? Number(cls.slice(1)) : 1;
+    el.style.display = (idx <= stackN) ? '' : 'none';
+  });
+}
+
+/* =========================
+   ★ 中央：スイーツ山札UI（残り枚数/山札感/鼓動）
+   ========================= */
+function getMySweetsCard(){
+  const myData = state.hands?.[state.userId];
+  const arr = myData?.sweets;
+  if(Array.isArray(arr) && arr.length) return arr[0];
+  return null;
+}
+function hasSweets(){
+  return !!getMySweetsCard();
+}
+function updateSweetsDeckUI(){
+  const deck = state.room?.decks?.sweets;
+  const count = Array.isArray(deck) ? deck.length : 0;
+
+  const started = !!state.room?.gameStarted;
+  centerDecksEl.classList.toggle('hidden', !started);
+
+  sweetsDeckUI.classList.toggle('hidden', !started);
+  sweetsDeckCountEl.textContent = String(count);
+
+  const stackN =
+    count >= 10 ? 5 :
+    count >= 8  ? 4 :
+    count >= 5  ? 3 :
+    count >= 2  ? 2 :
+    count >= 1  ? 1 : 0;
+
+  const cards = sweetsDeckUI.querySelectorAll('.card');
+  cards.forEach((el) => {
+    const cls = [...el.classList].find(c => /^c[1-5]$/.test(c));
+    const idx = cls ? Number(cls.slice(1)) : 1;
+    el.style.display = (idx <= stackN) ? '' : 'none';
+  });
+
+  // ★ 自分の手番＆未獲得＆ブロック中でない → 鼓動
+  const pulsing = isMyTurn() && !hasSweets() && !hasReceivedInstruction();
+  sweetsDeckUI.classList.toggle('pulsing', pulsing);
+}
+
+/* =========================
+   ヘルプ（正体カード）
+   ========================= */
+function roleToHelp(role){
+  if(role === 'usakoma'){
+    return { name:"うさこま", img:"swurakoma.jpg", text:"（説明は後で）" };
+  }
+  if(role === 'uragiri'){
+    return { name:"裏切り者", img:"swuragiri.jpg", text:"（説明は後で）" };
+  }
+  return { name:"不明", img:"swroleura.jpg", text:"" };
+}
+function renderHelpList(){
+  helpBody.innerHTML = '';
+  const list = [
+    { name:"うさこま", img:"swurakoma.jpg", text:"（説明は後で）" },
+    { name:"裏切り者", img:"swuragiri.jpg", text:"（説明は後で）" },
+  ];
+  list.forEach((r) => {
+    const row = document.createElement('div');
+    row.className = 'role-row';
+
+    const card = document.createElement('div');
+    card.className = 'role-card';
+    const img = document.createElement('img');
+    img.src = r.img;
+    img.alt = r.name;
+    card.appendChild(img);
+
+    const desc = document.createElement('div');
+    desc.className = 'role-desc';
+    desc.innerHTML = `
+      <div class="name">${r.name}</div>
+      <div class="text">${r.text}</div>
+    `;
+
+    row.appendChild(card);
+    row.appendChild(desc);
+    helpBody.appendChild(row);
+  });
+}
+function openHelp(){
+  renderHelpList();
+  helpBackdrop.classList.remove('hidden');
+}
+function closeHelp(){
+  helpBackdrop.classList.add('hidden');
+}
+helpBtn.addEventListener('click', () => {
+  if (joinBox.classList.contains('hidden')) openHelp();
+});
+btnHelpClose.addEventListener('click', closeHelp);
+helpBackdrop.addEventListener('click', (e) => {
+  if (e.target === helpBackdrop) closeHelp();
+});
+
+/* =========================
+   Seat 復元
+   ========================= */
+async function restoreSeatFromDB(){
+  if (!state.roomCode) return;
+  const tablesRef = ref(db, `rooms/${state.roomCode}/tables`);
+  const snap = await get(tablesRef);
+  const data = snap.val() || {};
+  let mySeatIndex = null;
+
+  for (const [seatIndex, t] of Object.entries(data)) {
+    if (t && t.playerId === state.userId) {
+      mySeatIndex = Number(seatIndex);
+      break;
+    }
+  }
+  if (mySeatIndex !== null) state.seatedTable = mySeatIndex;
+}
+
+/* =========================
+   subscribe
+   ========================= */
+function subscribeRoom(){
+  const roomRef = ref(db, `rooms/${state.roomCode}`);
+  onValue(roomRef, snap => {
+    state.room = snap.val() || {};
+    const waiting = (!state.isHost && !state.room.maxPlayers);
+    hostSelectingPop.classList.toggle('hidden', !waiting);
+    syncSeatUI();
+
+    updateActionDeckUI();
+    updateSweetsDeckUI();
+  });
+}
+function subscribeHostState(){
+  const hostRef = ref(db, `rooms/${state.roomCode}/hostId`);
+  onValue(hostRef, snap => {
+    const hostId = snap.val();
+    state.isHost = (hostId === state.userId);
+    updateHostUI();
+    syncSeatUI();
+  });
+}
+function subscribePlayers(){
+  const tablesRef = ref(db, `rooms/${state.roomCode}/tables`);
+  onValue(tablesRef, async snap => {
+    const data = snap.val() || {};
+    const players = Object.entries(data)
+      .map(([seatIndex, t]) => (t && t.playerId ? {
+        id: t.playerId,
+        name: t.playerName || '名無し',
+        seatIndex: Number(seatIndex)
+      } : null))
+      .filter(Boolean)
+      .sort((a,b) => a.seatIndex - b.seatIndex);
+
+    latestPlayers = players;
+
+    const mySeat = players.find(p => p.id === state.userId);
+    if (mySeat && state.seatedTable === null) {
+      state.seatedTable = mySeat.seatIndex;
+      seatPop.classList.add('hidden');
+    }
+
+    const meStillSeated = players.some(p => p.id === state.userId);
+    if (!meStillSeated && state.seatedTable !== null) {
+      state.seatedTable = null;
+    }
+
+    await syncSeatUI();
+    renderPlayerCircle(players);
+  });
+}
+function subscribeHands(){
+  const handsRef = ref(db, `rooms/${state.roomCode}/hands`);
+  onValue(handsRef, snap => {
+    state.hands = snap.val() || {};
+    renderHands();
+  });
+}
+function subscribeRoles(){
+  const rolesRef = ref(db, `rooms/${state.roomCode}/roles`);
+  onValue(rolesRef, snap => {
+    state.roles = snap.val() || {};
+    renderHands();
+    if (latestPlayers.length) renderPlayerCircle(latestPlayers);
+  });
+}
+function subscribeGame(){
+  const gameRef = ref(db, `rooms/${state.roomCode}/game`);
+  onValue(gameRef, snap => {
+    state.game = snap.val() || {};
+    state.turn = state.game.turn || null;
+    updateTurnUI();
+    if (latestPlayers.length) renderPlayerCircle(latestPlayers);
+  });
+}
+function subscribeEvents(){
+  const evRef = ref(db, `rooms/${state.roomCode}/events`);
+  onChildAdded(evRef, async snap => {
+    const key = snap.key;
+    const ev = snap.val();
+    if(!ev) return;
+
+    if(ev.type === 'revealCard'){
+      showReveal(ev.card);
+    }
+    if(ev.type === 'flyBackCard'){
+      animateFlyBackCard(ev.fromSeat, ev.toSeat);
+    }
+    if(state.isHost){
+      setTimeout(()=> remove(ref(db, `rooms/${state.roomCode}/events/${key}`)), 4000);
+    }
+  });
+}
+
+/* =========================
+   ターン管理
+   ========================= */
+function getSeatedSeatOrder(){
+  return latestPlayers.map(p => p.seatIndex).sort((a,b)=>a-b);
+}
+function getPlayerBySeat(seatIndex){
+  return latestPlayers.find(p => p.seatIndex === seatIndex) || null;
+}
+function getNextOccupiedSeat(currentSeat){
+  const seats = getSeatedSeatOrder();
+  if(!seats.length) return null;
+  const idx = seats.indexOf(currentSeat);
+  if(idx === -1) return seats[0];
+  return seats[(idx+1) % seats.length];
+}
+function isMyTurn(){
+  if(!state.turn) return false;
+  return (state.turn.activePlayerId === state.userId);
+}
+async function endTurn(reason){
+  if(!state.roomCode || !state.turn) return;
+  if(!isMyTurn()) return;
+
+  const nextSeat = getNextOccupiedSeat(state.turn.activeSeat);
+  if(nextSeat == null) return;
+
+  const nextP = getPlayerBySeat(nextSeat);
+  const turnRef = ref(db, `rooms/${state.roomCode}/game/turn`);
+  await update(turnRef, {
+    activeSeat: nextSeat,
+    activePlayerId: nextP?.id || null,
+    lastEndReason: reason,
+    updatedAt: serverTimestamp(),
+    turnNo: (state.turn.turnNo || 1) + 1,
+  });
+}
+
+/* =========================
+   デッキ構築（アクションカード）
+   ========================= */
+const ACTION_COUNTS_BASE = [
+  { name:'ああ', count:3, kind:'normal' },
+  { name:'いい', count:3, kind:'normal' },
+  { name:'うう', count:3, kind:'normal' },
+  { name:'ええ', count:3, kind:'normal' },
+  { name:'おお', count:3, kind:'normal' },
+  { name:'かか', count:3, kind:'normal' },
+
+  { name:'きき', count:3, kind:'instruction' },
+  { name:'くく', count:3, kind:'instruction' },
+  { name:'けけ', count:3, kind:'instruction' },
+
+  { name:'',     count:3, kind:'instruction' },
+  { name:'応援', count:3, kind:'instruction' },
+  { name:'賄賂', count:3, kind:'instruction' },
+
+  { name:'無視', count:3, kind:'instruction' },
+];
+const ACTION_COUNTS_7P = [
+  { name:'ああ', count:2, kind:'normal' },
+  { name:'いい', count:2, kind:'normal' },
+  { name:'うう', count:2, kind:'normal' },
+];
+const INSTRUCTION_NEED_TARGET = new Set(['きき','くく','けけ','応援','賄賂','']);
+const INSTRUCTION_CAN_SELF = new Set(['無視']);
+
+function cardNameToImg(name){
+  if(name === '') return 'blank.jpg';
+  return `${name}.jpg`;
+}
+function buildActionDeck(playerCount){
+  const list = [];
+  const counts = [...ACTION_COUNTS_BASE, ...(playerCount >= 7 ? ACTION_COUNTS_7P : [])];
+  counts.forEach(def => {
+    for(let i=0;i<def.count;i++){
+      list.push({
+        id: crypto.randomUUID(),
+        name: def.name,
+        kind: def.kind,
+        img: cardNameToImg(def.name),
+        backImg: `swactionura.jpg`,
+        effectText: getActionEffectText(def.name),
+      });
+    }
+  });
+  return shuffle(list);
+}
+function getActionEffectText(cardName){
+  const map = {
+    'ああ': '（効果は後で）',
+    'いい': '（効果は後で）',
+    'うう': '（効果は後で）',
+    'ええ': '（効果は後で）',
+    'おお': '（効果は後で）',
+    'かか': '（効果は後で）',
+    'きき': '（指示：相手に使う／効果は後で）',
+    'くく': '（指示：相手に使う／効果は後で）',
+    'けけ': '（指示：相手に使う／効果は後で）',
+    '':     '（指示：相手に使う／効果は後で）',
+    '応援': '（指示：相手に使う／効果は後で）',
+    '賄賂': '（指示：相手に使う／効果は後で）',
+    '無視': '（指示：自分/相手OK／効果は後で）',
+  };
+  return map[cardName] ?? '（効果は後で）';
+}
+
+/* =========================
+   ★ スイーツデッキ構築
+   ========================= */
+const SWEETS_BACK_IMG = 'swura.jpg';
+
+function buildSweetsPool(){
+  const base = [
+    { value:0, img:'sw0.jpg', fallback:'sw1.jpg' },
+    { value:1, img:'sw1.jpg' },
+    { value:2, img:'sw2.jpg' },
+    { value:3, img:'sw3.jpg' },
+    { value:3, img:'sw3(2).jpg' },
+    { value:4, img:'sw4.jpg' },
+    { value:4, img:'sw4(2).jpg' },
+    { value:5, img:'sw5.jpg' },
+    { value:5, img:'sw5(2).jpg' },
+    { value:6, img:'sw6.jpg' },
+    { value:7, img:'sw7.jpg' },
+    { value:8, img:'sw8.jpg' },
+  ];
+  return base.map(b => ({
+    id: crypto.randomUUID(),
+    kind: 'sweets',
+    value: b.value,
+    name: String(b.value),
+    img: b.img,
+    backImg: SWEETS_BACK_IMG,
+    fallback: b.fallback || null,
+  }));
+}
+function buildSweetsDeck(playerCount){
+  const pickN = clamp(playerCount + 2, 0, 12);
+  const pool = buildSweetsPool();
+  const picked = shuffle(pool).slice(0, pickN);
+  return shuffle(picked);
+}
+
+/* =========================
+   正体カード配布
+   ========================= */
+function buildRolePool(n){
+  const usakoma = Math.ceil(n/2);
+  const uragiri = Math.floor(n/2);
+  const pool = [];
+  for(let i=0;i<usakoma;i++) pool.push('usakoma');
+  for(let i=0;i<uragiri;i++) pool.push('uragiri');
+  return shuffle(pool);
+}
+
+/* =========================
+   ゲーム開始（ホストのみ）
+   ========================= */
+async function hostGameStart(){
+  if(!state.isHost || !state.roomCode) return;
+
+  const tablesSnap = await get(ref(db, `rooms/${state.roomCode}/tables`));
+  const tables = tablesSnap.val() || {};
+  const players = Object.entries(tables)
+    .map(([seatIndex, t]) => (t && t.playerId ? {
+      id: t.playerId,
+      name: t.playerName || '名無し',
+      seatIndex: Number(seatIndex)
+    } : null))
+    .filter(Boolean)
+    .sort((a,b)=>a.seatIndex-b.seatIndex);
+
+  if(players.length === 0) return;
+
+  const startPlayer = players[Math.floor(Math.random()*players.length)];
+  const startSeat = startPlayer.seatIndex;
+  const seats = players.map(p=>p.seatIndex).sort((a,b)=>a-b);
+
+  const leaderSeat = (() => {
+    const idx = seats.indexOf(startSeat);
+    if(idx === -1) return seats[seats.length-1];
+    return seats[(idx - 1 + seats.length) % seats.length];
+  })();
+
+  let actionDeck = buildActionDeck(players.length);
+  const sweetsDeck = buildSweetsDeck(players.length);
+
+  const hands = {};
+  players.forEach(p => {
+    hands[p.id] = {
+      action: actionDeck.splice(0, 3),
+      sweets: [],
+      received: [],
+    };
+  });
+
+  const pool = buildRolePool(players.length);
+  const roles = {};
+  players.forEach((p, i) => { roles[p.id] = pool[i]; });
+
+  const base = `rooms/${state.roomCode}`;
+
+  await update(ref(db, `${base}`), { gameStarted: true });
+  await set(ref(db, `${base}/hands`), hands);
+  await set(ref(db, `${base}/roles`), roles);
+  await set(ref(db, `${base}/discard`), { action: [] });
+
+  await set(ref(db, `${base}/decks`), { action: actionDeck, sweets: sweetsDeck });
+
+  await set(ref(db, `${base}/game`), {
+    status: 'playing',
+    startedAt: serverTimestamp(),
+    seatOrder: seats,
+    turn: {
+      activeSeat: startSeat,
+      activePlayerId: startPlayer.id,
+      startSeat,
+      leaderSeat,
+      turnNo: 1,
+      updatedAt: serverTimestamp(),
+    }
+  });
+
+  updateActionDeckUI();
+  updateSweetsDeckUI();
+}
+
+/* =========================
+   イベント（全員演出用）
+   ========================= */
+async function emitEvent(payload){
+  if(!state.roomCode) return;
+  const evRef = ref(db, `rooms/${state.roomCode}/events`);
+  await push(evRef, { ...payload, at: now() });
+}
+
+/* =========================
+   中央拡大（全員1秒）
+   ========================= */
+let revealTimer = null;
+function showReveal(card){
+  if(!card) return;
+  revealImg.src = card.img || '';
+  revealLabel.textContent = card.name || '';
+  revealOverlay.classList.remove('hidden');
+  if(revealTimer) clearTimeout(revealTimer);
+  revealTimer = setTimeout(()=>{
+    revealOverlay.classList.add('hidden');
+  }, 1000);
+}
+
+/* =========================
+   指示カード：裏カード移動アニメ（全員）
+   ========================= */
+function animateFlyBackCard(fromSeat, toSeat){
+  const fromEl = document.querySelector(`.player-tag[data-seat="${fromSeat}"]`);
+  const toEl   = document.querySelector(`.player-tag[data-seat="${toSeat}"]`);
+  if(!fromEl || !toEl) return;
+
+  const fr = fromEl.getBoundingClientRect();
+  const tr = toEl.getBoundingClientRect();
+
+  const fly = document.createElement('div');
+  fly.className = 'fly-card';
+  fly.style.left = `${fr.right + 6}px`;
+  fly.style.top  = `${fr.top + fr.height/2 - 16}px`;
+  document.body.appendChild(fly);
+
+  const toX = (tr.right + 6) - (fr.right + 6);
+  const toY = (tr.top + tr.height/2 - 16) - (fr.top + fr.height/2 - 16);
+
+  fly.animate([
+    { transform:`translate(0px,0px) scale(1)`, opacity:1 },
+    { transform:`translate(${toX}px,${toY}px) scale(1.05)`, opacity:1 }
+  ], {
+    duration: 520,
+    easing: 'cubic-bezier(.22,.84,.44,1)'
+  }).onfinish = () => fly.remove();
+}
+
+/* =========================
+   文字を枠内に収める
+   ========================= */
+function fitEffectText(el){
+  if(!el) return;
+  const box = el.parentElement;
+  if(!box) return;
+
+  let size = 13;
+  el.style.fontSize = size + 'px';
+
+  for(let i=0;i<10;i++){
+    if(el.scrollHeight <= box.clientHeight - 2) break;
+    size = size - 1;
+    if(size < 9){ size = 9; break; }
+    el.style.fontSize = size + 'px';
+  }
+}
+
+/* =========================
+   ★ 受け取り指示カード
+   ========================= */
+function getMyReceivedCard(){
+  const myData = state.hands?.[state.userId];
+  const rec = myData?.received;
+  if(Array.isArray(rec) && rec.length) return rec[0];
+  return null;
+}
+function hasReceivedInstruction(){
+  return !!getMyReceivedCard();
+}
+
+/* =========================
+   手札レンダー
+   ========================= */
+function renderMyRole(){
+  const myRole = state.roles?.[state.userId];
+  if(!myRole){
+    myRoleEl.classList.add('hidden');
+    myRoleEl.innerHTML = '';
+    return;
+  }
+  const info = roleToHelp(myRole);
+  myRoleEl.classList.remove('hidden');
+  myRoleEl.innerHTML = '';
+  const img = document.createElement('img');
+  img.src = info.img;
+  img.alt = info.name;
+  myRoleEl.appendChild(img);
+}
+
+function renderMySweets(){
+  mySweetsEl.innerHTML = '';
+  const c = getMySweetsCard();
+  if(!c){
+    mySweetsEl.classList.add('hidden');
+    return;
+  }
+  mySweetsEl.classList.remove('hidden');
+  const img = document.createElement('img');
+  img.src = c.img;
+  img.alt = `sweets ${c.value ?? ''}`;
+  img.onerror = () => {
+    if(c.fallback) img.src = c.fallback;
+  };
+  mySweetsEl.appendChild(img);
+}
+
+/* ★ カードDOMを作る共通 */
+function buildCardEl(cardObj, { extraClass='' } = {}){
+  const card = document.createElement('div');
+  card.className = 'action-card' + (extraClass ? ` ${extraClass}` : '');
+  card.dataset.cardId = cardObj.id;
+
+  const img = document.createElement('img');
+  img.className = 'card-img';
+  img.src = cardObj.img;
+  img.alt = cardObj.name;
+
+  const name = document.createElement('div');
+  name.className = 'card-name';
+  name.textContent = cardObj.name;
+
+  const frame = document.createElement('div');
+  frame.className = 'effect-frame';
+
+  const txt = document.createElement('div');
+  txt.className = 'effect-text';
+  txt.textContent = cardObj.effectText || '';
+  frame.appendChild(txt);
+
+  card.appendChild(img);
+  card.appendChild(name);
+  card.appendChild(frame);
+
+  requestAnimationFrame(()=> fitEffectText(txt));
+  return card;
+}
+
+function renderMyReceived(){
+  myReceivedEl.innerHTML = '';
+  const rec = getMyReceivedCard();
+  if(!rec) return;
+
+  const cardEl = buildCardEl(rec, { extraClass:'pulse-only' });
+  cardEl.addEventListener('pointerdown', (e) => startDragCard(e, rec, cardEl));
+  myReceivedEl.appendChild(cardEl);
+}
+
+function renderMyHand(){
+  myHandEl.innerHTML = '';
+
+  const myData = state.hands?.[state.userId];
+  if(!myData || !Array.isArray(myData.action)) return;
+
+  const receivedExists = hasReceivedInstruction();
+
+  myData.action.forEach(cardObj => {
+    const allowThisCard =
+      !receivedExists || (cardObj.kind === 'instruction' && cardObj.name === '無視');
+
+    const cardEl = buildCardEl(cardObj);
+    if(receivedExists && cardObj.kind === 'instruction' && cardObj.name === '無視'){
+      cardEl.classList.add('can-ignore');
+    }
+
+    cardEl.addEventListener('pointerdown', (e) => {
+      if(!allowThisCard) return;
+      startDragCard(e, cardObj, cardEl);
+    });
+
+    myHandEl.appendChild(cardEl);
+  });
+}
+
+function applyMyTurnClasses(){
+  const wrap = document.querySelector('.my-hand-wrapper');
+  if(!wrap) return;
+
+  const mine = isMyTurn();
+  const receivedExists = hasReceivedInstruction();
+
+  wrap.classList.remove('my-turn-free','my-turn-blocked');
+  if(!mine) return;
+
+  if(receivedExists){
+    wrap.classList.add('my-turn-blocked');
+  }else{
+    wrap.classList.add('my-turn-free');
+  }
+}
+
+function renderHands(){
+  renderMyRole();
+  renderMySweets();
+  renderMyReceived();
+  renderMyHand();
+  applyMyTurnClasses();
+  updateSweetsDeckUI();
+  if (latestPlayers.length) renderPlayerCircle(latestPlayers);
+}
+
+/* =========================
+   プレイヤー円レンダー
+   ========================= */
+let pendingSeatIndexToSteal = null;
+let pendingSeatPlayerIdToSteal = null;
+let isRenderingSeatTabs = false;
+
+function renderPlayerCircle(players){
+  playerCircle.innerHTML = '';
+  playerCircle.appendChild(playCircleEl);
+
+  if (!players.length) return;
+
+  const n = players.length;
+  const radius = 45;
+  const step = (2 * Math.PI) / n;
+  const anchorAngle = Math.PI / 2;
+  const meIndex = players.findIndex(p => p.id === state.userId);
+
+  const leaderSeat = state.turn?.leaderSeat ?? null;
+  const activeSeat = state.turn?.activeSeat ?? null;
+
+  players.forEach((p, idx) => {
+    const k = (meIndex === -1) ? idx : (idx - meIndex + n) % n;
+    const angle = anchorAngle + step * k;
+
+    const x = 50 + radius * Math.cos(angle);
+    const y = 50 + radius * Math.sin(angle);
+
+    if(p.id === state.userId){
+      const tag = document.createElement('div');
+      tag.className = 'player-tag me';
+      if(activeSeat === p.seatIndex) tag.classList.add('active-turn');
+
+      tag.textContent = p.name;
+      tag.style.left = `${x}%`;
+      tag.style.top = `${y}%`;
+      tag.dataset.seat = String(p.seatIndex);
+      tag.dataset.uid = p.id;
+
+      playerCircle.appendChild(tag);
+
+      if(leaderSeat !== null && leaderSeat === p.seatIndex){
+        const chip = document.createElement('div');
+        chip.className = 'leader-chip';
+        requestAnimationFrame(()=>{
+          const r = tag.getBoundingClientRect();
+          chip.style.left = `${r.right + 6}px`;
+          chip.style.top  = `${r.top + (r.height/2) - 9}px`;
+        });
+        document.body.appendChild(chip);
+      }
+      return;
+    }
+
+    const circle = document.createElement('div');
+    circle.className = 'otherplayerscircle';
+    circle.style.left = `${x}%`;
+    circle.style.top  = `${y}%`;
+
+    const tag = document.createElement('div');
+    tag.className = 'player-tag in-othercircle';
+    if(activeSeat === p.seatIndex) tag.classList.add('active-turn');
+
+    tag.textContent = p.name;
+    tag.dataset.seat = String(p.seatIndex);
+    tag.dataset.uid = p.id;
+
+    const onKick = () => {
+      if (!state.roomCode) return;
+      if (state.seatedTable !== null) return;
+
+      pendingSeatIndexToSteal = p.seatIndex;
+      pendingSeatPlayerIdToSteal = p.id;
+      kickMessage.textContent = `「${p.name}」を追い出して、この席に着席しますか？`;
+      kickDialog.classList.remove('hidden');
+    };
+    circle.onclick = (e) => { e.stopPropagation(); onKick(); };
+    tag.onclick = (e) => { e.stopPropagation(); onKick(); };
+
+    const sweetsArea = document.createElement('div');
+    sweetsArea.className = 'sweets-area';
+
+    const sweetsMini = document.createElement('div');
+    sweetsMini.className = 'sweets-mini';
+
+    const handData = state.hands?.[p.id];
+    const hasTheirSweets = !!(handData && Array.isArray(handData.sweets) && handData.sweets.length);
+    sweetsArea.classList.toggle('empty', !hasTheirSweets);
+    sweetsMini.classList.toggle('hidden', !hasTheirSweets);
+
+    sweetsArea.appendChild(sweetsMini);
+    tag.appendChild(sweetsArea);
+
+    const roleMini = document.createElement('div');
+    roleMini.className = 'role-mini';
+    tag.appendChild(roleMini);
+
+    if (handData && Array.isArray(handData.action) && handData.action.length){
+      const miniHand = document.createElement('div');
+      miniHand.className = 'mini-hand';
+
+      const count = handData.action.length;
+      const spread = 70;
+      const base = (count > 1) ? (-spread/2) : 0;
+
+      handData.action.forEach((_, idx2) => {
+        const c = document.createElement('div');
+        c.className = 'mini-card';
+
+        const angleDeg = (count > 1) ? base + (spread/(count-1))*idx2 : 0;
+        c.style.transform = `translate(-50%,0) rotate(${angleDeg}deg)`;
+        c.style.zIndex = String(10 + idx2);
+        miniHand.appendChild(c);
+      });
+
+      tag.appendChild(miniHand);
+    }
+
+    circle.appendChild(tag);
+    playerCircle.appendChild(circle);
+
+    if(leaderSeat !== null && leaderSeat === p.seatIndex){
+      const chip = document.createElement('div');
+      chip.className = 'leader-chip';
+      requestAnimationFrame(()=>{
+        const r = tag.getBoundingClientRect();
+        chip.style.left = `${r.right + 6}px`;
+        chip.style.top  = `${r.top + (r.height/2) - 9}px`;
+      });
+      document.body.appendChild(chip);
+    }
+  });
+
+  updateActionDeckUI();
+  updateSweetsDeckUI();
+}
+
+const _origRenderPlayerCircle = renderPlayerCircle;
+renderPlayerCircle = function(players){
+  document.querySelectorAll('.leader-chip').forEach(el => el.remove());
+  _origRenderPlayerCircle(players);
+};
+
+/* =========================
+   ターンUI更新
+   ========================= */
+function updateTurnUI(){
+  if(!state.turn || state.game?.status !== 'playing'){
+    turnBar.classList.add('hidden');
+    turnBadge.textContent = 'TURN';
+    const wrap = document.querySelector('.my-hand-wrapper');
+    wrap?.classList.remove('my-turn-free','my-turn-blocked');
+    updateSweetsDeckUI();
+    return;
+  }
+
+  const activeP = getPlayerBySeat(state.turn.activeSeat);
+  const activeName = activeP?.name ?? '？';
+  turnBadge.textContent = `手番：${activeName}（${state.turn.activeSeat}）`;
+
+  const show = (state.seatedTable !== null);
+  turnBar.classList.toggle('hidden', !show);
+
+  const mine = isMyTurn();
+  btnPass.disabled = !mine;
+
+  btnDrawSweets.disabled = true;
+  btnVote.disabled = true;
+
+  renderHands();
+  updateSweetsDeckUI();
+}
+
+/* =========================
+   4つの手番終了要因
+   ========================= */
+btnPass.addEventListener('click', async ()=>{
+  await endTurn('pass');
+});
+
+/* =========================
+   ドラッグ＆ドロップ（アクションカード）
+   ========================= */
+const drag = {
+  active:false,
+  card:null,
+  el:null,
+  startX:0, startY:0,
+  offsetX:0, offsetY:0,
+  originRect:null,
+};
+
+function canUseOnPlayCircle(card){
+  if(card.kind !== 'instruction') return true;
+  if(INSTRUCTION_NEED_TARGET.has(card.name)) return false;
+  return true;
+}
+function canUseOnOtherPlayer(card){
+  if(card.kind !== 'instruction') return false;
+  return true;
+}
+
+function canStartUseCard(cardObj){
+  if(!isMyTurn()) return false;
+  const receivedExists = hasReceivedInstruction();
+  if(!receivedExists) return true;
+
+  const isReceived = (getMyReceivedCard()?.id === cardObj.id);
+  if(isReceived) return true;
+
+  const isIgnore = (cardObj.kind === 'instruction' && cardObj.name === '無視');
+  return isIgnore;
+}
+
+let hoverOtherCircle = null;
+function clearOtherCircleHint(){
+  if(!hoverOtherCircle) return;
+  hoverOtherCircle.classList.remove('hint-ok','hint-ng');
+  hoverOtherCircle = null;
+}
+function updateOtherCircleHint(x,y,cardObj){
+  clearOtherCircleHint();
+  const el = document.elementFromPoint(x,y);
+  const c = el?.closest?.('.otherplayerscircle');
+  if(!c) return;
+
+  const ok = canUseOnOtherPlayer(cardObj);
+  c.classList.add(ok ? 'hint-ok' : 'hint-ng');
+  hoverOtherCircle = c;
+}
+
+function getDropTarget(x,y){
+  const pr = playCircleEl.getBoundingClientRect();
+  const inPlay = (x>=pr.left && x<=pr.right && y>=pr.top && y<=pr.bottom);
+  if(inPlay) return { type:'playCircle' };
+
+  const el = document.elementFromPoint(x,y);
+  const circle = el?.closest?.('.otherplayerscircle');
+  if(circle){
+    const tag = circle.querySelector('.player-tag');
+    if(tag){
+      const seat = Number(tag.dataset.seat);
+      const uid = tag.dataset.uid;
+      return { type:'otherCircle', seat, uid };
+    }
+  }
+
+  const tag = el?.closest?.('.player-tag');
+  if(tag){
+    const seat = Number(tag.dataset.seat);
+    const uid = tag.dataset.uid;
+    return { type:'playerTag', seat, uid };
+  }
+
+  return { type:'none' };
+}
+
+function startDragCard(e, cardObj, cardEl){
+  if(!canStartUseCard(cardObj)) return;
+  e.preventDefault();
+
+  drag.active = true;
+  drag.card = cardObj;
+  drag.el = cardEl;
+  drag.originRect = cardEl.getBoundingClientRect();
+
+  const r = drag.originRect;
+  drag.offsetX = e.clientX - r.left;
+  drag.offsetY = e.clientY - r.top;
+
+  cardEl.classList.add('dragging');
+  cardEl.style.left = `${r.left}px`;
+  cardEl.style.top  = `${r.top}px`;
+
+  cardEl.setPointerCapture(e.pointerId);
+
+  playCircleEl.classList.toggle('hint-ok', canUseOnPlayCircle(cardObj));
+  playCircleEl.classList.toggle('hint-ng', !canUseOnPlayCircle(cardObj));
+
+  cardEl.addEventListener('pointermove', onDragMove);
+  cardEl.addEventListener('pointerup', onDragEnd);
+  cardEl.addEventListener('pointercancel', onDragEnd);
+}
+
+function onDragMove(e){
+  if(!drag.active) return;
+  const x = e.clientX - drag.offsetX;
+  const y = e.clientY - drag.offsetY;
+  drag.el.style.left = `${x}px`;
+  drag.el.style.top  = `${y}px`;
+
+  updateOtherCircleHint(e.clientX, e.clientY, drag.card);
+}
+
+async function onDragEnd(e){
+  if(!drag.active) return;
+
+  const cardObj = drag.card;
+  const drop = getDropTarget(e.clientX, e.clientY);
+
+  playCircleEl.classList.remove('hint-ok','hint-ng');
+  clearOtherCircleHint();
+
+  if(drop.type === 'playCircle'){
+    const ok = canUseOnPlayCircle(cardObj);
+    if(!ok){ snapBack(); return; }
+
+    await playCardToCircle(cardObj);
+    cleanupDrag();
+    return;
+  }
+
+  if(drop.type === 'otherCircle'){
+    if(cardObj.kind !== 'instruction'){ snapBack(); return; }
+    await giveInstructionToPlayer(cardObj, drop.seat, drop.uid);
+    cleanupDrag();
+    return;
+  }
+
+  if(drop.type === 'playerTag'){
+    const isSelf = (drop.uid === state.userId);
+    if(cardObj.kind !== 'instruction'){ snapBack(); return; }
+    if(isSelf && !INSTRUCTION_CAN_SELF.has(cardObj.name)){ snapBack(); return; }
+    if(isSelf){
+      await playCardToCircle(cardObj);
+      cleanupDrag();
+      return;
+    }
+    snapBack();
+    return;
+  }
+
+  snapBack();
+}
+
+function snapBack(){
+  const el = drag.el;
+  el.animate([
+    { transform:'translate(0,0) scale(1.02)' },
+    { transform:'translate(0,0) scale(1.0)' }
+  ], { duration: 120, easing:'ease-out' });
+
+  el.style.left = '';
+  el.style.top  = '';
+  el.classList.remove('dragging');
+
+  cleanupDrag();
+}
+
+function cleanupDrag(){
+  if(!drag.el) return;
+  drag.el.removeEventListener('pointermove', onDragMove);
+  drag.el.removeEventListener('pointerup', onDragEnd);
+  drag.el.removeEventListener('pointercancel', onDragEnd);
+
+  drag.active = false;
+  drag.card = null;
+  drag.el = null;
+  drag.originRect = null;
+}
+
+/* =========================
+   ★ ブロック解除（無視使用時）
+   ========================= */
+async function consumeReceivedInstruction(){
+  if(!state.roomCode) return;
+  const myRef = ref(db, `rooms/${state.roomCode}/hands/${state.userId}`);
+  const snap = await get(myRef);
+  const myData = snap.val() || {};
+  const rec = Array.isArray(myData.received) ? myData.received : [];
+  if(!rec.length) return;
+
+  await update(myRef, { received: [] });
+}
+
+/* =========================
+   カード使用：プレイサークル
+   ========================= */
+async function playCardToCircle(cardObj){
+  if(!state.roomCode) return;
+  if(!isMyTurn()) return;
+
+  const receivedExists = hasReceivedInstruction();
+  const isIgnore = (cardObj.kind === 'instruction' && cardObj.name === '無視');
+
+  const rec = getMyReceivedCard();
+  const isReceived = (rec && rec.id === cardObj.id);
+
+  if(isReceived){
+    const myRef = ref(db, `rooms/${state.roomCode}/hands/${state.userId}`);
+    await update(myRef, { received: [] });
+
+    const disRef = ref(db, `rooms/${state.roomCode}/discard/action`);
+    const disSnap = await get(disRef);
+    const discard = disSnap.val() || [];
+    await set(disRef, [...discard, cardObj]);
+
+    await emitEvent({ type:'revealCard', card: cardObj });
+    await runActionCardEffect(cardObj);
+
+    await endTurn('playReceivedInstruction');
+    updateActionDeckUI();
+    updateSweetsDeckUI();
+    return;
+  }
+
+  const myRef = ref(db, `rooms/${state.roomCode}/hands/${state.userId}`);
+  const snap = await get(myRef);
+  const myData = snap.val() || {};
+  const arr = Array.isArray(myData.action) ? myData.action : [];
+  const nextArr = arr.filter(c => c.id !== cardObj.id);
+  await update(myRef, { action: nextArr });
+
+  const disRef = ref(db, `rooms/${state.roomCode}/discard/action`);
+  const disSnap = await get(disRef);
+  const discard = disSnap.val() || [];
+  await set(disRef, [...discard, cardObj]);
+
+  await emitEvent({ type:'revealCard', card: cardObj });
+
+  if(receivedExists && isIgnore){
+    await consumeReceivedInstruction();
+    await endTurn('ignore_clear_received');
+    updateActionDeckUI();
+    updateSweetsDeckUI();
+    return;
+  }
+
+  await runActionCardEffect(cardObj);
+  await endTurn('playAction');
+  updateActionDeckUI();
+  updateSweetsDeckUI();
+}
+
+async function runActionCardEffect(cardObj){
+  return;
+}
+
+/* =========================
+   指示カード：他プレイヤーへ渡す
+   ========================= */
+async function giveInstructionToPlayer(cardObj, targetSeat, targetUid){
+  if(!state.roomCode) return;
+  if(!isMyTurn()) return;
+
+  if(!canUseOnOtherPlayer(cardObj)){
+    return;
+  }
+
+  const myRef = ref(db, `rooms/${state.roomCode}/hands/${state.userId}`);
+  const mySnap = await get(myRef);
+  const myData = mySnap.val() || {};
+  const arr = Array.isArray(myData.action) ? myData.action : [];
+  const nextArr = arr.filter(c => c.id !== cardObj.id);
+  await update(myRef, { action: nextArr });
+
+  const toRef = ref(db, `rooms/${state.roomCode}/hands/${targetUid}`);
+  const toSnap = await get(toRef);
+  const toData = toSnap.val() || {};
+  const nextReceived = [cardObj];
+
+  await update(toRef, { received: nextReceived });
+
+  const fromSeat = state.turn?.activeSeat ?? state.seatedTable;
+  await emitEvent({ type:'flyBackCard', fromSeat, toSeat: targetSeat });
+
+  await runInstructionCardEffect(cardObj, targetUid);
+
+  await endTurn('giveInstruction_received');
+  updateActionDeckUI();
+  updateSweetsDeckUI();
+}
+async function runInstructionCardEffect(cardObj, targetUid){
+  return;
+}
+
+/* =========================
+   ★ スイーツ：山札クリック → 一覧表示
+   ========================= */
+function canOpenSweetsPicker(){
+  if(!state.room?.gameStarted) return false;
+  if(!isMyTurn()) return false;
+  if(hasReceivedInstruction()) return false;
+  if(hasSweets()) return false;
+  const deck = state.room?.decks?.sweets;
+  if(!Array.isArray(deck) || !deck.length) return false;
+  return true;
+}
+
+function openSweetsPicker(){
+  const deck = state.room?.decks?.sweets;
+  if(!Array.isArray(deck) || !deck.length) return;
+
+  // 小さい順
+  const sorted = [...deck].sort((a,b)=> (a.value ?? 0) - (b.value ?? 0));
+
+  // 半分で折り返し（2段）
+  const cols = Math.ceil(sorted.length / 2);
+  sweetsGrid.style.gridTemplateColumns = `repeat(${cols}, 90px)`;
+
+  sweetsGrid.innerHTML = '';
+  sorted.forEach(cardObj => {
+    const el = document.createElement('div');
+    el.className = 'sweets-pick-card';
+    el.dataset.cardId = cardObj.id;
+
+    const img = document.createElement('img');
+    img.src = cardObj.img;
+    img.alt = `sweets ${cardObj.value ?? ''}`;
+    img.onerror = () => {
+      if(cardObj.fallback) img.src = cardObj.fallback;
+    };
+
+    el.appendChild(img);
+
+    el.addEventListener('pointerdown', (e) => startDragSweets(e, cardObj, el));
+    sweetsGrid.appendChild(el);
+  });
+
+  // ドロップゾーンの状態を初期化
+  sweetsDropZone.classList.remove('hint-ok','hint-ng');
+
+  sweetsBackdrop.classList.remove('hidden');
+}
+
+function closeSweetsPicker(){
+  sweetsBackdrop.classList.add('hidden');
+}
+btnSweetsClose.addEventListener('click', closeSweetsPicker);
+sweetsBackdrop.addEventListener('click', (e) => {
+  if(e.target === sweetsBackdrop) closeSweetsPicker();
+});
+
+sweetsDeckUI.addEventListener('click', () => {
+  if(!canOpenSweetsPicker()) return;
+  openSweetsPicker();
+});
+
+/* =========================
+   ★★★ スイーツ：ドラッグ → 「一覧ボックスの下(ドロップゾーン)」で獲得
+   ========================= */
+const sweetsDrag = {
+  active:false,
+  card:null,
+  srcEl:null,
+  ghost:null,
+  offsetX:0,
+  offsetY:0,
+};
+
+function startDragSweets(e, cardObj, srcEl){
+  if(!canOpenSweetsPicker()) return;
+  e.preventDefault();
+
+  sweetsDrag.active = true;
+  sweetsDrag.card = cardObj;
+  sweetsDrag.srcEl = srcEl;
+
+  const r = srcEl.getBoundingClientRect();
+  sweetsDrag.offsetX = e.clientX - r.left;
+  sweetsDrag.offsetY = e.clientY - r.top;
+
+  const ghost = srcEl.cloneNode(true);
+  ghost.classList.add('sweets-dragging');
+  ghost.style.left = `${r.left}px`;
+  ghost.style.top  = `${r.top}px`;
+  ghost.style.width = `${r.width}px`;
+  ghost.style.height = `${r.height}px`;
+  document.body.appendChild(ghost);
+  sweetsDrag.ghost = ghost;
+
+  // ここも初期化
+  sweetsDropZone.classList.remove('hint-ok','hint-ng');
+
+  ghost.setPointerCapture(e.pointerId);
+  ghost.addEventListener('pointermove', onSweetsDragMove);
+  ghost.addEventListener('pointerup', onSweetsDragEnd);
+  ghost.addEventListener('pointercancel', onSweetsDragEnd);
+}
+
+function isInDropZone(x,y){
+  const zr = sweetsDropZone.getBoundingClientRect();
+  return (x >= zr.left && x <= zr.right && y >= zr.top && y <= zr.bottom);
+}
+
+function onSweetsDragMove(e){
+  if(!sweetsDrag.active || !sweetsDrag.ghost) return;
+  const x = e.clientX - sweetsDrag.offsetX;
+  const y = e.clientY - sweetsDrag.offsetY;
+  sweetsDrag.ghost.style.left = `${x}px`;
+  sweetsDrag.ghost.style.top  = `${y}px`;
+
+  // ★ ドロップゾーンのヒント表示
+  const inZone = isInDropZone(e.clientX, e.clientY);
+  sweetsDropZone.classList.toggle('hint-ok', inZone);
+  sweetsDropZone.classList.toggle('hint-ng', !inZone);
+}
+
+async function onSweetsDragEnd(e){
+  if(!sweetsDrag.active) return;
+
+  const gx = e.clientX;
+  const gy = e.clientY;
+
+  // ★ 獲得条件：myArea ではなく「スイーツ一覧ボックスの下(ドロップゾーン)」
+  const inZone = isInDropZone(gx, gy);
+
+  if(inZone){
+    await acquireSweetsCard(sweetsDrag.card);
+    cleanupSweetsDrag();
+    return;
+  }
+
+  cleanupSweetsDrag();
+}
+
+function cleanupSweetsDrag(){
+  sweetsDropZone.classList.remove('hint-ok','hint-ng');
+
+  if(sweetsDrag.ghost){
+    sweetsDrag.ghost.removeEventListener('pointermove', onSweetsDragMove);
+    sweetsDrag.ghost.removeEventListener('pointerup', onSweetsDragEnd);
+    sweetsDrag.ghost.removeEventListener('pointercancel', onSweetsDragEnd);
+    sweetsDrag.ghost.remove();
+  }
+  sweetsDrag.active = false;
+  sweetsDrag.card = null;
+  sweetsDrag.srcEl = null;
+  sweetsDrag.ghost = null;
+  sweetsDrag.offsetX = 0;
+  sweetsDrag.offsetY = 0;
+}
+
+async function acquireSweetsCard(cardObj){
+  if(!state.roomCode) return;
+  if(!canOpenSweetsPicker()) return;
+
+  const myRef = ref(db, `rooms/${state.roomCode}/hands/${state.userId}`);
+  const mySnap = await get(myRef);
+  const myData = mySnap.val() || {};
+  const already = Array.isArray(myData.sweets) && myData.sweets.length;
+  if(already) return;
+
+  const deckRef = ref(db, `rooms/${state.roomCode}/decks/sweets`);
+  const deckSnap = await get(deckRef);
+  const deck = deckSnap.val() || [];
+  const exists = Array.isArray(deck) && deck.some(c => c.id === cardObj.id);
+  if(!exists) return;
+
+  const nextDeck = deck.filter(c => c.id !== cardObj.id);
+
+  await set(deckRef, nextDeck);
+  await update(myRef, { sweets: [cardObj] });
+
+  closeSweetsPicker();
+
+  await endTurn('drawSweets');
+
+  updateSweetsDeckUI();
+}
+
+/* =========================
+   Seat UI（既存）
+   ========================= */
+async function syncSeatUI(){
+  if (!state.roomCode) return;
+
+  const maxPlayers = state.room.maxPlayers || null;
+
+  if (!state.isHost && !maxPlayers){
+    seatPop.classList.add('hidden');
+    return;
+  }
+  if (state.seatedTable !== null){
+    seatPop.classList.add('hidden');
+    return;
+  }
+  await renderSeatTabs();
+  seatPop.classList.remove('hidden');
+}
+
+async function renderSeatTabs(){
+  if (!state.roomCode) return;
+  if (isRenderingSeatTabs) return;
+  isRenderingSeatTabs = true;
+
+  try {
+    seatTabs.innerHTML = '';
+
+    const roomRef = ref(db, `rooms/${state.roomCode}`);
+    const roomSnap = await get(roomRef);
+    const roomData = roomSnap.val() || {};
+    const maxPlayers = roomData.maxPlayers || null;
+
+    if(state.isHost && !maxPlayers){
+      seatLabel.textContent = '人数を選択';
+      for(let i=2; i<=8; i++){
+        const tab = document.createElement('div');
+        tab.className = 'tab';
+        tab.textContent = i;
+
+        tab.onclick = async () => {
+          await update(roomRef, { maxPlayers: i });
+          const tRef = ref(db, `rooms/${state.roomCode}/tables/1`);
+          await set(tRef, { playerId: state.userId, playerName: state.userName });
+
+          state.seatedTable = 1;
+          seatPop.classList.add('hidden');
+        };
+        seatTabs.appendChild(tab);
+      }
+      return;
+    }
+
+    seatLabel.textContent = '席を選択';
+
+    const effectiveMax = maxPlayers || 8;
+    const tablesSnap = await get(ref(db, `rooms/${state.roomCode}/tables`));
+    const tables = tablesSnap.val() || {};
+
+    for(let i=1; i<=effectiveMax; i++){
+      const tab = document.createElement('div');
+      tab.className = 'tab';
+      tab.textContent = i;
+
+      const t = tables[i];
+      if(t && t.playerId) tab.classList.add('disabled');
+
+      tab.onclick = async () => {
+        if(tab.classList.contains('disabled')) return;
+        const tRef = ref(db, `rooms/${state.roomCode}/tables/${i}`);
+        await set(tRef, { playerId: state.userId, playerName: state.userName });
+        state.seatedTable = i;
+        seatPop.classList.add('hidden');
+      };
+      seatTabs.appendChild(tab);
+    }
+  } finally {
+    isRenderingSeatTabs = false;
+  }
+}
+
+btnSeatCancel.onclick = () => {
+  seatPop.classList.add('hidden');
+  state.seatedTable = null;
+};
+
+/* =========================
+   追い出しダイアログ（既存）
+   ========================= */
+kickDialog.addEventListener('click', (e) => {
+  if (e.target === kickDialog) {
+    kickDialog.classList.add('hidden');
+    pendingSeatIndexToSteal = null;
+    pendingSeatPlayerIdToSteal = null;
+  }
+});
+btnKickNo.addEventListener('click', (e) => {
