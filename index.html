@@ -1085,6 +1085,9 @@ const state = {
   seatedTable: null,
   isHost: false,
   turnEnding: false,
+  passReadyBlockedTurnNo: null,
+  lastPassEligible: false,
+  prevTurnNo: null,
 
   room: {},
   hands: {},
@@ -1440,6 +1443,7 @@ function subscribeGame(){
     state.game = snap.val() || {};
     state.turn = state.game.turn || null;
     state.turnEnding = false;
+    syncPassTurnState();
     updateTurnUI();
     if (latestPlayers.length) renderPlayerCircle(latestPlayers);
 
@@ -1859,12 +1863,32 @@ function renderMyVoteChip(){
 function myDoneSweetsAndVote(){
   return hasSweets() && (getMyVoteChips() <= 0);
 }
+function syncPassTurnState(){
+  const turnNo = state.turn?.turnNo ?? null;
+  if(turnNo !== state.prevTurnNo){
+    state.prevTurnNo = turnNo;
+    state.passReadyBlockedTurnNo = null;
+    state.lastPassEligible = false;
+    if(isMyTurn()){
+      state.lastPassEligible = myDoneSweetsAndVote() && !hasReceivedInstruction();
+    }
+  }
+}
 function updatePassRoundBtn(){
   const started = !!state.room?.gameStarted;
   const mine = isMyTurn();
   const passed = isPassedPlayerId(state.userId);
   const ending = !!state.game?.roundEnding;
-  const show = started && mine && !ending && !passed && !state.turnEnding && myDoneSweetsAndVote() && !hasReceivedInstruction();
+  const eligible = myDoneSweetsAndVote() && !hasReceivedInstruction();
+  if(mine){
+    if(!state.lastPassEligible && eligible){
+      state.passReadyBlockedTurnNo = state.turn?.turnNo ?? null;
+    }
+    state.lastPassEligible = eligible;
+  } else {
+    state.lastPassEligible = false;
+  }
+  const show = started && mine && !ending && !passed && !state.turnEnding && eligible && state.passReadyBlockedTurnNo !== state.turn?.turnNo;
   passRoundBtn.classList.toggle('visible', show);
   passRoundBtn.disabled = !show;
 }
@@ -2447,6 +2471,7 @@ subscribeGame = function(){
     state.game = snap.val() || {};
     state.turn = state.game.turn || null;
     state.turnEnding = false;
+    syncPassTurnState();
     updateTurnUI();
     if (latestPlayers.length) renderPlayerCircle(latestPlayers);
 
