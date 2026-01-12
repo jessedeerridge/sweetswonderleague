@@ -224,7 +224,10 @@
   /* ★ リーダーチップ（ネームタグの右／タグ内じゃない） */
   .leader-chip{
     position:absolute;
+    right:-22px;
+    top:50%;
     width:18px;height:18px;
+    transform:translateY(-50%);
     background:url('swleader.png') center/contain no-repeat;
     filter:drop-shadow(0 2px 6px rgba(0,0,0,.35));
     pointer-events:none;
@@ -1081,6 +1084,7 @@ const state = {
   roomCode: null,
   seatedTable: null,
   isHost: false,
+  turnEnding: false,
 
   room: {},
   hands: {},
@@ -1435,6 +1439,7 @@ function subscribeGame(){
   onValue(gameRef, snap => {
     state.game = snap.val() || {};
     state.turn = state.game.turn || null;
+    state.turnEnding = false;
     updateTurnUI();
     if (latestPlayers.length) renderPlayerCircle(latestPlayers);
 
@@ -1514,6 +1519,9 @@ function isMyTurn(){
 async function endTurn(reason){
   if(!state.roomCode || !state.turn) return;
   if(!isMyTurn()) return;
+
+  state.turnEnding = true;
+  updatePassRoundBtn();
 
   const nextSeat = getNextOccupiedSeatSkippingPassed(state.turn.activeSeat);
   if(nextSeat == null) return;
@@ -1856,7 +1864,7 @@ function updatePassRoundBtn(){
   const mine = isMyTurn();
   const passed = isPassedPlayerId(state.userId);
   const ending = !!state.game?.roundEnding;
-  const show = started && mine && !ending && !passed && myDoneSweetsAndVote() && !hasReceivedInstruction();
+  const show = started && mine && !ending && !passed && !state.turnEnding && myDoneSweetsAndVote() && !hasReceivedInstruction();
   passRoundBtn.classList.toggle('visible', show);
   passRoundBtn.disabled = !show;
 }
@@ -2042,12 +2050,7 @@ function renderPlayerCircle(players){
       if(leaderSeat !== null && leaderSeat === p.seatIndex){
         const chip = document.createElement('div');
         chip.className = 'leader-chip';
-        requestAnimationFrame(()=>{
-          const r = tag.getBoundingClientRect();
-          chip.style.left = `${r.right + 6}px`;
-          chip.style.top  = `${r.top + (r.height/2) - 9}px`;
-        });
-        document.body.appendChild(chip);
+        tag.appendChild(chip);
       }
       return;
     }
@@ -2139,25 +2142,13 @@ function renderPlayerCircle(players){
     if(leaderSeat !== null && leaderSeat === p.seatIndex){
       const chip = document.createElement('div');
       chip.className = 'leader-chip';
-      requestAnimationFrame(()=>{
-        const r = tag.getBoundingClientRect();
-        chip.style.left = `${r.right + 6}px`;
-        chip.style.top  = `${r.top + (r.height/2) - 9}px`;
-      });
-      document.body.appendChild(chip);
+      tag.appendChild(chip);
     }
   });
 
   updateActionDeckUI();
   updateSweetsDeckUI();
 }
-
-// leader-chip は body 直置きなので、renderPlayerCircle 前に全消去
-const _origRenderPlayerCircle = renderPlayerCircle;
-renderPlayerCircle = function(players){
-  document.querySelectorAll('.leader-chip').forEach(el => el.remove());
-  _origRenderPlayerCircle(players);
-};
 
 /* =========================
    ターンUI更新
@@ -2455,6 +2446,7 @@ subscribeGame = function(){
   onValue(gameRef, snap => {
     state.game = snap.val() || {};
     state.turn = state.game.turn || null;
+    state.turnEnding = false;
     updateTurnUI();
     if (latestPlayers.length) renderPlayerCircle(latestPlayers);
 
@@ -2572,6 +2564,8 @@ const drag = {
   el:null,
   offsetX:0, offsetY:0,
   originRect:null,
+  lastClientX:null,
+  lastClientY:null,
 };
 
 function canUseOnPlayCircle(card){
@@ -2650,6 +2644,8 @@ function startDragCard(e, cardObj, cardEl){
   const r = drag.originRect;
   drag.offsetX = e.clientX - r.left;
   drag.offsetY = e.clientY - r.top;
+  drag.lastClientX = e.clientX;
+  drag.lastClientY = e.clientY;
 
   cardEl.classList.add('dragging');
   cardEl.style.left = `${r.left}px`;
@@ -2669,6 +2665,8 @@ function onDragMove(e){
   if(!drag.active) return;
   const x = e.clientX - drag.offsetX;
   const y = e.clientY - drag.offsetY;
+  drag.lastClientX = e.clientX;
+  drag.lastClientY = e.clientY;
   drag.el.style.left = `${x}px`;
   drag.el.style.top  = `${y}px`;
 
@@ -2740,6 +2738,8 @@ function cleanupDrag(){
   drag.card = null;
   drag.el = null;
   drag.originRect = null;
+  drag.lastClientX = null;
+  drag.lastClientY = null;
 }
 
 /* =========================
@@ -2931,6 +2931,8 @@ const sweetsDrag = {
   ghost:null,
   offsetX:0,
   offsetY:0,
+  lastClientX:null,
+  lastClientY:null,
 };
 
 function startDragSweets(e, cardObj, srcEl){
@@ -2944,6 +2946,8 @@ function startDragSweets(e, cardObj, srcEl){
   const r = srcEl.getBoundingClientRect();
   sweetsDrag.offsetX = e.clientX - r.left;
   sweetsDrag.offsetY = e.clientY - r.top;
+  sweetsDrag.lastClientX = e.clientX;
+  sweetsDrag.lastClientY = e.clientY;
 
   const ghost = srcEl.cloneNode(true);
   ghost.classList.add('sweets-dragging');
@@ -2964,6 +2968,8 @@ function onSweetsDragMove(e){
   if(!sweetsDrag.active || !sweetsDrag.ghost) return;
   const x = e.clientX - sweetsDrag.offsetX;
   const y = e.clientY - sweetsDrag.offsetY;
+  sweetsDrag.lastClientX = e.clientX;
+  sweetsDrag.lastClientY = e.clientY;
   sweetsDrag.ghost.style.left = `${x}px`;
   sweetsDrag.ghost.style.top  = `${y}px`;
 
@@ -3008,6 +3014,8 @@ function cleanupSweetsDrag(){
   sweetsDrag.ghost = null;
   sweetsDrag.offsetX = 0;
   sweetsDrag.offsetY = 0;
+  sweetsDrag.lastClientX = null;
+  sweetsDrag.lastClientY = null;
 }
 
 async function acquireSweetsCard(cardObj){
@@ -3050,6 +3058,8 @@ const voteDrag = {
   ghost:null,
   offsetX:0,
   offsetY:0,
+  lastClientX:null,
+  lastClientY:null,
 };
 let hoverSwarea = null;
 
@@ -3091,6 +3101,8 @@ function startDragVoteChip(e){
   voteDrag.active = true;
   voteDrag.offsetX = e.clientX - r.left;
   voteDrag.offsetY = e.clientY - r.top;
+  voteDrag.lastClientX = e.clientX;
+  voteDrag.lastClientY = e.clientY;
 
   const ghost = myVoteChipEl.cloneNode(true);
   ghost.classList.remove('hidden');
@@ -3112,6 +3124,8 @@ function onVoteDragMove(e){
   if(!voteDrag.active || !voteDrag.ghost) return;
   const x = e.clientX - voteDrag.offsetX;
   const y = e.clientY - voteDrag.offsetY;
+  voteDrag.lastClientX = e.clientX;
+  voteDrag.lastClientY = e.clientY;
   voteDrag.ghost.style.left = `${x}px`;
   voteDrag.ghost.style.top  = `${y}px`;
   updateSwareaHint(e.clientX, e.clientY);
@@ -3141,7 +3155,37 @@ function cleanupVoteDrag(){
   voteDrag.ghost = null;
   voteDrag.offsetX = 0;
   voteDrag.offsetY = 0;
+  voteDrag.lastClientX = null;
+  voteDrag.lastClientY = null;
 }
+
+function syncFloatingDragPositions(){
+  if(drag.active && drag.el && drag.lastClientX !== null && drag.lastClientY !== null){
+    const x = drag.lastClientX - drag.offsetX;
+    const y = drag.lastClientY - drag.offsetY;
+    drag.el.style.left = `${x}px`;
+    drag.el.style.top  = `${y}px`;
+    updateOtherCircleHint(drag.lastClientX, drag.lastClientY, drag.card);
+  }
+
+  if(sweetsDrag.active && sweetsDrag.ghost && sweetsDrag.lastClientX !== null && sweetsDrag.lastClientY !== null){
+    const x = sweetsDrag.lastClientX - sweetsDrag.offsetX;
+    const y = sweetsDrag.lastClientY - sweetsDrag.offsetY;
+    sweetsDrag.ghost.style.left = `${x}px`;
+    sweetsDrag.ghost.style.top  = `${y}px`;
+  }
+
+  if(voteDrag.active && voteDrag.ghost && voteDrag.lastClientX !== null && voteDrag.lastClientY !== null){
+    const x = voteDrag.lastClientX - voteDrag.offsetX;
+    const y = voteDrag.lastClientY - voteDrag.offsetY;
+    voteDrag.ghost.style.left = `${x}px`;
+    voteDrag.ghost.style.top  = `${y}px`;
+    updateSwareaHint(voteDrag.lastClientX, voteDrag.lastClientY);
+  }
+}
+
+mainEl.addEventListener('scroll', syncFloatingDragPositions, { passive: true });
+window.addEventListener('resize', syncFloatingDragPositions);
 
 async function castVote(targetUid){
   if(!state.roomCode) return;
