@@ -772,63 +772,6 @@
   .pass-round-btn:active{transform:scale(.98);}
   .pass-round-btn:disabled{opacity:.5; cursor:not-allowed; transform:none;}
 
-  /* リーダー選択（同票解決） */
-  .roundpick-backdrop{
-    position:fixed; inset:0;
-    background:rgba(0,0,0,.40);
-    z-index:590;
-    display:flex;
-    align-items:center;
-    justify-content:center;
-    padding:16px;
-  }
-  .roundpick-backdrop.hidden{display:none;}
-  .roundpick-panel{
-    width:min(760px, calc(100% - 32px));
-    background:#fff;
-    border:1px solid #ddd;
-    border-radius:16px;
-    box-shadow:0 18px 40px rgba(0,0,0,.35);
-    overflow:hidden;
-  }
-  .roundpick-head{
-    padding:10px 12px;
-    border-bottom:1px solid #eee;
-    display:flex;
-    align-items:center;
-    justify-content:space-between;
-    gap:10px;
-  }
-  .roundpick-title{font-weight:900;font-size:14px;}
-  .roundpick-sub{font-size:12px;opacity:.75;}
-  .roundpick-body{padding:12px;}
-  .roundpick-grid{
-    display:flex;
-    gap:10px;
-    justify-content:center;
-    align-items:center;
-    flex-wrap:nowrap; /* 折り返しなし */
-    overflow:auto;
-    padding:6px 0;
-  }
-  .roundpick-card{
-    width:90px; height:135px;
-    border-radius:12px;
-    border:1px solid #ddd;
-    box-shadow:0 10px 24px rgba(0,0,0,.18);
-    background:url('swsweetsura.jpg') center/cover no-repeat; /* 裏 */
-    flex:0 0 auto;
-    cursor:pointer;
-    animation:pulseCard 1.05s ease-in-out infinite;
-  }
-  .roundpick-card:hover{animation:none; transform:scale(1.06);}
-  .roundpick-card.disabled{
-    opacity:.55;
-    cursor:not-allowed;
-    animation:none !important;
-    filter:grayscale(.2);
-  }
-
   /* 収集アニメ用：中央に集まる裏カード */
   .collect-card{
     position:fixed;
@@ -947,6 +890,16 @@
 }
 .sweets-wrap.hint-ok{ border-color:rgba(34,197,94,.75); }
 .sweets-wrap.hint-ng{ border-color:rgba(239,68,68,.75); }
+.sweets-wrap.roundpick-candidate{
+  animation:pulseCard 1.05s ease-in-out infinite;
+}
+.sweets-wrap.roundpick-selectable{
+  cursor:pointer;
+}
+.sweets-wrap.roundpick-selectable:hover{
+  animation:none;
+  transform:scale(1.06);
+}
 
 .sweets-mini{
   width:var(--deckCardW);
@@ -957,6 +910,17 @@
   box-shadow:0 6px 16px rgba(0,0,0,.18);
 }
 .sweets-mini.hidden{display:none;}
+
+.my-sweets.roundpick-candidate{
+  animation:pulseCard 1.05s ease-in-out infinite;
+}
+.my-sweets.roundpick-selectable{
+  cursor:pointer;
+}
+.my-sweets.roundpick-selectable:hover{
+  animation:none;
+  transform:scale(1.06);
+}
 
 /* 投票チップ（スイーツの右側に重ねる） */
 .vote-stack{
@@ -1174,22 +1138,6 @@
   </div>
 </div>
 
-<!-- ★ 同票超過：リーダー選択UI -->
-<div id="roundPickBackdrop" class="roundpick-backdrop hidden">
-  <div class="roundpick-panel" role="dialog" aria-modal="true" aria-label="同票のスイーツ選択">
-    <div class="roundpick-head">
-      <div>
-        <div class="roundpick-title" id="roundPickTitle">リーダーが選択</div>
-        <div class="roundpick-sub" id="roundPickSub">同数票のスイーツから選んでください</div>
-      </div>
-      <div class="roundpick-sub" id="roundPickNeed">残り：0</div>
-    </div>
-    <div class="roundpick-body">
-      <div id="roundPickGrid" class="roundpick-grid"></div>
-    </div>
-  </div>
-</div>
-
 <!-- ★ ラウンド終了：公開（複数） -->
 <div id="roundRevealOverlay" class="roundreveal-overlay hidden" aria-hidden="true">
   <div id="roundRevealRow" class="roundreveal-row"></div>
@@ -1313,13 +1261,6 @@ const btnVote = document.getElementById('btnVote');
 
 /* 右下PASS（ラウンド用） */
 const passRoundBtn = document.getElementById('passRoundBtn');
-
-/* 同票超過：リーダー選択UI */
-const roundPickBackdrop = document.getElementById('roundPickBackdrop');
-const roundPickGrid = document.getElementById('roundPickGrid');
-const roundPickTitle = document.getElementById('roundPickTitle');
-const roundPickSub = document.getElementById('roundPickSub');
-const roundPickNeed = document.getElementById('roundPickNeed');
 
 /* ラウンド公開（複数） */
 const roundRevealOverlay = document.getElementById('roundRevealOverlay');
@@ -2078,6 +2019,7 @@ function renderMySweets(){
   const c = getMySweetsCard();
   if(!c){
     mySweetsEl.classList.add('hidden');
+    updateRoundPickUI();
     return;
   }
   mySweetsEl.classList.remove('hidden');
@@ -2086,6 +2028,7 @@ function renderMySweets(){
   img.alt = `sweets ${c.value ?? ''}`;
   img.onerror = () => { if(c.fallback) img.src = c.fallback; };
   mySweetsEl.appendChild(img);
+  updateRoundPickUI();
 }
 
 /* ★ カードDOMを作る共通 */
@@ -2210,6 +2153,12 @@ function renderPlayerCircle(players){
 
   const leaderSeat = state.turn?.leaderSeat ?? null;
   const activeSeat = state.turn?.activeSeat ?? null;
+  const roundPick = getRoundPick();
+  const roundPickActive = roundPick?.phase === 'choose';
+  const roundPickCandidates = roundPickActive && Array.isArray(roundPick.candidates)
+    ? roundPick.candidates
+    : [];
+  const roundPickCanSelect = roundPickActive && roundPick?.leaderId === state.userId;
 
   players.forEach((p, idx) => {
     const k = (meIndex === -1) ? idx : (idx - meIndex + n) % n;
@@ -2312,6 +2261,16 @@ if(started){
     const sweetsWrap = document.createElement('div');
     sweetsWrap.className = 'sweets-wrap';
     sweetsWrap.classList.toggle('empty', !hasTheirSweets);
+    if(roundPickActive && roundPickCandidates.includes(p.id)){
+      sweetsWrap.classList.add('roundpick-candidate');
+      if(roundPickCanSelect){
+        sweetsWrap.classList.add('roundpick-selectable');
+        sweetsWrap.addEventListener('click', (e) => {
+          e.stopPropagation();
+          leaderPickOne(p.id);
+        });
+      }
+    }
 
     const sweetsMini = document.createElement('div');
     sweetsMini.className = 'sweets-mini';
@@ -2568,40 +2527,22 @@ function isLeaderMe(){
 }
 function updateRoundPickUI(){
   const rp = getRoundPick();
-  if(!rp || rp.phase !== 'choose'){
-    roundPickBackdrop.classList.add('hidden');
-    roundPickGrid.innerHTML = '';
-    return;
+  const roundPickActive = !!rp && rp.phase === 'choose';
+  const candidates = roundPickActive && Array.isArray(rp.candidates) ? rp.candidates : [];
+  const meIsCandidate = candidates.includes(state.userId);
+  const meCanSelect = roundPickActive && rp.leaderId === state.userId && meIsCandidate;
+
+  mySweetsEl.classList.toggle('roundpick-candidate', meIsCandidate);
+  mySweetsEl.classList.toggle('roundpick-selectable', meCanSelect);
+
+  if(meCanSelect){
+    mySweetsEl.onclick = (e) => {
+      e.stopPropagation();
+      leaderPickOne(state.userId);
+    };
+  }else{
+    mySweetsEl.onclick = null;
   }
-
-  const leader = rp.leaderId;
-  const need = Number(rp.need || 0);
-  const candidates = Array.isArray(rp.candidates) ? rp.candidates : [];
-  const meCan = (leader === state.userId);
-
-  roundPickTitle.textContent = meCan ? '同票のスイーツを選んでください' : 'リーダーが選択中';
-  roundPickSub.textContent = meCan
-    ? '対象のスイーツ（裏）をクリックして決定'
-    : '同票のため、リーダーが選択しています';
-  roundPickNeed.textContent = `残り：${need}`;
-
-  roundPickGrid.innerHTML = '';
-  candidates.forEach(uid => {
-    const el = document.createElement('div');
-    el.className = 'roundpick-card';
-    if(!meCan) el.classList.add('disabled');
-
-    el.dataset.uid = uid;
-
-    if(meCan){
-      el.addEventListener('click', async ()=>{
-        await leaderPickOne(uid);
-      });
-    }
-    roundPickGrid.appendChild(el);
-  });
-
-  roundPickBackdrop.classList.remove('hidden');
 }
 async function leaderPickOne(uid){
   const rp = getRoundPick();
