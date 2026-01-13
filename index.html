@@ -768,17 +768,7 @@
     background:#fff center/cover no-repeat;
   }
 
-  .my-decided-sweets{
-    position:fixed;
-    width:78px;
-    height:118px;
-    border-radius:12px;
-    border:1px solid rgba(0,0,0,.2);
-    box-shadow:0 14px 34px rgba(0,0,0,.28);
-    background:#fff center/cover no-repeat;
-    z-index:620;
-    pointer-events:none;
-  }
+
 
   /* =========================
      ★★★ ここから PASS & ラウンド終了演出 ★★★
@@ -941,7 +931,7 @@
   transform:scale(1.12);
 }
 .sweets-wrap.decided-move{
-  transform:translate(calc(var(--inX) / 2), calc(var(--inY) / 2));
+  transform:translateY(-90px);
 }
 
 .sweets-mini{
@@ -2426,7 +2416,6 @@ if(leaderSeat !== null && leaderSeat === p.seatIndex){
 
   updateActionDeckUI();
   updateSweetsDeckUI();
-  syncMyDecidedSweets();
 }
 
 /* =========================
@@ -2633,62 +2622,6 @@ function getDecidedSweetsUids(){
   return [];
 }
 
-let myDecidedSweetsKey = null;
-let myDecidedSweetsEl = null;
-
-function syncMyDecidedSweets(){
-  const decided = getDecidedSweetsUids();
-  const isDecided = decided.includes(state.userId);
-
-  if(!isDecided){
-    myDecidedSweetsKey = null;
-    if(myDecidedSweetsEl){
-      myDecidedSweetsEl.remove();
-      myDecidedSweetsEl = null;
-    }
-    return;
-  }
-
-  const card = getSweetsCardByUid(state.userId);
-  if(!card || mySweetsEl.classList.contains('hidden')) return;
-
-  const tag = document.querySelector('.player-tag.me');
-  if(!tag) return;
-
-  const tagRect = tag.getBoundingClientRect();
-  const startRect = mySweetsEl.getBoundingClientRect();
-  const key = card.id || card.img || 'mine';
-  if(myDecidedSweetsKey === key && myDecidedSweetsEl){
-    return;
-  }
-  myDecidedSweetsKey = key;
-
-  if(myDecidedSweetsEl){
-    myDecidedSweetsEl.remove();
-  }
-  const el = document.createElement('div');
-  el.className = 'my-decided-sweets';
-  el.style.backgroundImage = `url('${card.img || card.fallback || SWEETS_BACK_IMG}')`;
-  el.style.left = `${startRect.left}px`;
-  el.style.top = `${startRect.top}px`;
-  el.style.width = `${startRect.width}px`;
-  el.style.height = `${startRect.height}px`;
-  document.body.appendChild(el);
-  myDecidedSweetsEl = el;
-
-  const endX = tagRect.left + tagRect.width / 2 - startRect.width / 2;
-  const endY = tagRect.top - 10 - startRect.height;
-
-  const anim = el.animate([
-    { transform:'translate(0px,0px)', opacity:1 },
-    { transform:`translate(${endX - startRect.left}px, ${endY - startRect.top}px)`, opacity:1 }
-  ], { duration: 420, easing:'cubic-bezier(.22,.84,.44,1)' });
-
-  anim.finished.then(() => {
-    el.style.left = `${endX}px`;
-    el.style.top = `${endY}px`;
-  }).catch(()=>{});
-}
 
 const roundPickDrag = {
   active:false,
@@ -2792,7 +2725,6 @@ function updateRoundPickUI(){
     mySweetsEl.onpointerdown = null;
   }
 
-  syncMyDecidedSweets();
 }
 async function leaderPickOne(uid){
   const rp = getRoundPick();
