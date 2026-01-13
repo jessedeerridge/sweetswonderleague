@@ -749,6 +749,7 @@
   user-select:none;
   touch-action:none;
   position:relative;
+  transition:transform .2s ease;
 }
 .vote-chip.hidden{display:none;}
 .vote-chip:active{cursor:grabbing;}
@@ -962,6 +963,14 @@
 .my-sweets.roundpick-selectable:hover{
   animation:none;
   transform:scale(1.12);
+}
+.my-sweets.roundpick-selectable:hover ~ .vote-chip,
+.my-sweets.roundpick-selectable:active ~ .vote-chip{
+  transform:scale(1.12);
+}
+.my-sweets.decided-move{
+  transform:translateY(-20px);
+  animation:sweetsDecidedMove .35s ease;
 }
 
 /* 投票チップ（スイーツの右側に重ねる） */
@@ -2684,6 +2693,9 @@ const roundPickDrag = {
   offsetY:0,
   sourceEl:null,
   sourceHidden:false,
+  sourceVisibility:'',
+  voteChipHidden:false,
+  voteChipVisibility:'',
 };
 
 function canLeaderDragPick(uid){
@@ -2703,9 +2715,13 @@ function startRoundPickDrag(e, uid){
   roundPickDrag.offsetX = e.clientX - r.left;
   roundPickDrag.offsetY = e.clientY - r.top;
   roundPickDrag.sourceEl = source;
-  roundPickDrag.sourceHidden = (uid !== state.userId);
-  if(roundPickDrag.sourceHidden){
-    source.style.visibility = 'hidden';
+  roundPickDrag.sourceHidden = true;
+  roundPickDrag.sourceVisibility = source.style.visibility;
+  source.style.visibility = 'hidden';
+  if(uid === state.userId){
+    roundPickDrag.voteChipHidden = true;
+    roundPickDrag.voteChipVisibility = myVoteChipEl.style.visibility;
+    myVoteChipEl.style.visibility = 'hidden';
   }
 
   const ghost = document.createElement('div');
@@ -2771,7 +2787,10 @@ function cleanupRoundPickDrag(){
     roundPickDrag.ghost.remove();
   }
   if(roundPickDrag.sourceEl && roundPickDrag.sourceHidden){
-    roundPickDrag.sourceEl.style.visibility = '';
+    roundPickDrag.sourceEl.style.visibility = roundPickDrag.sourceVisibility || '';
+  }
+  if(roundPickDrag.voteChipHidden){
+    myVoteChipEl.style.visibility = roundPickDrag.voteChipVisibility || '';
   }
   roundPickDrag.active = false;
   roundPickDrag.uid = null;
@@ -2780,6 +2799,9 @@ function cleanupRoundPickDrag(){
   roundPickDrag.offsetY = 0;
   roundPickDrag.sourceEl = null;
   roundPickDrag.sourceHidden = false;
+  roundPickDrag.sourceVisibility = '';
+  roundPickDrag.voteChipHidden = false;
+  roundPickDrag.voteChipVisibility = '';
 }
 function updateRoundPickUI(){
   const rp = getRoundPick();
@@ -2923,6 +2945,9 @@ async function animateRoundEndReveal(cards, selectedUids){
     const moveDuration = 600;
     const moveDelay = 1500;
     const shuffleDuration = 1500;
+    const preCollectDelay = 3000;
+
+    await new Promise(r => setTimeout(r, preCollectDelay));
 
     for(let i=0;i<total;i++){
       const el = document.createElement('div');
@@ -3399,9 +3424,6 @@ function startDragSweets(e, cardObj, srcEl){
   sweetsDrag.active = true;
   sweetsDrag.card = cardObj;
   sweetsDrag.srcEl = srcEl;
-  sweetsDrag.srcEl.style.visibility = 'hidden';
-
-
   const r = srcEl.getBoundingClientRect();
   sweetsDrag.offsetX = e.clientX - r.left;
   sweetsDrag.offsetY = e.clientY - r.top;
@@ -3410,12 +3432,14 @@ function startDragSweets(e, cardObj, srcEl){
 
   const ghost = srcEl.cloneNode(true);
   ghost.classList.add('sweets-dragging');
+  ghost.style.visibility = 'visible';
   ghost.style.left = `${r.left}px`;
   ghost.style.top  = `${r.top}px`;
   ghost.style.width = `${r.width}px`;
   ghost.style.height = `${r.height}px`;
   document.body.appendChild(ghost);
   sweetsDrag.ghost = ghost;
+  sweetsDrag.srcEl.style.visibility = 'hidden';
 
   ghost.setPointerCapture(e.pointerId);
   ghost.addEventListener('pointermove', onSweetsDragMove);
@@ -3569,17 +3593,18 @@ function startDragVoteChip(e){
   voteDrag.offsetY = e.clientY - r.top;
   voteDrag.lastClientX = e.clientX;
   voteDrag.lastClientY = e.clientY;
-  voteDrag.sourceEl.style.visibility = 'hidden';
 
   const ghost = myVoteChipEl.cloneNode(true);
   ghost.classList.remove('hidden');
   ghost.classList.add('vote-dragging');
+  ghost.style.visibility = 'visible';
   ghost.style.left = `${r.left}px`;
   ghost.style.top  = `${r.top}px`;
   ghost.style.width = `${r.width}px`;
   ghost.style.height = `${r.height}px`;
   document.body.appendChild(ghost);
   voteDrag.ghost = ghost;
+  voteDrag.sourceEl.style.visibility = 'hidden';
 
   ghost.setPointerCapture(e.pointerId);
   ghost.addEventListener('pointermove', onVoteDragMove);
