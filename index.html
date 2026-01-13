@@ -193,6 +193,14 @@
     50%{transform:scale(1.12);}
     100%{transform:scale(1);}
   }
+  @keyframes sweetsDecidedMove {
+    from{transform:translateY(0);}
+    to{transform:translateY(-20px);}
+  }
+  @keyframes sweetsTagMove {
+    from{transform:translate(-50%,0);}
+    to{transform:translate(-50%,-20px);}
+  }
   .sweets-deck.pulsing{ animation:pulseCardStrong 1.05s ease-in-out infinite; }
   .sweets-deck.pulsing:hover{ animation:none; transform:scale(1.14); }
 
@@ -828,7 +836,7 @@
   .roundreveal-overlay.hidden{display:none;}
   .roundreveal-row{
     display:flex;
-    gap:18px;
+    gap:30px;
     align-items:center;
     justify-content:center;
     flex-wrap:nowrap;          /* 折り返しなし */
@@ -839,9 +847,9 @@
     width:min(240px, 32vw);
     aspect-ratio:2/3;
     border-radius:18px;
-    border:1px solid rgba(255,255,255,.35);
+    border:none;
     box-shadow:0 26px 70px rgba(0,0,0,.55);
-    background:#fff;
+    background:transparent;
     overflow:hidden;
     flex:0 0 auto;
     transform:scale(1.02);
@@ -931,7 +939,8 @@
   transform:scale(1.12);
 }
 .sweets-wrap.decided-move{
-  transform:translateY(-90px);
+  transform:translateY(-20px);
+  animation:sweetsDecidedMove .35s ease;
 }
 
 .sweets-mini{
@@ -968,6 +977,28 @@
   justify-content:flex-start;
   align-items:center;
   pointer-events:none;
+}
+
+.selected-sweets-tag{
+  position:absolute;
+  left:50%;
+  bottom:100%;
+  width:var(--deckCardW);
+  height:var(--deckCardH);
+  border-radius:var(--deckCardR);
+  border:1px solid rgba(0,0,0,.18);
+  background:#fff;
+  box-shadow:0 6px 16px rgba(0,0,0,.18);
+  overflow:hidden;
+  transform:translate(-50%,-20px);
+  animation:sweetsTagMove .35s ease;
+  pointer-events:none;
+}
+.selected-sweets-tag img{
+  width:100%;
+  height:100%;
+  object-fit:cover;
+  display:block;
 }
 
 
@@ -2079,6 +2110,13 @@ function renderMySweets(){
     updateRoundPickUI();
     return;
   }
+  const decidedUids = getDecidedSweetsUids();
+  if(decidedUids.includes(state.userId)){
+    mySweetsEl.classList.add('hidden');
+    mySweetsEl.innerHTML = '';
+    updateRoundPickUI();
+    return;
+  }
   mySweetsEl.classList.remove('hidden');
   const img = document.createElement('img');
   img.src = c.img;
@@ -2245,6 +2283,7 @@ function renderPlayerCircle(players){
     : [];
   const roundPickCanSelect = roundPickActive && roundPick?.leaderId === state.userId;
   const decidedUids = getDecidedSweetsUids();
+  const started = !!state.room?.gameStarted;
 
   players.forEach((p, idx) => {
     const k = (meIndex === -1) ? idx : (idx - meIndex + n) % n;
@@ -2272,8 +2311,23 @@ function renderPlayerCircle(players){
         chip.className = 'leader-chip';
         tag.appendChild(chip);
       }
+      if(started && decidedUids.includes(state.userId)){
+        const sweetsCard = getSweetsCardByUid(state.userId);
+        if(sweetsCard){
+          const selected = document.createElement('div');
+          selected.className = 'selected-sweets-tag';
+          selected.dataset.sweetsUid = state.userId;
+          const img = document.createElement('img');
+          img.src = sweetsCard.img;
+          img.alt = `sweets ${sweetsCard.value ?? ''}`;
+          img.onerror = () => { if(sweetsCard.fallback) img.src = sweetsCard.fallback; };
+          selected.appendChild(img);
+          tag.appendChild(selected);
+        }
+      }
       return;
     }
+
 
 // ===== 他プレイヤー =====
 const circle = document.createElement('div');
@@ -2321,8 +2375,6 @@ tag.onclick = (e) => { e.stopPropagation(); onKick(); };
 
 circle.appendChild(tag);
 
-// スタート前は、他プレイヤーのカード類を一切表示しない
-const started = !!state.room?.gameStarted;
 
 // handData は後でミニ手札にも使うので先に取る
 const handData = state.hands?.[p.id];
@@ -2346,6 +2398,7 @@ if(started){
     // ★ スイーツ獲得後：正体＋スイーツ（投票チップも）
     const sweetsWrap = document.createElement('div');
     sweetsWrap.className = 'sweets-wrap';
+    sweetsWrap.dataset.sweetsUid = p.id;
     sweetsWrap.classList.toggle('empty', !hasTheirSweets);
     if(roundPickCanSelect && roundPickCandidates.includes(p.id)){
       sweetsWrap.classList.add('roundpick-candidate');
@@ -2629,6 +2682,8 @@ const roundPickDrag = {
   ghost:null,
   offsetX:0,
   offsetY:0,
+  sourceEl:null,
+  sourceHidden:false,
 };
 
 function canLeaderDragPick(uid){
@@ -2647,15 +2702,31 @@ function startRoundPickDrag(e, uid){
   roundPickDrag.uid = uid;
   roundPickDrag.offsetX = e.clientX - r.left;
   roundPickDrag.offsetY = e.clientY - r.top;
+  roundPickDrag.sourceEl = source;
+  roundPickDrag.sourceHidden = (uid !== state.userId);
+  if(roundPickDrag.sourceHidden){
+    source.style.visibility = 'hidden';
+  }
 
-  const card = getSweetsCardByUid(uid);
   const ghost = document.createElement('div');
   ghost.className = 'roundpick-dragging';
   ghost.style.left = `${r.left}px`;
   ghost.style.top  = `${r.top}px`;
-  ghost.style.width = `${r.width}px`;
-  ghost.style.height = `${r.height}px`;
-  ghost.style.backgroundImage = `url('${card?.img || card?.fallback || SWEETS_BACK_IMG}')`;
+  ghost.style.width = `${source.offsetWidth}px`;
+  ghost.style.height = `${source.offsetHeight}px`;
+  ghost.style.transformOrigin = 'center';
+
+  const circle = source.closest('.otherplayerscircle');
+  const rotDeg = circle ? getComputedStyle(circle).getPropertyValue('--rotDeg').trim() : '0deg';
+  if(uid !== state.userId && rotDeg){
+    ghost.style.transform = `rotate(${rotDeg})`;
+  }
+
+  const card = getSweetsCardByUid(uid);
+  const faceImg = card?.img || card?.fallback || SWEETS_BACK_IMG;
+  const bgImg = (uid === state.userId) ? faceImg : SWEETS_BACK_IMG;
+  ghost.style.backgroundImage = `url('${bgImg}')`;
+
   document.body.appendChild(ghost);
   roundPickDrag.ghost = ghost;
 
@@ -2699,11 +2770,16 @@ function cleanupRoundPickDrag(){
     roundPickDrag.ghost.removeEventListener('pointercancel', onRoundPickDragEnd);
     roundPickDrag.ghost.remove();
   }
+  if(roundPickDrag.sourceEl && roundPickDrag.sourceHidden){
+    roundPickDrag.sourceEl.style.visibility = '';
+  }
   roundPickDrag.active = false;
   roundPickDrag.uid = null;
   roundPickDrag.ghost = null;
   roundPickDrag.offsetX = 0;
   roundPickDrag.offsetY = 0;
+  roundPickDrag.sourceEl = null;
+  roundPickDrag.sourceHidden = false;
 }
 function updateRoundPickUI(){
   const rp = getRoundPick();
@@ -2823,6 +2899,16 @@ function getRoundCollectCenter(){
   }
   return { x: window.innerWidth / 2, y: window.innerHeight / 2 };
 }
+function getSweetsSourceRect(uid, fallback){
+  const el = document.querySelector(`[data-sweets-uid="${uid}"]`);
+  if(el){
+    const r = el.getBoundingClientRect();
+    if(r && r.width && r.height){
+      return r;
+    }
+  }
+  return fallback;
+}
 
 async function animateRoundEndReveal(cards, selectedUids){
   if(_roundAnimRunning) return;
@@ -2832,28 +2918,62 @@ async function animateRoundEndReveal(cards, selectedUids){
     const center = getRoundCollectCenter();
     const clones = [];
     const total = Array.isArray(selectedUids) ? selectedUids.length : 0;
+    const baseW = 90;
+    const baseH = 135;
+    const moveDuration = 600;
+    const moveDelay = 1500;
+    const shuffleDuration = 1500;
 
     for(let i=0;i<total;i++){
       const el = document.createElement('div');
       el.className = 'collect-card';
-      const offsetX = (i - (total - 1) / 2) * 4;
-      const offsetY = (i - (total - 1) / 2) * 3;
-      el.style.left = `${center.x - 45 + offsetX}px`;
-      el.style.top  = `${center.y - 67 + offsetY}px`;
+      const uid = selectedUids[i];
+      const fallbackRect = {
+        left: center.x - baseW / 2,
+        top: center.y - baseH / 2,
+        width: baseW,
+        height: baseH,
+      };
+      const sourceRect = getSweetsSourceRect(uid, fallbackRect);
+      const startLeft = sourceRect.left + sourceRect.width / 2 - baseW / 2;
+      const startTop = sourceRect.top + sourceRect.height / 2 - baseH / 2;
+      const centerLeft = center.x - baseW / 2;
+      const centerTop = center.y - baseH / 2;
+      const dx = centerLeft - startLeft;
+      const dy = centerTop - startTop;
+      const scaleX = sourceRect.width / baseW;
+      const scaleY = sourceRect.height / baseH;
+
+      el.style.left = `${startLeft}px`;
+      el.style.top  = `${startTop}px`;
+      el.style.transform = `translate(0px, 0px) scale(${scaleX}, ${scaleY})`;
       document.body.appendChild(el);
       clones.push(el);
+
+      el.animate([
+        { transform:`translate(0px,0px) scale(${scaleX}, ${scaleY})` },
+        { transform:`translate(${dx}px,${dy}px) scale(1,1)` },
+      ], { duration: moveDuration, easing:'ease-in-out', fill:'forwards' });
     }
 
+    await new Promise(r => setTimeout(r, moveDuration + moveDelay));
+
+    clones.forEach((el) => {
+      el.style.left = `${center.x - baseW / 2}px`;
+      el.style.top = `${center.y - baseH / 2}px`;
+      el.style.transform = 'translate(0px,0px) scale(1,1)';
+    });
+
     const jitterAnims = clones.map((el) => {
-      const jx = (Math.random()*14 - 7);
-      const jy = (Math.random()*14 - 7);
-      const rot = (Math.random()*16 - 8);
+      const jx = (Math.random()*18 - 9);
+      const jy = (Math.random()*18 - 9);
+      const rot = (Math.random()*18 - 9);
       return el.animate([
         { transform:`translate(0px,0px) rotate(0deg) scale(1.06)` },
         { transform:`translate(${jx}px,${jy}px) rotate(${rot}deg) scale(1.06)` },
         { transform:`translate(${-jx}px,${-jy}px) rotate(${-rot}deg) scale(1.06)` },
         { transform:`translate(0px,0px) rotate(0deg) scale(1.06)` },
-      ], { duration: 620, easing:'ease-in-out' });
+      ], { duration: shuffleDuration, easing:'ease-in-out' });
     });
     await Promise.all(jitterAnims.map(a => a.finished.catch(()=>{})));
 
@@ -3279,6 +3399,8 @@ function startDragSweets(e, cardObj, srcEl){
   sweetsDrag.active = true;
   sweetsDrag.card = cardObj;
   sweetsDrag.srcEl = srcEl;
+  sweetsDrag.srcEl.style.visibility = 'hidden';
+
 
   const r = srcEl.getBoundingClientRect();
   sweetsDrag.offsetX = e.clientX - r.left;
@@ -3344,6 +3466,9 @@ function cleanupSweetsDrag(){
     sweetsDrag.ghost.removeEventListener('pointercancel', onSweetsDragEnd);
     sweetsDrag.ghost.remove();
   }
+  if(sweetsDrag.srcEl){
+    sweetsDrag.srcEl.style.visibility = '';
+  }
   sweetsDropZone?.classList.remove('active');
   sweetsDrag.active = false;
   sweetsDrag.card = null;
@@ -3397,6 +3522,7 @@ const voteDrag = {
   offsetY:0,
   lastClientX:null,
   lastClientY:null,
+  sourceEl:null,
 };
 let hoverSwarea = null;
 
@@ -3438,10 +3564,12 @@ function startDragVoteChip(e){
 
   const r = myVoteChipEl.getBoundingClientRect();
   voteDrag.active = true;
+  voteDrag.sourceEl = myVoteChipEl;
   voteDrag.offsetX = e.clientX - r.left;
   voteDrag.offsetY = e.clientY - r.top;
   voteDrag.lastClientX = e.clientX;
   voteDrag.lastClientY = e.clientY;
+  voteDrag.sourceEl.style.visibility = 'hidden';
 
   const ghost = myVoteChipEl.cloneNode(true);
   ghost.classList.remove('hidden');
@@ -3490,12 +3618,16 @@ function cleanupVoteDrag(){
     voteDrag.ghost.removeEventListener('pointercancel', onVoteDragEnd);
     voteDrag.ghost.remove();
   }
+  if(voteDrag.sourceEl){
+    voteDrag.sourceEl.style.visibility = '';
+  }
   voteDrag.active = false;
   voteDrag.ghost = null;
   voteDrag.offsetX = 0;
   voteDrag.offsetY = 0;
   voteDrag.lastClientX = null;
   voteDrag.lastClientY = null;
+  voteDrag.sourceEl = null;
 }
 
 function syncFloatingDragPositions(){
