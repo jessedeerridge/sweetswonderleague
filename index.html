@@ -183,8 +183,13 @@
     50%{transform:scale(1.06);}
     100%{transform:scale(1);}
   }
-  .sweets-deck.pulsing{ animation:pulseCard 1.05s ease-in-out infinite; }
-  .sweets-deck.pulsing:hover{ animation:none; transform:scale(1.08); }
+  @keyframes pulseCardStrong {
+    0%{transform:scale(1);}
+    50%{transform:scale(1.12);}
+    100%{transform:scale(1);}
+  }
+  .sweets-deck.pulsing{ animation:pulseCardStrong 1.05s ease-in-out infinite; }
+  .sweets-deck.pulsing:hover{ animation:none; transform:scale(1.14); }
 
   /* ★★ 他プレイヤー：ネームタグ＋カード周りを円で囲む（otherplayerscircle） */
   .otherplayerscircle{
@@ -674,11 +679,11 @@
     cursor:grab;
     user-select:none;
     touch-action:none;
-    animation:pulseCard 1.05s ease-in-out infinite;
+    animation:pulseCardStrong 1.05s ease-in-out infinite;
     transform-origin:center;
   }
   .sweets-pick-card:active{cursor:grabbing;}
-  .sweets-pick-card:hover{ animation:none; transform:scale(1.06); }
+  .sweets-pick-card:hover{ animation:none; transform:scale(1.12); }
   .sweets-pick-card img{
     position:absolute; inset:0;
     width:100%; height:100%;
@@ -734,8 +739,8 @@
 }
 .vote-chip.hidden{display:none;}
 .vote-chip:active{cursor:grabbing;}
-.vote-chip.pulsing{ animation:pulseCard 1.05s ease-in-out infinite; }
-.vote-chip.pulsing:hover{ animation:none; transform:scale(1.12); }
+.vote-chip.pulsing{ animation:pulseCardStrong 1.05s ease-in-out infinite; }
+.vote-chip.pulsing:hover{ animation:none; transform:scale(1.18); }
 
 /* 既存の「V」文字は消す（デザイン統一） */
 .vote-chip::after{ content:''; }
@@ -792,7 +797,7 @@
   /* 最終公開（複数） */
   .roundreveal-overlay{
     position:fixed; inset:0;
-    background:rgba(0,0,0,.45);
+    background:transparent;
     z-index:620;
     display:flex;
     align-items:center;
@@ -802,12 +807,12 @@
   .roundreveal-overlay.hidden{display:none;}
   .roundreveal-row{
     display:flex;
-    gap:14px;
+    gap:18px;
     align-items:center;
     justify-content:center;
     flex-wrap:nowrap;          /* 折り返しなし */
     overflow:auto;
-    padding:10px;
+    padding:6px;
   }
   .roundreveal-card{
     width:min(240px, 32vw);
@@ -894,14 +899,14 @@
 .sweets-wrap.hint-ok{ border-color:rgba(34,197,94,.75); }
 .sweets-wrap.hint-ng{ border-color:rgba(239,68,68,.75); }
 .sweets-wrap.roundpick-candidate{
-  animation:pulseCard 1.05s ease-in-out infinite;
+  animation:pulseCardStrong 1.05s ease-in-out infinite;
 }
 .sweets-wrap.roundpick-selectable{
   cursor:pointer;
 }
 .sweets-wrap.roundpick-selectable:hover{
   animation:none;
-  transform:scale(1.06);
+  transform:scale(1.12);
 }
 
 .sweets-mini{
@@ -915,14 +920,14 @@
 .sweets-mini.hidden{display:none;}
 
 .my-sweets.roundpick-candidate{
-  animation:pulseCard 1.05s ease-in-out infinite;
+  animation:pulseCardStrong 1.05s ease-in-out infinite;
 }
 .my-sweets.roundpick-selectable{
   cursor:pointer;
 }
 .my-sweets.roundpick-selectable:hover{
   animation:none;
-  transform:scale(1.06);
+  transform:scale(1.12);
 }
 
 /* 投票チップ（スイーツの右側に重ねる） */
@@ -2589,6 +2594,13 @@ function updateRoundPickUI(){
   mySweetsEl.classList.toggle('roundpick-candidate', meIsCandidate);
   mySweetsEl.classList.toggle('roundpick-selectable', meCanSelect);
 
+  if(roundPickActive){
+    const baseSelected = Array.isArray(rp.baseSelected) ? rp.baseSelected : [];
+    if(baseSelected.length){
+      collectSweetsToCenter(baseSelected, { duration: 420 }).catch(()=>{});
+    }
+  }
+
   if(meCanSelect){
     mySweetsEl.onclick = (e) => {
       e.stopPropagation();
@@ -2688,43 +2700,97 @@ subscribeGame = function(){
    - 3秒表示後、消える
    ========================= */
 let _roundAnimRunning = false;
+const roundCollectState = {
+  clones: new Map(),
+  animations: new Map(),
+};
+
+function getRoundCollectCenter(){
+  const r = playCircleEl?.getBoundingClientRect?.();
+  if(r && r.width && r.height){
+    return { x: r.left + r.width / 2, y: r.top + r.height / 2 };
+  }
+  return { x: window.innerWidth / 2, y: window.innerHeight / 2 };
+}
+
+function getRoundCollectOffset(idx, total){
+  if(total <= 1) return { x: 0, y: 0 };
+  const radius = 5;
+  const angle = (idx / total) * Math.PI * 2;
+  return { x: Math.cos(angle) * radius, y: Math.sin(angle) * radius };
+}
+
+function getSweetsSourceRect(uid){
+  if(uid === state.userId && !mySweetsEl.classList.contains('hidden')){
+    return mySweetsEl.getBoundingClientRect();
+  }
+  const tag = document.querySelector(`.player-tag[data-uid="${uid}"]`);
+  const circle = tag?.closest('.otherplayerscircle');
+  const wrap = circle?.querySelector('.sweets-wrap');
+  if(wrap) return wrap.getBoundingClientRect();
+  const area = circle?.querySelector('.sweets-area') || tag?.querySelector('.sweets-area');
+  if(area) return area.getBoundingClientRect();
+  return null;
+}
+
+async function collectSweetsToCenter(uids, { duration = 520 } = {}){
+  const unique = [...new Set(uids)].filter(Boolean);
+  if(!unique.length) return;
+
+  const center = getRoundCollectCenter();
+  const total = unique.length;
+  const animations = [];
+
+  unique.forEach((uid, idx) => {
+    if(roundCollectState.clones.has(uid)){
+      const running = roundCollectState.animations.get(uid);
+      if(running) animations.push(running);
+      return;
+    }
+
+    const r = getSweetsSourceRect(uid);
+    const startX = r ? (r.left + r.width / 2) : center.x;
+    const startY = r ? (r.top + r.height / 2) : center.y;
+
+    const el = document.createElement('div');
+    el.className = 'collect-card';
+    el.dataset.uid = uid;
+    el.style.left = `${startX - 45}px`;
+    el.style.top  = `${startY - 67}px`;
+    document.body.appendChild(el);
+    roundCollectState.clones.set(uid, el);
+
+    const offset = getRoundCollectOffset(idx, total);
+    const toX = center.x + offset.x;
+    const toY = center.y + offset.y;
+
+    const anim = el.animate([
+      { transform:'translate(0px,0px) rotate(0deg) scale(1)', opacity:1 },
+      { transform:`translate(${toX - startX}px, ${toY - startY}px) rotate(${(idx%2?8:-8)}deg) scale(1.08)`, opacity:1 }
+    ], { duration, easing:'cubic-bezier(.22,.84,.44,1)' });
+    const finished = anim.finished.catch(()=>{});
+    roundCollectState.animations.set(uid, finished);
+    finished.finally(() => roundCollectState.animations.delete(uid));
+    animations.push(finished);
+  });
+
+  if(animations.length){
+    await Promise.all(animations);
+  }
+}
+
 async function animateRoundEndReveal(cards, selectedUids){
   if(_roundAnimRunning) return;
   _roundAnimRunning = true;
 
   try{
     // 1) 裏カードを中央へ集める
-    const centerX = window.innerWidth / 2;
-    const centerY = window.innerHeight / 2;
+    const uniqueUids = [...new Set(selectedUids)].filter(Boolean);
+    await collectSweetsToCenter(uniqueUids);
 
-    const clones = [];
-
-    selectedUids.forEach((uid, idx) => {
-      // できるだけその人の swarea 位置から飛ばす（無ければ中央から）
-      const area = document.querySelector(`.player-tag[data-uid="${uid}"] .sweets-area`) ||
-                   document.querySelector(`.player-tag.in-othercircle[data-uid="${uid}"] .sweets-area`);
-      const r = area?.getBoundingClientRect?.();
-      const startX = r ? (r.left + r.width/2) : centerX;
-      const startY = r ? (r.top + r.height/2) : centerY;
-
-      const el = document.createElement('div');
-      el.className = 'collect-card';
-      el.style.left = `${startX - 45}px`;
-      el.style.top  = `${startY - 67}px`;
-      document.body.appendChild(el);
-      clones.push(el);
-
-      // 少しずらしながら中央へ
-      const toX = centerX + (idx - (selectedUids.length-1)/2) * 6;
-      const toY = centerY + (idx - (selectedUids.length-1)/2) * 4;
-
-      el.animate([
-        { transform:'translate(0px,0px) rotate(0deg) scale(1)', opacity:1 },
-        { transform:`translate(${toX - startX}px, ${toY - startY}px) rotate(${(idx%2?8:-8)}deg) scale(1.03)`, opacity:1 }
-      ], { duration: 520, easing:'cubic-bezier(.22,.84,.44,1)' });
-    });
-
-    await new Promise(r => setTimeout(r, 560));
+    const clones = uniqueUids
+      .map(uid => roundCollectState.clones.get(uid))
+      .filter(Boolean);
 
     // 2) シャッフルっぽい動き
     const jitterAnims = clones.map((el, i) => {
@@ -2732,10 +2798,10 @@ async function animateRoundEndReveal(cards, selectedUids){
       const jy = (Math.random()*16 - 8);
       const rot = (Math.random()*20 - 10);
       return el.animate([
-        { transform:`translate(0px,0px) rotate(0deg) scale(1.03)` },
-        { transform:`translate(${jx}px,${jy}px) rotate(${rot}deg) scale(1.03)` },
-        { transform:`translate(${-jx}px,${-jy}px) rotate(${-rot}deg) scale(1.03)` },
-        { transform:`translate(0px,0px) rotate(0deg) scale(1.03)` },
+        { transform:`translate(0px,0px) rotate(0deg) scale(1.08)` },
+        { transform:`translate(${jx}px,${jy}px) rotate(${rot}deg) scale(1.08)` },
+        { transform:`translate(${-jx}px,${-jy}px) rotate(${-rot}deg) scale(1.08)` },
+        { transform:`translate(0px,0px) rotate(0deg) scale(1.08)` },
       ], { duration: 680, easing:'ease-in-out' });
     });
     await Promise.all(jitterAnims.map(a => a.finished.catch(()=>{})));
@@ -2761,6 +2827,8 @@ async function animateRoundEndReveal(cards, selectedUids){
 
     // 4) 裏カードクローンは消す
     clones.forEach(el => el.remove());
+    roundCollectState.clones.clear();
+    roundCollectState.animations.clear();
 
     // 3秒表示
     await new Promise(r => setTimeout(r, 3000));
@@ -2772,6 +2840,11 @@ async function animateRoundEndReveal(cards, selectedUids){
 
   } finally {
     _roundAnimRunning = false;
+    if(roundCollectState.clones.size){
+      roundCollectState.clones.forEach(el => el.remove());
+      roundCollectState.clones.clear();
+      roundCollectState.animations.clear();
+    }
   }
 }
 
