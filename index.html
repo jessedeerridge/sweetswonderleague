@@ -2315,15 +2315,13 @@ if(started){
     const sweetsWrap = document.createElement('div');
     sweetsWrap.className = 'sweets-wrap';
     sweetsWrap.classList.toggle('empty', !hasTheirSweets);
-    if(roundPickActive && roundPickCandidates.includes(p.id)){
+    if(roundPickCanSelect && roundPickCandidates.includes(p.id)){
       sweetsWrap.classList.add('roundpick-candidate');
-      if(roundPickCanSelect){
-        sweetsWrap.classList.add('roundpick-selectable');
-        sweetsWrap.addEventListener('click', (e) => {
-          e.stopPropagation();
-          leaderPickOne(p.id);
-        });
-      }
+      sweetsWrap.classList.add('roundpick-selectable');
+      sweetsWrap.addEventListener('click', (e) => {
+        e.stopPropagation();
+        leaderPickOne(p.id);
+      });
     }
 
     const sweetsMini = document.createElement('div');
@@ -2583,8 +2581,9 @@ function updateRoundPickUI(){
   const rp = getRoundPick();
   const roundPickActive = !!rp && rp.phase === 'choose';
   const candidates = roundPickActive && Array.isArray(rp.candidates) ? rp.candidates : [];
-  const meIsCandidate = candidates.includes(state.userId);
-  const meCanSelect = roundPickActive && rp.leaderId === state.userId && meIsCandidate;
+  const leaderCanSelect = roundPickActive && rp.leaderId === state.userId;
+  const meIsCandidate = leaderCanSelect && candidates.includes(state.userId);
+  const meCanSelect = leaderCanSelect && meIsCandidate;
 
   mySweetsEl.classList.toggle('roundpick-candidate', meIsCandidate);
   mySweetsEl.classList.toggle('roundpick-selectable', meCanSelect);
