@@ -1,5 +1,5 @@
 
-<!DOCTYPE html> 
+<!DOCTYPE html>  
 <html lang="ja">
 <head>
 <meta charset="UTF-8" />
@@ -1011,24 +1011,25 @@
 }
 .selected-sweets-tag .sweets-number-tag{
   position:absolute;
-  right:-6px;
-  top:-6px;
+  right:9px;
+  top:-12px;
 
   /* 少し大きくして余裕を作る */
-  width:30px;
+  width:32px;
   height:32px;
 
   display:grid;
   place-items:center;
 
   font-weight:900;
-  font-size:12px;
+  font-size:13px;
+  line-height:1;
   color:#111;
 
   /* テキストを前面に */
   z-index:2;
   /* これがあると微妙な欠けが減ることが多い */
-  transform:translateZ(0);
+  transform:translateZ(0) translateY(-1px);
 
   text-shadow:0 1px 0 rgba(255,255,255,.6);
 }
@@ -1038,18 +1039,11 @@
   position:absolute;
   inset:0;
 
-  background:#fde047;
+  background:
+url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><path d='M50 12.2 Q50 10 52.2 12.2 L59.809 30.52 L61.351 34.24 Q62.193 36.271 64.398 36.447 L84.913 38.087 Q87.34 38.28 85.494 39.869 L69.174 53.854 L67.12 55.56 L69.18 66.178 L72.263 82.978 Q72.685 85.279 70.461 84.012 L52.18 73.6 Q50 72.358 47.82 73.6 L29.539 84.012 Q27.315 85.279 27.737 82.978 L30.82 66.178 L32.88 55.56 L30.826 53.854 L14.506 39.869 Q12.66 38.28 15.087 38.087 L35.602 36.447 Q37.807 36.271 38.649 34.24 L40.191 30.52 Z' fill='%23fde047' stroke='%23111' stroke-width='2' stroke-linejoin='round' stroke-linecap='round'/></svg>")
+    center/100% 100% no-repeat;
 
-  /* 星形は背景側だけ切り抜く（テキストは切らない） */
-  -webkit-clip-path:polygon(50% 0%, 62% 22%, 88% 22%, 70% 40%, 78% 66%, 50% 52%, 22% 66%, 30% 40%, 12% 22%, 38% 22%);
-  clip-path:polygon(50% 0%, 62% 22%, 88% 22%, 70% 40%, 78% 66%, 50% 52%, 22% 66%, 30% 40%, 12% 22%, 38% 22%);
 
-  /* borderの代わりに drop-shadow で縁取り（clipと相性が良い） */
-  filter:
-    drop-shadow(0 0 0 #111)
-    drop-shadow(0 0 0 #111);
-
-  box-shadow:0 4px 10px rgba(0,0,0,.18);
   z-index:-1;
 }
 
