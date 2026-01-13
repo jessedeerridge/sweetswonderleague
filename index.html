@@ -60,12 +60,18 @@
   }
   .host-selecting-pop.hidden{display:none;}
 
-  /* ★ プレイヤー円配置用 */
-  .player-circle{
-    position:relative;width:260px;height:260px;
-    margin:20px auto 0;border-radius:50%;
-    box-sizing:border-box;border:none;
-  }
+/* ★ プレイヤー円配置用（拡大：直径だいたい400前後） */
+.player-circle{
+  position:relative;
+  width:min(360px, 92vw);
+  height:min(420px, 92vw);
+  margin:20px auto 0;
+  border-radius:50%;
+  box-sizing:border-box;
+  border:none;
+}
+
+
 
   /* ★ 中央：プレイサークル（※スイーツ山札クリックのため pointer-events を有効に） */
   .play-circle{
@@ -234,68 +240,80 @@
   }
 
   /* 他プレイヤー：正体カード（裏） */
-  .role-mini{
-    position:absolute;
-    left:-22px; top:50%;
-    transform:translateY(-50%);
-    width:18px;height:26px;border-radius:5px;
-    border:1px solid #bbb;
-    background:url('swroleura.jpg') center/cover no-repeat;
-    box-shadow:0 2px 6px rgba(0,0,0,.15);
-    pointer-events:none;
-  }
+/* 他プレイヤー：正体カード（裏） */
+.role-mini{
+  position:absolute;
+  left:-34px; top:50%;
+  transform:translateY(-50%);
+  width:var(--deckCardW);
+  height:var(--deckCardH);
+  border-radius:var(--deckCardR);
+  border:1px solid rgba(0,0,0,.18);
+  background:url('swroleura.jpg') center/cover no-repeat;
+  box-shadow:0 6px 16px rgba(0,0,0,.18);
+  pointer-events:none;
+}
+
 
   /* ★★ 他プレイヤー：ミニスイーツ（裏）＋周りを円で囲む＝swarea */
-  .sweets-area{
-    position:absolute;
-    left:-50px; top:50%;
-    transform:translateY(-50%);
-    width:30px;height:30px;
-    border-radius:50%;
-    border:2px solid rgba(0,0,0,.22);
-    background:rgba(255,255,255,.10);
-    display:flex;align-items:center;justify-content:center;
-    box-sizing:border-box;
-    pointer-events:auto;
-  }
-  .sweets-area.empty{
-    border-style:dashed;
-    opacity:.35;
-  }
-  .sweets-area.hint-ok{ border-color:rgba(34,197,94,.75); }
-  .sweets-area.hint-ng{ border-color:rgba(239,68,68,.75); }
+/* 他プレイヤー：スイーツ枠（山札と同サイズ） */
+.sweets-area{
+  position:absolute;
+  left:-66px; top:50%;
+  transform:translateY(-50%);
+  width:var(--deckCardW);
+  height:var(--deckCardH);
+  border-radius:var(--deckCardR);
+  border:2px solid rgba(0,0,0,.22);
+  background:rgba(255,255,255,.10);
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  box-sizing:border-box;
+  pointer-events:auto;
+}
+.sweets-area.empty{
+  border-style:dashed;
+  opacity:.35;
+}
+.sweets-area.hint-ok{ border-color:rgba(34,197,94,.75); }
+.sweets-area.hint-ng{ border-color:rgba(239,68,68,.75); }
 
-  .sweets-mini{
-    width:18px;height:26px;border-radius:5px;
-    border:1px solid #bbb;
-    background:url('swsweetsura.jpg') center/cover no-repeat;
-    box-shadow:0 2px 6px rgba(0,0,0,.15);
-  }
-  .sweets-mini.hidden{display:none;}
+.sweets-mini{
+  width:var(--deckCardW);
+  height:var(--deckCardH);
+  border-radius:var(--deckCardR);
+  border:1px solid rgba(0,0,0,.18);
+  background:url('swsweetsura.jpg') center/cover no-repeat;
+  box-shadow:0 6px 16px rgba(0,0,0,.18);
+}
+.sweets-mini.hidden{display:none;}
 
-  /* ★ 投票チップ（他プレイヤーのスイーツ右側に重ねる） */
-  .vote-stack{
-    position:absolute;
-    right:-12px;
-    top:50%;
-    transform:translateY(-50%);
-    display:flex;
-    flex-wrap:wrap;
-    width:26px;
-    gap:2px;
-    justify-content:flex-start;
-    align-items:center;
-    pointer-events:none;
-  }
-  .vote-mini{
-    width:10px;height:10px;border-radius:50%;
-    border:1px solid rgba(255,255,255,.65);
-    background:rgba(255,255,255,.26);
-    box-shadow:
-      0 4px 10px rgba(0,0,0,.20),
-      inset 0 1px 0 rgba(255,255,255,.55);
-    backdrop-filter: blur(6px);
-  }
+/* 投票チップ（他プレイヤーのスイーツ右側に重ねる） */
+.vote-stack{
+  position:absolute;
+  right:-22px;
+  top:50%;
+  transform:translateY(-50%);
+  display:flex;
+  flex-wrap:wrap;
+
+  width:calc(var(--voteMiniSize) * 2 + 6px); /* 2列 */
+  gap:3px;
+  justify-content:flex-start;
+  align-items:center;
+  pointer-events:none;
+}
+
+.vote-mini{
+  width:var(--voteMiniSize);
+  height:var(--voteMiniSize);
+  border-radius:50%;
+  border:2px solid var(--voteChipStroke);
+  background:var(--voteChipFill);
+  box-shadow:0 6px 14px rgba(0,0,0,.18);
+}
+
 
   /* 他プレイヤーのミニカード（ネームタグの下に扇状） */
   .player-tag .mini-hand{
@@ -316,7 +334,7 @@
   .my-hand-title{display:none;}
   .my-area{
     display:flex;gap:10px;justify-content:center;align-items:flex-start;
-    margin-top:8px;
+    margin-top:-20px;
   }
 
   /* ★ 自分の正体カード（自分のアクションカードの左側） */
@@ -696,35 +714,29 @@
   /* =========================
      ★ 投票チップ（自分の手元：全カードの右側）
      ========================= */
-  .vote-chip{
-    width:22px;height:22px;border-radius:50%;
-    border:1px solid rgba(255,255,255,.65);
-    background:rgba(255,255,255,.26);
-    box-shadow:
-      0 10px 24px rgba(0,0,0,.18),
-      inset 0 1px 0 rgba(255,255,255,.55);
-    backdrop-filter: blur(8px);
-    flex:0 0 auto;
-    align-self:flex-start;
-    cursor:grab;
-    user-select:none;
-    touch-action:none;
-    position:relative;
-  }
-  .vote-chip.hidden{display:none;}
-  .vote-chip:active{cursor:grabbing;}
-  .vote-chip.pulsing{ animation:pulseCard 1.05s ease-in-out infinite; }
-  .vote-chip.pulsing:hover{ animation:none; transform:scale(1.12); }
-  .vote-chip::after{
-    content:'V';
-    position:absolute; inset:0;
-    display:grid; place-items:center;
-    font-weight:900;
-    font-size:12px;
-    color:rgba(0,0,0,.55);
-    text-shadow:0 1px 0 rgba(255,255,255,.55);
-    pointer-events:none;
-  }
+/* 投票チップ（自分の手元：全カードの右側） */
+.vote-chip{
+  width:var(--voteChipSize);
+  height:var(--voteChipSize);
+  border-radius:50%;
+  border:2px solid var(--voteChipStroke);
+  background:var(--voteChipFill);
+  box-shadow:0 10px 24px rgba(0,0,0,.18);
+  flex:0 0 auto;
+  align-self:flex-start;
+  cursor:grab;
+  user-select:none;
+  touch-action:none;
+  position:relative;
+}
+.vote-chip.hidden{display:none;}
+.vote-chip:active{cursor:grabbing;}
+.vote-chip.pulsing{ animation:pulseCard 1.05s ease-in-out infinite; }
+.vote-chip.pulsing:hover{ animation:none; transform:scale(1.12); }
+
+/* 既存の「V」文字は消す（デザイン統一） */
+.vote-chip::after{ content:''; }
+
 
   .vote-dragging{
     position:fixed !important;
@@ -863,6 +875,141 @@
     transform:scale(1.02);
   }
   .roundreveal-card img{width:100%;height:100%;object-fit:cover;display:block;}
+
+:root{
+  --deckCardW: 28px;
+  --deckCardH: 40px;
+  --deckCardR: 7px;
+
+  /* 投票チップ（自分/他人 共通） */
+  /* 自分（ドラッグ用） */
+  --voteChipSize: 22px;
+
+  /* 他プレイヤーに乗る小さいやつ */
+  --voteMiniSize: 14px;
+
+  --voteChipFill: rgba(196, 181, 253, .92);
+  --voteChipStroke: rgba(255,255,255,.95);
+}
+
+/* =========================
+   ★★ 他プレイヤー：内側に「正体＋スイーツ」横並び（平行）
+   - JSから --inX/--inY/--rotDeg を渡す
+   ========================= */
+.otherplayerscircle{ --inX:0px; --inY:0px; --outX:0px; --outY:0px; --rotDeg:0deg; }
+
+/* タグ（外側へ） */
+.player-tag.in-othercircle{
+  position:absolute;
+  left:50%; top:50%;
+  transform:translate(-50%,-50%) translate(var(--outX), var(--outY));
+}
+
+/* 内側カード列（回転して「上が中心を向く」） */
+.other-cards-row{
+  position:absolute;
+  left:50%; top:50%;
+  transform:
+    translate(-50%,-50%)
+    translate(var(--inX), var(--inY))
+    rotate(var(--rotDeg));
+  display:flex;
+  gap:8px;
+  align-items:center;
+  justify-content:center;
+  pointer-events:none; /* 見た目専用（投票などにしたいなら外す） */
+}
+
+/* 正体ミニ（裏） */
+.role-mini{
+  width:var(--deckCardW);
+  height:var(--deckCardH);
+  border-radius:var(--deckCardR);
+  border:1px solid rgba(0,0,0,.18);
+  background:url('swroleura.jpg') center/cover no-repeat;
+  box-shadow:0 6px 16px rgba(0,0,0,.18);
+}
+
+/* スイーツ枠（裏カード＋投票チップ重ね） */
+.sweets-wrap{
+  position:relative;
+  width:var(--deckCardW);
+  height:var(--deckCardH);
+  border-radius:var(--deckCardR);
+  border:2px solid rgba(0,0,0,.22);
+  background:rgba(255,255,255,.10);
+  box-sizing:border-box;
+  display:flex; align-items:center; justify-content:center;
+}
+.sweets-wrap.empty{
+  border-style:dashed;
+  opacity:.35;
+}
+.sweets-wrap.hint-ok{ border-color:rgba(34,197,94,.75); }
+.sweets-wrap.hint-ng{ border-color:rgba(239,68,68,.75); }
+
+.sweets-mini{
+  width:var(--deckCardW);
+  height:var(--deckCardH);
+  border-radius:var(--deckCardR);
+  border:1px solid rgba(0,0,0,.18);
+  background:url('swsweetsura.jpg') center/cover no-repeat;
+  box-shadow:0 6px 16px rgba(0,0,0,.18);
+}
+.sweets-mini.hidden{display:none;}
+
+/* 投票チップ（スイーツの右側に重ねる） */
+.vote-stack{
+  position:absolute;
+  right:-22px;
+  top:50%;
+  transform:translateY(-50%);
+  display:flex;
+  flex-wrap:wrap;
+  width:calc(var(--voteMiniSize) * 2 + 6px); /* 2列 */
+  gap:3px;
+  justify-content:flex-start;
+  align-items:center;
+  pointer-events:none;
+}
+
+
+/* ★ 修正：otherplayerscircle内の横並び用 role-mini を “絶対配置” から解除し、サイズ計算も統一 */
+.other-cards-row .role-mini{
+  position:relative;      /* ← absoluteを殺す */
+  left:auto;
+  top:auto;
+  transform:none;         /* ← translateY(-50%)を殺す */
+  box-sizing:border-box;  /* ← border込みで28x40にする */
+}
+
+/* 念のため：他の場所で role-mini を絶対配置したいなら、そっちはスコープを付ける */
+
+
+/* 下の手番バーだけ消して、右下PASSは残す */
+#turnBar{
+  display:none !important;
+}
+/* 投票ドロップのため：内側カード列はポインターを通す */
+.other-cards-row{ pointer-events:auto; }
+
+/* ドロップ判定したいのはスイーツ枠なので、ここも明示しておく */
+.sweets-wrap{ pointer-events:auto; }
+
+/* ★ 他プレイヤー：スイーツ未獲得の間は正体カードだけ中央表示 */
+.other-cards-row.solo{
+  justify-content:center;
+}
+.other-cards-row.solo .role-mini{
+  margin:0;
+}
+/* solo時は投票やスイーツ枠が無い前提だが、念のため */
+.other-cards-row.solo .sweets-wrap,
+.other-cards-row.solo .vote-stack{
+  display:none !important;
+}
+
+
 </style>
 </head>
 <body>
@@ -1847,6 +1994,13 @@ function canVoteNow(){
   return getSweetsOwners().length >= 1;
 }
 function renderMyVoteChip(){
+  const started = !!state.room?.gameStarted;
+  if(!started){
+    myVoteChipEl.classList.add('hidden');
+    myVoteChipEl.classList.remove('pulsing');
+    return;
+  }
+
   const chips = getMyVoteChips();
   myVoteChipEl.classList.toggle('hidden', chips <= 0);
   myVoteChipEl.classList.toggle('pulsing', canVoteNow());
@@ -1897,6 +2051,13 @@ function updatePassRoundBtn(){
    手札レンダー
    ========================= */
 function renderMyRole(){
+  const started = !!state.room?.gameStarted;
+  if(!started){
+    myRoleEl.classList.add('hidden');
+    myRoleEl.innerHTML = '';
+    return;
+  }
+
   const myRole = state.roles?.[state.userId];
   if(!myRole){
     myRoleEl.classList.add('hidden');
@@ -2042,7 +2203,7 @@ function renderPlayerCircle(players){
   if (!players.length) return;
 
   const n = players.length;
-  const radius = 45;
+  const radius = 42;
   const step = (2 * Math.PI) / n;
   const anchorAngle = Math.PI / 2;
   const meIndex = players.findIndex(p => p.id === state.userId);
@@ -2079,95 +2240,134 @@ function renderPlayerCircle(players){
       return;
     }
 
-    // ===== 他プレイヤー =====
-    const circle = document.createElement('div');
-    circle.className = 'otherplayerscircle';
-    circle.style.left = `${x}%`;
-    circle.style.top  = `${y}%`;
+// ===== 他プレイヤー =====
+const circle = document.createElement('div');
+circle.className = 'otherplayerscircle';
+circle.style.left = `${x}%`;
+circle.style.top  = `${y}%`;
 
-    const tag = document.createElement('div');
-    tag.className = 'player-tag in-othercircle';
-    if(activeSeat === p.seatIndex) tag.classList.add('active-turn');
+// ★ 中心方向（内側）ベクトル：(-cos, -sin)
+const ux = -Math.cos(angle);
+const uy = -Math.sin(angle);
 
-    tag.textContent = p.name;
-    tag.dataset.seat = String(p.seatIndex);
-    tag.dataset.uid = p.id;
+// 内側/外側のオフセット（px）
+const innerOff = 20;  // カードを内側へ
+const outerOff = 44;  // タグを外側へ
 
-    const onKick = () => {
-      if (!state.roomCode) return;
-      if (state.seatedTable !== null) return;
+circle.style.setProperty('--inX',  `${ux * innerOff}px`);
+circle.style.setProperty('--inY',  `${uy * innerOff}px`);
+circle.style.setProperty('--outX', `${-ux * outerOff}px`);
+circle.style.setProperty('--outY', `${-uy * outerOff}px`);
 
-      pendingSeatIndexToSteal = p.seatIndex;
-      pendingSeatPlayerIdToSteal = p.id;
-      kickMessage.textContent = `「${p.name}」を追い出して、この席に着席しますか？`;
-      kickDialog.classList.remove('hidden');
-    };
-    circle.onclick = (e) => { e.stopPropagation(); onKick(); };
-    tag.onclick = (e) => { e.stopPropagation(); onKick(); };
+// ★ カードの「上辺」が中心を向く回転（CSS rotate）
+const rotDeg = (Math.atan2(uy, ux) * 180 / Math.PI) + 90;
+circle.style.setProperty('--rotDeg', `${rotDeg}deg`);
 
-    // ★ 他プレイヤー：スイーツエリア（円）＝ swarea
-    const sweetsArea = document.createElement('div');
-    sweetsArea.className = 'sweets-area';
-    sweetsArea.addEventListener('click', (e)=> e.stopPropagation());
+const tag = document.createElement('div');
+tag.className = 'player-tag in-othercircle';
+if(activeSeat === p.seatIndex) tag.classList.add('active-turn');
+
+tag.textContent = p.name;
+tag.dataset.seat = String(p.seatIndex);
+tag.dataset.uid = p.id;
+
+// 追い出しクリックは今まで通り
+const onKick = () => {
+  if (!state.roomCode) return;
+  if (state.seatedTable !== null) return;
+
+  pendingSeatIndexToSteal = p.seatIndex;
+  pendingSeatPlayerIdToSteal = p.id;
+  kickMessage.textContent = `「${p.name}」を追い出して、この席に着席しますか？`;
+  kickDialog.classList.remove('hidden');
+};
+circle.onclick = (e) => { e.stopPropagation(); onKick(); };
+tag.onclick = (e) => { e.stopPropagation(); onKick(); };
+
+circle.appendChild(tag);
+
+// スタート前は、他プレイヤーのカード類を一切表示しない
+const started = !!state.room?.gameStarted;
+
+// handData は後でミニ手札にも使うので先に取る
+const handData = state.hands?.[p.id];
+
+if(started){
+  // ★ 内側：スイーツ未獲得なら「正体カードだけ中央」、獲得後は「正体＋スイーツ」
+  const cardsRow = document.createElement('div');
+  cardsRow.className = 'other-cards-row';
+
+  const hasTheirSweets = !!(handData && Array.isArray(handData.sweets) && handData.sweets.length);
+
+  // 正体（裏）
+  const roleMini = document.createElement('div');
+  roleMini.className = 'role-mini';
+
+  if(!hasTheirSweets){
+    // ★ スイーツ獲得前：正体のみ中央
+    cardsRow.classList.add('solo');
+    cardsRow.appendChild(roleMini);
+  }else{
+    // ★ スイーツ獲得後：正体＋スイーツ（投票チップも）
+    const sweetsWrap = document.createElement('div');
+    sweetsWrap.className = 'sweets-wrap';
+    sweetsWrap.classList.toggle('empty', !hasTheirSweets);
 
     const sweetsMini = document.createElement('div');
     sweetsMini.className = 'sweets-mini';
-
-    const handData = state.hands?.[p.id];
-    const hasTheirSweets = !!(handData && Array.isArray(handData.sweets) && handData.sweets.length);
-    sweetsArea.classList.toggle('empty', !hasTheirSweets);
     sweetsMini.classList.toggle('hidden', !hasTheirSweets);
+    sweetsWrap.appendChild(sweetsMini);
 
-    sweetsArea.appendChild(sweetsMini);
-
-    // ★ 投票チップ表示（右側に重ねる）
+    // 投票チップ（スイーツ右に重ね）
     const voteStack = document.createElement('div');
     voteStack.className = 'vote-stack';
-    const vCount = hasTheirSweets ? getVoteCountFor(p.id) : 0;
+    const vCount = getVoteCountFor(p.id);
     for(let i=0;i<vCount;i++){
       const v = document.createElement('div');
       v.className = 'vote-mini';
       voteStack.appendChild(v);
     }
-    sweetsArea.appendChild(voteStack);
+    sweetsWrap.appendChild(voteStack);
 
-    tag.appendChild(sweetsArea);
+    // 横並び：正体 → スイーツ
+    cardsRow.appendChild(roleMini);
+    cardsRow.appendChild(sweetsWrap);
+  }
 
-    // ★ 他プレイヤー：正体ミニ（裏）
-    const roleMini = document.createElement('div');
-    roleMini.className = 'role-mini';
-    tag.appendChild(roleMini);
+  circle.appendChild(cardsRow);
+}
 
-    // ★ 他プレイヤー：ミニ手札（裏扇）
-    if (handData && Array.isArray(handData.action) && handData.action.length){
-      const miniHand = document.createElement('div');
-      miniHand.className = 'mini-hand';
 
-      const count = handData.action.length;
-      const spread = 70;
-      const base = (count > 1) ? (-spread/2) : 0;
 
-      handData.action.forEach((_, idx2) => {
-        const c = document.createElement('div');
-        c.className = 'mini-card';
+// ★ 他プレイヤー：ミニ手札（タグの下に扇状）はそのまま（欲しければ残す）
+if (handData && Array.isArray(handData.action) && handData.action.length){
+  const miniHand = document.createElement('div');
+  miniHand.className = 'mini-hand';
 
-        const angleDeg = (count > 1) ? base + (spread/(count-1))*idx2 : 0;
-        c.style.transform = `translate(-50%,0) rotate(${angleDeg}deg)`;
-        c.style.zIndex = String(10 + idx2);
-        miniHand.appendChild(c);
-      });
+  const count = handData.action.length;
+  const spread = 70;
+  const base = (count > 1) ? (-spread/2) : 0;
 
-      tag.appendChild(miniHand);
-    }
+  handData.action.forEach((_, idx2) => {
+    const c = document.createElement('div');
+    c.className = 'mini-card';
 
-    circle.appendChild(tag);
-    playerCircle.appendChild(circle);
+    const angleDeg2 = (count > 1) ? base + (spread/(count-1))*idx2 : 0;
+    c.style.transform = `translate(-50%,0) rotate(${angleDeg2}deg)`;
+    c.style.zIndex = String(10 + idx2);
+    miniHand.appendChild(c);
+  });
 
-    if(leaderSeat !== null && leaderSeat === p.seatIndex){
-      const chip = document.createElement('div');
-      chip.className = 'leader-chip';
-      tag.appendChild(chip);
-    }
+  tag.appendChild(miniHand);
+}
+
+playerCircle.appendChild(circle);
+
+if(leaderSeat !== null && leaderSeat === p.seatIndex){
+  const chip = document.createElement('div');
+  chip.className = 'leader-chip';
+  tag.appendChild(chip);
+}
   });
 
   updateActionDeckUI();
@@ -3096,7 +3296,7 @@ function clearSwareaHint(){
 function updateSwareaHint(x,y){
   clearSwareaHint();
   const el = document.elementFromPoint(x,y);
-  const area = el?.closest?.('.sweets-area');
+  const area = el?.closest?.('.sweets-wrap');   // ★変更
   if(!area) return;
 
   const ok = !area.classList.contains('empty');
@@ -3105,17 +3305,19 @@ function updateSwareaHint(x,y){
 }
 function getVoteDropTarget(x,y){
   const el = document.elementFromPoint(x,y);
-  const area = el?.closest?.('.sweets-area');
-  if(!area) return { type:'none' };
+  const wrap = el?.closest?.('.sweets-wrap');   // ★変更
+  if(!wrap) return { type:'none' };
 
-  const tag = area.closest('.player-tag');
+  // ★ tagは祖先じゃないので、otherplayerscircle から uid を取る
+  const circle = wrap.closest('.otherplayerscircle');
+  const tag = circle?.querySelector('.player-tag');
   const uid = tag?.dataset?.uid || null;
   if(!uid) return { type:'none' };
 
   const handData = state.hands?.[uid];
   const hasTheirSweets = !!(handData && Array.isArray(handData.sweets) && handData.sweets.length);
 
-  return { type:'swarea', uid, ok: hasTheirSweets };
+  return { type:'swwrap', uid, ok: hasTheirSweets };
 }
 
 function startDragVoteChip(e){
@@ -3162,7 +3364,7 @@ async function onVoteDragEnd(e){
   const drop = getVoteDropTarget(e.clientX, e.clientY);
   clearSwareaHint();
 
-  if(drop.type === 'swarea' && drop.ok){
+  if(drop.type === 'swwrap' && drop.ok){   // ★変更
     await castVote(drop.uid);
   }
 
