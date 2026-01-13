@@ -1,5 +1,5 @@
 
-<!DOCTYPE html>
+<!DOCTYPE html> 
 <html lang="ja">
 <head>
 <meta charset="UTF-8" />
@@ -998,7 +998,7 @@
   border:1px solid rgba(0,0,0,.18);
   background:#fff;
   box-shadow:0 6px 16px rgba(0,0,0,.18);
-  overflow:hidden;
+  overflow:visible;
   transform:translate(-50%,-20px);
   animation:sweetsTagMove .35s ease;
   pointer-events:none;
@@ -1009,6 +1009,50 @@
   object-fit:cover;
   display:block;
 }
+.selected-sweets-tag .sweets-number-tag{
+  position:absolute;
+  right:-6px;
+  top:-6px;
+
+  /* 少し大きくして余裕を作る */
+  width:30px;
+  height:32px;
+
+  display:grid;
+  place-items:center;
+
+  font-weight:900;
+  font-size:12px;
+  color:#111;
+
+  /* テキストを前面に */
+  z-index:2;
+  /* これがあると微妙な欠けが減ることが多い */
+  transform:translateZ(0);
+
+  text-shadow:0 1px 0 rgba(255,255,255,.6);
+}
+
+.selected-sweets-tag .sweets-number-tag::before{
+  content:"";
+  position:absolute;
+  inset:0;
+
+  background:#fde047;
+
+  /* 星形は背景側だけ切り抜く（テキストは切らない） */
+  -webkit-clip-path:polygon(50% 0%, 62% 22%, 88% 22%, 70% 40%, 78% 66%, 50% 52%, 22% 66%, 30% 40%, 12% 22%, 38% 22%);
+  clip-path:polygon(50% 0%, 62% 22%, 88% 22%, 70% 40%, 78% 66%, 50% 52%, 22% 66%, 30% 40%, 12% 22%, 38% 22%);
+
+  /* borderの代わりに drop-shadow で縁取り（clipと相性が良い） */
+  filter:
+    drop-shadow(0 0 0 #111)
+    drop-shadow(0 0 0 #111);
+
+  box-shadow:0 4px 10px rgba(0,0,0,.18);
+  z-index:-1;
+}
+
 
 
 /* ★ 修正：otherplayerscircle内の横並び用 role-mini を “絶対配置” から解除し、サイズ計算も統一 */
@@ -2327,10 +2371,29 @@ function renderPlayerCircle(players){
           selected.className = 'selected-sweets-tag';
           selected.dataset.sweetsUid = state.userId;
           const img = document.createElement('img');
-          img.src = sweetsCard.img;
+          img.src = SWEETS_BACK_IMG;
           img.alt = `sweets ${sweetsCard.value ?? ''}`;
           img.onerror = () => { if(sweetsCard.fallback) img.src = sweetsCard.fallback; };
           selected.appendChild(img);
+
+          if(typeof sweetsCard.value !== 'undefined'){
+            const valueTag = document.createElement('div');
+            valueTag.className = 'sweets-number-tag';
+            valueTag.textContent = String(sweetsCard.value);
+            selected.appendChild(valueTag);
+          }
+
+          const vCount = getVoteCountFor(state.userId);
+          if(vCount > 0){
+            const voteStack = document.createElement('div');
+            voteStack.className = 'vote-stack';
+            for(let i=0;i<vCount;i++){
+              const v = document.createElement('div');
+              v.className = 'vote-mini';
+              voteStack.appendChild(v);
+            }
+            selected.appendChild(voteStack);
+          }
           tag.appendChild(selected);
         }
       }
