@@ -2136,9 +2136,10 @@ function applyMyTurnClasses(){
 
   const mine = isMyTurn();
   const receivedExists = hasReceivedInstruction();
+  const roundPickActive = getRoundPick()?.phase === 'choose';
 
   wrap.classList.remove('my-turn-free','my-turn-blocked');
-  if(!mine) return;
+  if(!mine || roundPickActive) return;
 
   if(receivedExists){
     wrap.classList.add('my-turn-blocked');
@@ -2798,9 +2799,9 @@ function canUseOnOtherPlayer(card){
 }
 function canStartUseCard(cardObj){
   if(!isMyTurn()) return false;
+  if(getRoundPick()?.phase === 'choose') return false;
   const receivedExists = hasReceivedInstruction();
   if(!receivedExists) return true;
-
   const isReceived = (getMyReceivedCard()?.id === cardObj.id);
   if(isReceived) return true;
 
