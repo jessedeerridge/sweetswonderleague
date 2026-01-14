@@ -1021,6 +1021,10 @@
   animation:sweetsTagMove .6s ease;
   pointer-events:none;
 }
+.selected-sweets-tag.decided-static{
+  animation:none;
+}
+
 
 .selected-sweets-tag.collect-hidden{
   border-color:transparent;
@@ -2474,8 +2478,9 @@ function renderPlayerCircle(players){
   const meIndex = players.findIndex(p => p.id === state.userId);
   const decidedMoveTargets = [];
 
+  const allPassed = allSeatedPlayersPassed();
   const leaderSeat = state.turn?.leaderSeat ?? null;
-  const activeSeat = state.turn?.activeSeat ?? null;
+  const activeSeat = allPassed ? null : (state.turn?.activeSeat ?? null);
   const roundPick = getRoundPick();
   const roundPickActive = roundPick?.phase === 'choose';
   const roundPickCandidates = roundPickActive && Array.isArray(roundPick.candidates)
@@ -2517,6 +2522,10 @@ function renderPlayerCircle(players){
           const isCollectHidden = collectedSweetsHidden.has(state.userId);
           const selected = document.createElement('div');
           selected.className = 'selected-sweets-tag';
+          const alreadyAnimated = decidedSweetsAnimated.has(state.userId);
+          if(alreadyAnimated){
+            selected.classList.add('decided-static');
+          }
           if(isCollectHidden){
             selected.classList.add('collect-hidden');
           }
@@ -2551,6 +2560,9 @@ function renderPlayerCircle(players){
             selected.appendChild(voteStack);
           }
           tag.appendChild(selected);
+          if(!alreadyAnimated){
+            decidedSweetsAnimated.set(state.userId, Date.now());
+          }
         }
       }
       return;
@@ -2715,7 +2727,7 @@ if(leaderSeat !== null && leaderSeat === p.seatIndex){
    ターンUI更新
    ========================= */
 function updateTurnUI(){
-  if(!state.turn || state.game?.status !== 'playing'){
+  if(!state.turn || state.game?.status !== 'playing' || allSeatedPlayersPassed()){
     turnBar.classList.add('hidden');
     turnBadge.textContent = 'TURN';
     const wrap = document.querySelector('.my-hand-wrapper');
