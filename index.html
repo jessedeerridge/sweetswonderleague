@@ -951,6 +951,16 @@
 .sweets-wrap.decided-move{
   transform:translate(var(--decidedMoveX), var(--decidedMoveY));
 }
+.sweets-wrap.decided-move.decided-static{
+  transition:none;
+}
+.sweets-wrap.collect-hidden{
+  border-color:transparent;
+  background:transparent;
+}
+.sweets-wrap.collect-hidden .sweets-mini{
+  opacity:0;
+}
 
 .sweets-mini{
   width:var(--deckCardW);
@@ -1010,6 +1020,17 @@
   transform:translate(-50%,-30px);
   animation:sweetsTagMove .6s ease;
   pointer-events:none;
+}
+.selected-sweets-tag.static{
+  animation:none;
+}
+.selected-sweets-tag.collect-hidden{
+  border-color:transparent;
+  background:transparent;
+  box-shadow:none;
+}
+.selected-sweets-tag.collect-hidden img{
+  opacity:0;
 }
 .selected-sweets-tag img{
   width:100%;
@@ -1329,6 +1350,7 @@ const state = {
   turn: null,
 };
 let latestPlayers = [];
+const decidedSweetsAnimationSeen = new Set();
 
 /* =========================
    DOM
@@ -1670,6 +1692,7 @@ function subscribeGame(){
     state.game = snap.val() || {};
     state.turn = state.game.turn || null;
     state.turnEnding = false;
+    resetDecidedSweetsAnimationCache();
     syncPassTurnState();
     updateTurnUI();
     if (latestPlayers.length) renderPlayerCircle(latestPlayers);
@@ -2387,7 +2410,7 @@ function applyDecidedSweetsMove(items){
   };
   const decidedMoveDistance = 80;
 
-  items.forEach(({ sweetsWrap, circle, rotDeg }) => {
+  items.forEach(({ sweetsWrap, circle, rotDeg, skipMove }) => {
     if(!sweetsWrap || !circle) return;
     const circleRect = circle.getBoundingClientRect();
     const sweetsRect = sweetsWrap.getBoundingClientRect();
@@ -2416,6 +2439,9 @@ function applyDecidedSweetsMove(items){
     sweetsWrap.style.setProperty('--decidedMoveX', `${localMoveX}px`);
     sweetsWrap.style.setProperty('--decidedMoveY', `${localMoveY}px`);
     sweetsWrap.classList.add('decided-move');
+    if(skipMove){
+      sweetsWrap.classList.add('decided-static');
+    }
   });
 }
 
@@ -2472,8 +2498,12 @@ function renderPlayerCircle(players){
       if(started && decidedUids.includes(state.userId)){
         const sweetsCard = getSweetsCardByUid(state.userId);
         if(sweetsCard){
+          const alreadyAnimated = decidedSweetsAnimationSeen.has(state.userId);
           const selected = document.createElement('div');
           selected.className = 'selected-sweets-tag';
+          if(alreadyAnimated){
+            selected.classList.add('static');
+          }
           selected.dataset.sweetsUid = state.userId;
           const img = document.createElement('img');
           img.src = SWEETS_BACK_IMG;
@@ -2505,6 +2535,7 @@ function renderPlayerCircle(players){
             selected.appendChild(voteStack);
           }
           tag.appendChild(selected);
+          decidedSweetsAnimationSeen.add(state.userId);
         }
       }
       return;
@@ -2591,7 +2622,9 @@ if(started){
       });
     }
     if(decidedUids.includes(p.id)){
-      decidedMoveTargets.push({ sweetsWrap, circle, rotDeg });
+      const alreadyAnimated = decidedSweetsAnimationSeen.has(p.id);
+      decidedMoveTargets.push({ sweetsWrap, circle, rotDeg, skipMove: alreadyAnimated });
+      decidedSweetsAnimationSeen.add(p.id);
     }
 
     const sweetsMini = document.createElement('div');
@@ -2859,6 +2892,13 @@ function getDecidedSweetsUids(){
   return [];
 }
 
+function resetDecidedSweetsAnimationCache(){
+  const decidedUids = getDecidedSweetsUids();
+  if(!decidedUids.length){
+    decidedSweetsAnimationSeen.clear();
+  }
+}
+
 
 const roundPickDrag = {
   active:false,
@@ -3067,6 +3107,7 @@ subscribeGame = function(){
     state.game = snap.val() || {};
     state.turn = state.game.turn || null;
     state.turnEnding = false;
+    resetDecidedSweetsAnimationCache();
     syncPassTurnState();
     updateTurnUI();
     if (latestPlayers.length) renderPlayerCircle(latestPlayers);
@@ -3107,6 +3148,16 @@ function getSweetsSourceRect(uid, fallback){
   return fallback;
 }
 
+function toggleCollectHiddenForUids(uids, hidden){
+  const list = Array.isArray(uids) ? uids : [];
+  list.forEach(uid => {
+    const targets = document.querySelectorAll(`[data-sweets-uid="${uid}"]`);
+    targets.forEach(el => {
+      el.classList.toggle('collect-hidden', hidden);
+    });
+  });
+}
+
 async function animateRoundEndReveal(cards, selectedUids){
   if(_roundAnimRunning) return;
   _roundAnimRunning = true;
@@ -3123,6 +3174,7 @@ async function animateRoundEndReveal(cards, selectedUids){
     const preCollectDelay = 3000;
 
     await new Promise(r => setTimeout(r, preCollectDelay));
+    toggleCollectHiddenForUids(selectedUids, true);
 
     for(let i=0;i<total;i++){
       const el = document.createElement('div');
@@ -3208,6 +3260,7 @@ async function animateRoundEndReveal(cards, selectedUids){
     // await resetRoundStateLater();
 
   } finally {
+    toggleCollectHiddenForUids(selectedUids, false);
     _roundAnimRunning = false;
   }
 }
