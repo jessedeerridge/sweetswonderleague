@@ -2732,6 +2732,7 @@ function updateTurnUI(){
     turnBadge.textContent = 'TURN';
     const wrap = document.querySelector('.my-hand-wrapper');
     wrap?.classList.remove('my-turn-free','my-turn-blocked');
+    renderMySweets();
     updateSweetsDeckUI();
     renderMyVoteChip();
     updatePassRoundBtn();
