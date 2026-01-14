@@ -205,7 +205,13 @@
     from{transform:translateY(0);}
     to{transform:translateY(-30px);}
   }
-  .sweets-deck.pulsing{ animation:pulseCardStrong 1.05s ease-in-out infinite; }
+/* ✅ スイーツ山札専用：鼓動（例：強め） */
+@keyframes pulseSweetsDeck {
+  0%   { transform: scale(1); }
+  50%  { transform: scale(1.4); } /* ← 強さ（例：1.06〜1.14） */
+  100% { transform: scale(1); }
+}
+  .sweets-deck.pulsing{ animation:pulseSweetsDeck 1.05s ease-in-out infinite; }
   .sweets-deck.pulsing:hover{ animation:none; transform:scale(1.14); }
 
   /* ★★ 他プレイヤー：ネームタグ＋カード周りを円で囲む（otherplayerscircle） */
@@ -611,13 +617,13 @@
     width:min(260px, 78vw);
     aspect-ratio: 2 / 3;
     border-radius:18px;
-    border:1px solid rgba(255,255,255,.35);
-    box-shadow:0 26px 70px rgba(0,0,0,.45);
-    background:#fff;
+    border:none;
+    box-shadow:none;
+ background:transparent;
     overflow:hidden;
     position:relative;
   }
-  .reveal-card img{width:100%;height:100%;object-fit:cover;display:block;}
+  .reveal-card img{width:100%;height:100%;object-fit:cover;display:block;border:none;background:transparent;}
   .reveal-card .label{
     position:absolute; left:10px; top:10px;
     font-weight:900; color:#1d4ed8;
@@ -775,10 +781,18 @@
   position:relative;
   transition:transform .2s ease;
 }
+/* ✅ 投票チップ専用：鼓動を弱める */
+@keyframes pulseVoteChip {
+  0%   { transform: scale(1); }
+  50%  { transform: scale(1.5); } /* ← ここが強さ（例：1.04〜1.10） */
+  100% { transform: scale(1); }
+}
+
 .vote-chip.hidden{display:none;}
 .vote-chip:active{cursor:grabbing;}
-  .vote-chip.pulsing{ animation:pulseCardStrong 1.05s ease-in-out infinite; }
-  .vote-chip.pulsing:hover{ animation:none; transform:scale(1.18); }
+.vote-chip.pulsing{ animation:pulseVoteChip 1.05s ease-in-out infinite; }
+.vote-chip.pulsing:hover{ animation:none; transform:scale(1.10); } /* ← hover拡大も投票専用に調整 */
+
 
 /* 既存の「V」文字は消す（デザイン統一） */
 .vote-chip::after{ content:''; }
@@ -873,7 +887,7 @@
     aspect-ratio:2/3;
     border-radius:18px;
     border:none;
-    box-shadow:0 26px 70px rgba(0,0,0,.55);
+    box-shadow:none;
     background:transparent;
     overflow:hidden;
     flex:0 0 auto;
