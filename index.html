@@ -625,7 +625,7 @@
   }
 
   /* ★ 指示カード移動アニメ用（小さい裏カード） */
-  .fly-card{
+ .fly-card{
     position:fixed;
     width:22px;height:32px;border-radius:6px;
     border:1px solid rgba(0,0,0,.2);
@@ -634,6 +634,24 @@
     z-index:520;
     pointer-events:none;
   }
+  .sweets-fly-card{
+    position:fixed;
+    border-radius:12px;
+    border:1px solid rgba(0,0,0,.18);
+    box-shadow:0 10px 24px rgba(0,0,0,.22);
+    background:#fff;
+    overflow:hidden;
+    z-index:540;
+    pointer-events:none;
+    transform-origin:top left;
+  }
+  .sweets-fly-card img{
+    width:100%;
+    height:100%;
+    object-fit:cover;
+    display:block;
+  }
+
 
   /* ★ 自分の手札サイズ統一（60x90） */
   :root{
@@ -2186,6 +2204,8 @@ function renderMySweets(){
   if(!c){
     mySweetsEl.classList.add('hidden');
     updateRoundPickUI();
+    lastMySweetsSnapshot = null;
+    mySweetsFlyAnimatedFor = null;
     return;
   }
   const decidedUids = getDecidedSweetsUids();
@@ -2195,6 +2215,7 @@ function renderMySweets(){
     updateRoundPickUI();
     return;
   }
+  mySweetsFlyAnimatedFor = null;
   mySweetsEl.classList.remove('hidden');
   const img = document.createElement('img');
   img.src = c.img;
@@ -2206,8 +2227,8 @@ function renderMySweets(){
   renderMySweetsVoteStack();
 
   updateRoundPickUI();
+  requestAnimationFrame(cacheMySweetsSnapshot);
 }
-
 
 /* ★ カードDOMを作る共通 */
 function buildCardEl(cardObj, { extraClass='' } = {}){
@@ -2402,9 +2423,10 @@ function createRoundedStarSvg(){
   svg.appendChild(path);
   return svg;
 }
-
 const decidedSweetsAnimated = new Map();
 const DECIDED_MOVE_DURATION_MS = 650;
+let lastMySweetsSnapshot = null;
+let mySweetsFlyAnimatedFor = null;
 
 function hasCompletedDecidedMove(uid){
   const ts = decidedSweetsAnimated.get(uid);
@@ -2462,6 +2484,55 @@ function applyDecidedSweetsMove(items){
     }
 
   });
+}
+
+function cacheMySweetsSnapshot(){
+  const card = getMySweetsCard();
+  if(!card || mySweetsEl.classList.contains('hidden')) return;
+  const rect = mySweetsEl.getBoundingClientRect();
+  if(!rect.width || !rect.height) return;
+  lastMySweetsSnapshot = {
+    rect,
+    cardId: card.id,
+  };
+}
+
+function animateMySweetsToTag(targetEl, card){
+  if(!targetEl || !card || !lastMySweetsSnapshot) return;
+  if(mySweetsFlyAnimatedFor === card.id) return;
+  const srcRect = lastMySweetsSnapshot.rect;
+  const dstRect = targetEl.getBoundingClientRect();
+  if(!srcRect.width || !srcRect.height || !dstRect.width || !dstRect.height) return;
+
+  const fly = document.createElement('div');
+  fly.className = 'sweets-fly-card';
+  fly.style.left = `${srcRect.left}px`;
+  fly.style.top = `${srcRect.top}px`;
+  fly.style.width = `${srcRect.width}px`;
+  fly.style.height = `${srcRect.height}px`;
+
+  const img = document.createElement('img');
+  img.src = card.img;
+  img.alt = `sweets ${card.value ?? ''}`;
+  img.onerror = () => { if(card.fallback) img.src = card.fallback; };
+  fly.appendChild(img);
+
+  document.body.appendChild(fly);
+
+  const dx = dstRect.left - srcRect.left;
+  const dy = dstRect.top - srcRect.top;
+  const scale = dstRect.width / srcRect.width;
+
+  fly.animate([
+    { transform:`translate(0px, 0px) scale(1)` },
+    { transform:`translate(${dx}px, ${dy}px) scale(${scale})` },
+  ], {
+    duration: DECIDED_MOVE_DURATION_MS,
+    easing: 'ease-in-out',
+    fill: 'forwards',
+  }).onfinish = () => fly.remove();
+
+  mySweetsFlyAnimatedFor = card.id;
 }
 
 
@@ -2560,6 +2631,9 @@ function renderPlayerCircle(players){
             selected.appendChild(voteStack);
           }
           tag.appendChild(selected);
+          requestAnimationFrame(() => {
+            animateMySweetsToTag(selected, sweetsCard);
+          });
           if(!alreadyAnimated){
             decidedSweetsAnimated.set(state.userId, Date.now());
           }
