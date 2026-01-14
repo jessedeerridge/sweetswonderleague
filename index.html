@@ -2399,6 +2399,15 @@ function createRoundedStarSvg(){
   return svg;
 }
 
+const decidedSweetsAnimated = new Map();
+const DECIDED_MOVE_DURATION_MS = 650;
+
+function hasCompletedDecidedMove(uid){
+  const ts = decidedSweetsAnimated.get(uid);
+  if(typeof ts !== 'number') return false;
+  return (Date.now() - ts) > DECIDED_MOVE_DURATION_MS;
+}
+
 function applyDecidedSweetsMove(items){
   if(!Array.isArray(items) || !items.length) return;
   const playRect = playCircleEl?.getBoundingClientRect?.();
@@ -2410,7 +2419,7 @@ function applyDecidedSweetsMove(items){
   };
   const decidedMoveDistance = 80;
 
-  items.forEach(({ sweetsWrap, circle, rotDeg, skipMove }) => {
+  items.forEach(({ uid, sweetsWrap, circle, rotDeg, skipMove }) => {
     if(!sweetsWrap || !circle) return;
     const circleRect = circle.getBoundingClientRect();
     const sweetsRect = sweetsWrap.getBoundingClientRect();
@@ -2436,12 +2445,21 @@ function applyDecidedSweetsMove(items){
     const localMoveX = moveX * Math.cos(-rotRad) - moveY * Math.sin(-rotRad);
     const localMoveY = moveX * Math.sin(-rotRad) + moveY * Math.cos(-rotRad);
 
+    if(skipMove){
+      sweetsWrap.classList.add('decided-static');
+    }else{
+      sweetsWrap.classList.remove('decided-static');
+    }
     sweetsWrap.style.setProperty('--decidedMoveX', `${localMoveX}px`);
     sweetsWrap.style.setProperty('--decidedMoveY', `${localMoveY}px`);
     sweetsWrap.classList.add('decided-move');
+    if(uid && !decidedSweetsAnimated.has(uid)){
+      decidedSweetsAnimated.set(uid, Date.now());
+    }
 
   });
 }
+
 
 function renderPlayerCircle(players){
   playerCircle.innerHTML = '';
@@ -2622,8 +2640,15 @@ if(started){
       });
     }
     if(decidedUids.includes(p.id)){
-      decidedMoveTargets.push({ sweetsWrap, circle, rotDeg });
+      decidedMoveTargets.push({
+        uid: p.id,
+        sweetsWrap,
+        circle,
+        rotDeg,
+        skipMove: hasCompletedDecidedMove(p.id),
+      });
     }
+
 
     const sweetsMini = document.createElement('div');
     sweetsMini.className = 'sweets-mini';
@@ -2893,11 +2918,13 @@ function getDecidedSweetsUids(){
 function resetCollectedSweetsHiddenCache(){
   if(!state.game?.roundEnding){
     collectedSweetsHidden.clear();
+    decidedSweetsAnimated.clear();
     document.querySelectorAll('.collect-hidden').forEach(el => {
       el.classList.remove('collect-hidden');
     });
   }
 }
+
 
 const roundPickDrag = {
   active:false,
