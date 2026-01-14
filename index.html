@@ -195,11 +195,15 @@
   }
   @keyframes sweetsDecidedMove {
     from{transform:translateY(0);}
-    to{transform:translateY(-20px);}
+    to{transform:translateY(-80px);}
   }
   @keyframes sweetsTagMove {
     from{transform:translate(-50%,0);}
-    to{transform:translate(-50%,-20px);}
+    to{transform:translate(-50%,-80px);}
+  }
+  @keyframes sweetsDecidedMoveMy {
+    from{transform:translateY(0);}
+    to{transform:translateY(-30px);}
   }
   .sweets-deck.pulsing{ animation:pulseCardStrong 1.05s ease-in-out infinite; }
   .sweets-deck.pulsing:hover{ animation:none; transform:scale(1.14); }
@@ -923,7 +927,7 @@
   background:rgba(255,255,255,.10);
   box-sizing:border-box;
   display:flex; align-items:center; justify-content:center;
-  transition:transform .35s ease;
+  transition:transform .6s ease;
 }
 .sweets-wrap.empty{
   border-style:dashed;
@@ -942,8 +946,8 @@
   transform:scale(1.12);
 }
 .sweets-wrap.decided-move{
-  transform:translateY(-20px);
-  animation:sweetsDecidedMove .35s ease;
+  transform:translateY(-80px);
+  animation:sweetsDecidedMove .6s ease;
 }
 
 .sweets-mini{
@@ -971,8 +975,8 @@
   transform:scale(1.12);
 }
 .my-sweets.decided-move{
-  transform:translateY(-20px);
-  animation:sweetsDecidedMove .35s ease;
+  transform:translateY(-30px);
+  animation:sweetsDecidedMoveMy .6s ease;
 }
 
 /* 投票チップ（スイーツの右側に重ねる） */
@@ -1001,8 +1005,8 @@
   background:#fff;
   box-shadow:0 6px 16px rgba(0,0,0,.18);
   overflow:visible;
-  transform:translate(-50%,-20px);
-  animation:sweetsTagMove .35s ease;
+  transform:translate(-50%,-80px);
+  animation:sweetsTagMove .6s ease;
   pointer-events:none;
 }
 .selected-sweets-tag img{
