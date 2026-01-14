@@ -103,7 +103,7 @@
   .center-decks{
     position:absolute;
     left:50%; top:50%;
-    transform:translate(-50%,-50%);
+  transform:translate(-50%,-50%) translateY(60px); /* ← ここを増やすほど下がる */
     display:flex;
     gap:14px;
     align-items:center;
@@ -415,6 +415,7 @@
     text-shadow:0 2px 6px rgba(255,255,255,.7);
     pointer-events:none;
   }
+
   .action-card .effect-frame{
     position:absolute;left:0;right:0;bottom:0;height:50%;
     background:rgba(255,255,255,.55);
@@ -940,7 +941,7 @@
   transform:scale(1.12);
 }
 .sweets-wrap.decided-move{
-  transform:translateY(-20px);
+  transform:translateY(-80px);
   animation:sweetsDecidedMove .35s ease;
 }
 
@@ -1015,8 +1016,8 @@
   top:-12px;
 
   /* 少し大きくして余裕を作る */
-  width:32px;
-  height:32px;
+  width:34px;
+  height:34px;
 
   display:grid;
   place-items:center;
@@ -1026,27 +1027,21 @@
   line-height:1;
   color:#111;
 
-  /* テキストを前面に */
-  z-index:2;
-  /* これがあると微妙な欠けが減ることが多い */
-  transform:translateZ(0) translateY(-1px);
-
   text-shadow:0 1px 0 rgba(255,255,255,.6);
 }
-
-.selected-sweets-tag .sweets-number-tag::before{
-  content:"";
+.selected-sweets-tag .sweets-number-star{
   position:absolute;
   inset:0;
-
-  background:
-url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><path d='M50 12.2 Q50 10 52.2 12.2 L59.809 30.52 L61.351 34.24 Q62.193 36.271 64.398 36.447 L84.913 38.087 Q87.34 38.28 85.494 39.869 L69.174 53.854 L67.12 55.56 L69.18 66.178 L72.263 82.978 Q72.685 85.279 70.461 84.012 L52.18 73.6 Q50 72.358 47.82 73.6 L29.539 84.012 Q27.315 85.279 27.737 82.978 L30.82 66.178 L32.88 55.56 L30.826 53.854 L14.506 39.869 Q12.66 38.28 15.087 38.087 L35.602 36.447 Q37.807 36.271 38.649 34.24 L40.191 30.52 Z' fill='%23fde047' stroke='%23111' stroke-width='2' stroke-linejoin='round' stroke-linecap='round'/></svg>")
-    center/100% 100% no-repeat;
-
-
-  z-index:-1;
+  width:100%;
+  height:100%;
+  z-index:0;
+  pointer-events:none;
 }
-
+.selected-sweets-tag .sweets-number-text{
+  position:relative;
+  z-index:1;
+  transform:translateZ(0) translateY(-1px);
+}
 
 
 /* ★ 修正：otherplayerscircle内の横並び用 role-mini を “絶対配置” から解除し、サイズ計算も統一 */
@@ -2309,6 +2304,69 @@ function getVoteCountFor(targetUid){
   return Object.keys(obj).length;
 }
 
+function roundedStarPath({R=45, r2=20, round=14, k=0.65, points=5}){
+  const pts = [];
+  for(let i=0;i<points*2;i++){
+    const ang = -Math.PI/2 + i*Math.PI/points;
+    const rad = (i%2===0) ? R : r2;
+    pts.push({x: Math.cos(ang)*rad, y: Math.sin(ang)*rad, outer: i%2===0});
+  }
+
+  const prev0 = pts[pts.length-1], cur0 = pts[0];
+  const A0 = insetPoint(prev0, cur0, round);
+  let d = `M ${A0.x.toFixed(2)} ${A0.y.toFixed(2)} `;
+
+  for(let i=0;i<pts.length;i++){
+    const prev = pts[(i-1+pts.length)%pts.length];
+    const cur  = pts[i];
+    const next = pts[(i+1)%pts.length];
+
+    if(!cur.outer){
+      d += `L ${cur.x.toFixed(2)} ${cur.y.toFixed(2)} `;
+      continue;
+    }
+
+    const A = insetPoint(prev, cur, round);
+    const B = insetPoint(next, cur, round);
+
+    d += `L ${A.x.toFixed(2)} ${A.y.toFixed(2)} `;
+
+    const C1 = { x: A.x + (cur.x - A.x)*k, y: A.y + (cur.y - A.y)*k };
+    const C2 = { x: B.x + (cur.x - B.x)*k, y: B.y + (cur.y - B.y)*k };
+
+    d += `C ${C1.x.toFixed(2)} ${C1.y.toFixed(2)} `
+      +  `${C2.x.toFixed(2)} ${C2.y.toFixed(2)} `
+      +  `${B.x.toFixed(2)} ${B.y.toFixed(2)} `;
+  }
+
+  d += "Z";
+  return d;
+
+  function insetPoint(target, cur, dist){
+    const vx = target.x - cur.x, vy = target.y - cur.y;
+    const n = Math.hypot(vx, vy) || 1;
+    return { x: cur.x + (vx/n)*dist, y: cur.y + (vy/n)*dist };
+  }
+}
+
+function createRoundedStarSvg(){
+  const svg = document.createElementNS("http://www.w3.org/2000/svg","svg");
+  svg.setAttribute("class","sweets-number-star");
+  svg.setAttribute("viewBox","-60 -60 120 120");
+  svg.setAttribute("aria-hidden","true");
+
+  const path = document.createElementNS("http://www.w3.org/2000/svg","path");
+  path.setAttribute("d", roundedStarPath({R:45, r2:20, round:30, k:0.88}));
+  path.setAttribute("fill", "#fde047");
+  path.setAttribute("stroke", "#111");
+  path.setAttribute("stroke-width", "3");
+  path.setAttribute("stroke-linejoin", "round");
+  path.setAttribute("stroke-linecap", "round");
+
+  svg.appendChild(path);
+  return svg;
+}
+
 function renderPlayerCircle(players){
   playerCircle.innerHTML = '';
   playerCircle.appendChild(playCircleEl);
@@ -2370,10 +2428,15 @@ function renderPlayerCircle(players){
           img.onerror = () => { if(sweetsCard.fallback) img.src = sweetsCard.fallback; };
           selected.appendChild(img);
 
-          if(typeof sweetsCard.value !== 'undefined'){
+         if(typeof sweetsCard.value !== 'undefined'){
             const valueTag = document.createElement('div');
             valueTag.className = 'sweets-number-tag';
-            valueTag.textContent = String(sweetsCard.value);
+            const star = createRoundedStarSvg();
+            const valueText = document.createElement('span');
+            valueText.className = 'sweets-number-text';
+            valueText.textContent = String(sweetsCard.value);
+            valueTag.appendChild(star);
+            valueTag.appendChild(valueText);
             selected.appendChild(valueTag);
           }
 
