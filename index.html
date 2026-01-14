@@ -928,7 +928,10 @@
   box-sizing:border-box;
   display:flex; align-items:center; justify-content:center;
   transition:transform .6s ease;
+  --decidedMoveX: 0px;
+  --decidedMoveY: 0px;
 }
+
 .sweets-wrap.empty{
   border-style:dashed;
   opacity:.35;
@@ -946,8 +949,7 @@
   transform:scale(1.12);
 }
 .sweets-wrap.decided-move{
-  transform:translateY(-60px);
-  animation:sweetsDecidedMove .6s ease;
+  transform:translate(var(--decidedMoveX), var(--decidedMoveY));
 }
 
 .sweets-mini{
@@ -2374,6 +2376,49 @@ function createRoundedStarSvg(){
   return svg;
 }
 
+function applyDecidedSweetsMove(items){
+  if(!Array.isArray(items) || !items.length) return;
+  const playRect = playCircleEl?.getBoundingClientRect?.();
+  if(!playRect || !playRect.width || !playRect.height) return;
+
+  const playCenter = {
+    x: playRect.left + playRect.width / 2,
+    y: playRect.top + playRect.height / 2,
+  };
+  const decidedMoveDistance = 80;
+
+  items.forEach(({ sweetsWrap, circle, rotDeg }) => {
+    if(!sweetsWrap || !circle) return;
+    const circleRect = circle.getBoundingClientRect();
+    const sweetsRect = sweetsWrap.getBoundingClientRect();
+    if(!circleRect.width || !circleRect.height || !sweetsRect.width || !sweetsRect.height) return;
+
+    const circleCenter = {
+      x: circleRect.left + circleRect.width / 2,
+      y: circleRect.top + circleRect.height / 2,
+    };
+    const sweetsCenter = {
+      x: sweetsRect.left + sweetsRect.width / 2,
+      y: sweetsRect.top + sweetsRect.height / 2,
+    };
+
+    const dx = playCenter.x - circleCenter.x;
+    const dy = playCenter.y - circleCenter.y;
+    const len = Math.hypot(dx, dy) || 1;
+    const targetX = circleCenter.x + (dx / len) * decidedMoveDistance;
+    const targetY = circleCenter.y + (dy / len) * decidedMoveDistance;
+    const moveX = targetX - sweetsCenter.x;
+    const moveY = targetY - sweetsCenter.y;
+    const rotRad = (typeof rotDeg === 'number' ? rotDeg : 0) * Math.PI / 180;
+    const localMoveX = moveX * Math.cos(-rotRad) - moveY * Math.sin(-rotRad);
+    const localMoveY = moveX * Math.sin(-rotRad) + moveY * Math.cos(-rotRad);
+
+    sweetsWrap.style.setProperty('--decidedMoveX', `${localMoveX}px`);
+    sweetsWrap.style.setProperty('--decidedMoveY', `${localMoveY}px`);
+    sweetsWrap.classList.add('decided-move');
+  });
+}
+
 function renderPlayerCircle(players){
   playerCircle.innerHTML = '';
   playerCircle.appendChild(playCircleEl);
@@ -2385,6 +2430,7 @@ function renderPlayerCircle(players){
   const step = (2 * Math.PI) / n;
   const anchorAngle = Math.PI / 2;
   const meIndex = players.findIndex(p => p.id === state.userId);
+  const decidedMoveTargets = [];
 
   const leaderSeat = state.turn?.leaderSeat ?? null;
   const activeSeat = state.turn?.activeSeat ?? null;
@@ -2544,7 +2590,9 @@ if(started){
         startRoundPickDrag(e, p.id);
       });
     }
-    sweetsWrap.classList.toggle('decided-move', decidedUids.includes(p.id));
+    if(decidedUids.includes(p.id)){
+      decidedMoveTargets.push({ sweetsWrap, circle, rotDeg });
+    }
 
     const sweetsMini = document.createElement('div');
     sweetsMini.className = 'sweets-mini';
@@ -2602,7 +2650,7 @@ if(leaderSeat !== null && leaderSeat === p.seatIndex){
   tag.appendChild(chip);
 }
   });
-
+  applyDecidedSweetsMove(decidedMoveTargets);
   updateActionDeckUI();
   updateSweetsDeckUI();
 }
