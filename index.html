@@ -1039,9 +1039,14 @@
   animation:sweetsTagMove .6s ease;
   pointer-events:none;
 }
+.selected-sweets-tag.delayed-show{
+  opacity:0;
+  visibility:hidden;
+}
 .selected-sweets-tag.decided-static{
   animation:none;
 }
+
 
 
 .selected-sweets-tag.collect-hidden{
@@ -2587,15 +2592,22 @@ function renderPlayerCircle(players){
         chip.className = 'leader-chip';
         tag.appendChild(chip);
       }
-      if(started && decidedUids.includes(state.userId)){
+     if(started && decidedUids.includes(state.userId)){
         const sweetsCard = getSweetsCardByUid(state.userId);
         if(sweetsCard){
           const isCollectHidden = collectedSweetsHidden.has(state.userId);
           const selected = document.createElement('div');
           selected.className = 'selected-sweets-tag';
-          const alreadyAnimated = decidedSweetsAnimated.has(state.userId);
-          if(alreadyAnimated){
+          let decidedStartedAt = decidedSweetsAnimated.get(state.userId);
+          if(typeof decidedStartedAt !== 'number'){
+            decidedStartedAt = Date.now();
+            decidedSweetsAnimated.set(state.userId, decidedStartedAt);
+          }
+          const animationCompleted = hasCompletedDecidedMove(state.userId);
+          if(animationCompleted){
             selected.classList.add('decided-static');
+          }else{
+            selected.classList.add('delayed-show');
           }
           if(isCollectHidden){
             selected.classList.add('collect-hidden');
@@ -2629,13 +2641,15 @@ function renderPlayerCircle(players){
               voteStack.appendChild(v);
             }
             selected.appendChild(voteStack);
-          }
+         }
           tag.appendChild(selected);
           requestAnimationFrame(() => {
             animateMySweetsToTag(selected, sweetsCard);
           });
-          if(!alreadyAnimated){
-            decidedSweetsAnimated.set(state.userId, Date.now());
+          if(!animationCompleted){
+            setTimeout(() => {
+              selected.classList.remove('delayed-show');
+            }, DECIDED_MOVE_DURATION_MS);
           }
         }
       }
