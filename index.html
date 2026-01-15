@@ -201,7 +201,7 @@
   }
   @keyframes sweetsTagMove {
     from{transform:translate(-50%,0);}
-    to{transform:translate(-50%,-30px);}
+    to{transform:translate(-50%, var(--sweetsTagMoveY));}
   }
   @keyframes sweetsDecidedMoveMy {
     from{transform:translateY(0);}
@@ -1061,7 +1061,8 @@
   height:var(--deckCardH);
   border-radius:var(--deckCardR);
   overflow:visible;
-  transform:translate(-50%,-30px);
+  --sweetsTagMoveY:-30px;
+  transform:translate(-50%, var(--sweetsTagMoveY));
   animation:sweetsTagMove .6s ease;
   pointer-events:none;
 }
@@ -2502,7 +2503,7 @@ function createRoundedStarSvg(){
 }
 const decidedSweetsAnimated = new Map();
 const DECIDED_MOVE_DURATION_MS = 650;
-const DECIDED_CENTER_DELAY_MS = DECIDED_MOVE_DURATION_MS + 1000;
+const DECIDED_CENTER_DELAY_MS = DECIDED_MOVE_DURATION_MS + 1500;
 const DECIDED_CENTER_MOVE_DURATION_MS = 650;
 const decidedCenterMoveAnimated = new Map();
 const decidedCenterMoveTimers = new Map();
@@ -2663,8 +2664,19 @@ function animateMySweetsToTag(targetEl, card){
   if(!targetEl || !card || !lastMySweetsSnapshot) return;
   if(mySweetsFlyAnimatedFor === card.id) return;
   const srcRect = lastMySweetsSnapshot.rect;
+  const tagEl = targetEl.classList.contains('selected-sweets-tag')
+    ? targetEl
+    : targetEl.closest('.selected-sweets-tag');
   const dstRect = targetEl.getBoundingClientRect();
   if(!srcRect.width || !srcRect.height || !dstRect.width || !dstRect.height) return;
+  let moveYAdjust = 0;
+  if(tagEl){
+    const moveYValue = getComputedStyle(tagEl).getPropertyValue('--sweetsTagMoveY').trim();
+    const parsedMoveY = parseFloat(moveYValue);
+    if(Number.isFinite(parsedMoveY)){
+      moveYAdjust = parsedMoveY;
+    }
+  }
 
   const fly = document.createElement('div');
   fly.className = 'sweets-fly-card';
@@ -2682,7 +2694,7 @@ function animateMySweetsToTag(targetEl, card){
   document.body.appendChild(fly);
 
   const dx = dstRect.left - srcRect.left;
-  const dy = dstRect.top - srcRect.top;
+  const dy = (dstRect.top + moveYAdjust) - srcRect.top;
   const scale = dstRect.width / srcRect.width;
 
   fly.animate([
