@@ -2528,6 +2528,7 @@ function applyDecidedSweetsMove(items){
 
   items.forEach(({ uid, sweetsWrap, circle, rotDeg, skipMove }) => {
     if(!sweetsWrap || !circle) return;
+    const alreadyAnimated = uid && decidedSweetsAnimated.has(uid);
     const circleRect = circle.getBoundingClientRect();
     const sweetsRect = sweetsWrap.getBoundingClientRect();
     if(!circleRect.width || !circleRect.height || !sweetsRect.width || !sweetsRect.height) return;
@@ -2552,7 +2553,7 @@ function applyDecidedSweetsMove(items){
     const localMoveX = moveX * Math.cos(-rotRad) - moveY * Math.sin(-rotRad);
     const localMoveY = moveX * Math.sin(-rotRad) + moveY * Math.cos(-rotRad);
 
-    if(skipMove){
+    if(skipMove || alreadyAnimated){
       sweetsWrap.classList.add('decided-static');
     }else{
       sweetsWrap.classList.remove('decided-static');
