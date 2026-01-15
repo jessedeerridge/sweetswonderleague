@@ -1232,6 +1232,48 @@
   will-change:transform, opacity;
 }
 
+/* =========================
+   ★ 中央：リーダーボード（長方形 5:3.3）
+   ========================= */
+.leaderboard-board{
+  position:absolute;
+  left:50%;
+  top:50%;
+  transform:translate(-50%,-50%);
+  width:min(120px, 78vw);
+  aspect-ratio: 5 / 3.3;
+  border-radius:14px;
+  border:1px solid rgba(0,0,0,.18);
+  background:rgba(255,255,255,.18);
+  box-shadow:0 10px 24px rgba(0,0,0,.12);
+  overflow:hidden;
+  pointer-events:none;
+  z-index:4; /* play-circleより下/上は好みで */
+}
+.leaderboard-board.hidden{display:none;}
+.leaderboard-board img{
+  width:100%;
+  height:100%;
+  object-fit:cover;
+  display:block;
+}
+
+/* play-circle を前面に（中央ボードの上に乗せる） */
+.play-circle{ z-index:6; }
+/* ✅ leaderboardより前面に出したいUIのレイヤーを上げる */
+.otherplayerscircle{ z-index: 7; }   /* 他プレイヤーの円ごと前へ */
+.player-tag{ z-index: 8; }          /* ネームタグ前へ */
+.other-cards-row{ z-index: 8; }     /* 内側カード列も前へ */
+
+/* 選抜スイーツ表示（selected card）をさらに前へ */
+.selected-sweets-tag{ z-index: 9; }
+
+/* チップ系も前へ（投票チップ/投票スタック） */
+.vote-chip{ z-index: 9; }           /* 自分の投票チップ（念のため） */
+.vote-stack{ z-index: 9; }          /* 付随する投票チップ群 */
+
+/* ※ leaderboardは現状のままでもOK（z-index:4） */
+
 
 
 </style>
@@ -1259,6 +1301,12 @@
     <p>ここにテーブルや情報が表示されます。</p>
 
     <div id="playerCircle" class="player-circle">
+
+  <!-- ★ 中央：リーダーボード（人数で画像切替） -->
+  <div id="leaderboardBoard" class="leaderboard-board hidden" aria-hidden="true">
+    <img id="leaderboardImg" alt="leaderboard" />
+  </div>
+
       <div id="playCircle" class="play-circle">
         <!-- ★ 中央：アクション山札（左）＋スイーツ山札（右） -->
         <div id="centerDecks" class="center-decks hidden" aria-hidden="false">
@@ -1480,6 +1528,8 @@ const myReceivedEl = document.getElementById('myReceived');
 const mySweetsEl = document.getElementById('mySweets');
 const myAreaEl = document.getElementById('myArea');
 const myVoteChipEl = document.getElementById('myVoteChip');
+const leaderboardBoardEl = document.getElementById('leaderboardBoard');
+const leaderboardImgEl   = document.getElementById('leaderboardImg');
 
 const centerDecksEl = document.getElementById('centerDecks');
 
@@ -1568,6 +1618,58 @@ function updateHostUI(){
   }
   helpBtn.classList.add('visible');
 }
+
+function setLeaderboardImageBase(base){
+  if(!leaderboardImgEl) return;
+  // 既定は .jpg → ダメなら .png → .webp
+  leaderboardImgEl.dataset.base = base;
+  leaderboardImgEl.dataset.try = 'jpg';
+  leaderboardImgEl.src = `${base}.jpg`;
+}
+if (leaderboardImgEl){
+  leaderboardImgEl.addEventListener('error', () => {
+    const base = leaderboardImgEl.dataset.base || '';
+    const tried = leaderboardImgEl.dataset.try || 'jpg';
+    if(!base) return;
+
+    if(tried === 'jpg'){
+      leaderboardImgEl.dataset.try = 'png';
+      leaderboardImgEl.src = `${base}.png`;
+      return;
+    }
+    if(tried === 'png'){
+      leaderboardImgEl.dataset.try = 'webp';
+      leaderboardImgEl.src = `${base}.webp`;
+      return;
+    }
+    // ここまで来たら諦めて非表示（無限エラー防止）
+    leaderboardBoardEl?.classList.add('hidden');
+  });
+}
+
+function updateLeaderboardBoardByPlayerCount(n){
+  if(!leaderboardBoardEl || !leaderboardImgEl) return;
+
+  let base = null;
+  if(n >= 1 && n <= 4) base = 'swleaderboard1';
+  else if(n >= 5 && n <= 6) base = 'swleaderboard2';
+  else if(n >= 7 && n <= 8) base = 'swleaderboard3';
+
+  if(!base){
+    leaderboardBoardEl.classList.add('hidden');
+    leaderboardBoardEl.setAttribute('aria-hidden','true');
+    return;
+  }
+
+  leaderboardBoardEl.classList.remove('hidden');
+  leaderboardBoardEl.setAttribute('aria-hidden','false');
+
+  // 同じbaseなら張り替えない
+  if(leaderboardImgEl.dataset.base !== base){
+    setLeaderboardImageBase(base);
+  }
+}
+
 
 /* =========================
    ★ 中央：アクション山札UI
@@ -1767,6 +1869,7 @@ function subscribePlayers(){
 
     await syncSeatUI();
     renderPlayerCircle(players);
+updateLeaderboardBoardByPlayerCount(players.length); 
     updatePassRoundBtn();
   });
 }
@@ -2785,7 +2888,13 @@ function animateMySweetsToTag(targetEl, card){
 
 function renderPlayerCircle(players){
   playerCircle.innerHTML = '';
+
+  // ★ 中央リーダーボード → ★ playCircle の順で復元
+  if(leaderboardBoardEl) playerCircle.appendChild(leaderboardBoardEl);
   playerCircle.appendChild(playCircleEl);
+
+  // ★ 人数でボード画像を切り替え（席に着いてる人数）
+  updateLeaderboardBoardByPlayerCount(players?.length || 0);
 
   if (!players.length) return;
 
