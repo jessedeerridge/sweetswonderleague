@@ -988,6 +988,10 @@
 .sweets-wrap.decided-move.decided-static{
   transition:none;
 }
+.sweets-wrap.center-move-host{
+  border-color:transparent;
+  background:transparent;
+}
 .sweets-wrap.collect-hidden{
   border-color:transparent;
   background:transparent;
@@ -1003,8 +1007,17 @@
   border:1px solid rgba(0,0,0,.18);
   background:url('swsweetsura.jpg') center/cover no-repeat;
   box-shadow:0 6px 16px rgba(0,0,0,.18);
+  --centerMoveX: 0px;
+  --centerMoveY: 0px;
 }
 .sweets-mini.hidden{display:none;}
+.sweets-mini.center-move{
+  transition:transform .6s ease;
+  transform:translate(var(--centerMoveX), var(--centerMoveY));
+}
+.sweets-mini.center-move.center-static{
+  transition:none;
+}
 
 .my-sweets.roundpick-candidate{
   animation:pulseCardStrong 1.05s ease-in-out infinite;
@@ -1047,9 +1060,6 @@
   width:var(--deckCardW);
   height:var(--deckCardH);
   border-radius:var(--deckCardR);
-  border:1px solid rgba(0,0,0,.18);
-  background:#fff;
-  box-shadow:0 6px 16px rgba(0,0,0,.18);
   overflow:visible;
   transform:translate(-50%,-30px);
   animation:sweetsTagMove .6s ease;
@@ -1065,7 +1075,7 @@
 
 
 
-.selected-sweets-tag.collect-hidden{
+.selected-sweets-tag.collect-hidden .selected-sweets-card{
   border-color:transparent;
   background:transparent;
   box-shadow:none;
@@ -1076,7 +1086,25 @@
 .selected-sweets-tag.collect-hidden .sweets-number-tag{
   opacity:0;
 }
-.selected-sweets-tag img{
+.selected-sweets-card{
+  position:relative;
+  width:100%;
+  height:100%;
+  border-radius:inherit;
+  border:1px solid rgba(0,0,0,.18);
+  background:#fff;
+  box-shadow:0 6px 16px rgba(0,0,0,.18);
+  --centerMoveX: 0px;
+  --centerMoveY: 0px;
+}
+.selected-sweets-card.center-move{
+  transition:transform .6s ease;
+  transform:translate(var(--centerMoveX), var(--centerMoveY));
+}
+.selected-sweets-card.center-move.center-static{
+  transition:none;
+}
+.selected-sweets-card img{
   width:100%;
   height:100%;
   object-fit:cover;
@@ -1084,7 +1112,7 @@
   border-radius:inherit;
 
 }
-.selected-sweets-tag .sweets-number-tag{
+.selected-sweets-card .sweets-number-tag{
   position:absolute;
   right:9px;
   top:-12px;
@@ -1103,7 +1131,7 @@
 
   text-shadow:0 1px 0 rgba(255,255,255,.6);
 }
-.selected-sweets-tag .sweets-number-star{
+.selected-sweets-card .sweets-number-star{
   position:absolute;
   inset:0;
   width:100%;
@@ -1111,7 +1139,7 @@
   z-index:0;
   pointer-events:none;
 }
-.selected-sweets-tag .sweets-number-text{
+.selected-sweets-card .sweets-number-text{
   position:relative;
   z-index:1;
   transform:translateZ(0) translateY(-1px);
@@ -2474,6 +2502,10 @@ function createRoundedStarSvg(){
 }
 const decidedSweetsAnimated = new Map();
 const DECIDED_MOVE_DURATION_MS = 650;
+const DECIDED_CENTER_DELAY_MS = DECIDED_MOVE_DURATION_MS + 1000;
+const DECIDED_CENTER_MOVE_DURATION_MS = 650;
+const decidedCenterMoveAnimated = new Map();
+const decidedCenterMoveTimers = new Map();
 let lastMySweetsSnapshot = null;
 let mySweetsFlyAnimatedFor = null;
 
@@ -2533,6 +2565,86 @@ function applyDecidedSweetsMove(items){
     }
 
   });
+}
+
+function parseRotationDegrees(value){
+  if(!value) return 0;
+  const num = parseFloat(value);
+  return Number.isFinite(num) ? num : 0;
+}
+
+function applyCenterMoveToCard(cardEl, hostEl, rotDeg, startedAt){
+  if(!cardEl || !playerCircle) return;
+  const circleRect = playerCircle.getBoundingClientRect();
+  const cardRect = cardEl.getBoundingClientRect();
+  if(!circleRect.width || !circleRect.height || !cardRect.width || !cardRect.height) return;
+
+  const circleCenter = {
+    x: circleRect.left + circleRect.width / 2,
+    y: circleRect.top + circleRect.height / 2,
+  };
+  const cardCenter = {
+    x: cardRect.left + cardRect.width / 2,
+    y: cardRect.top + cardRect.height / 2,
+  };
+  let moveX = circleCenter.x - cardCenter.x;
+  let moveY = circleCenter.y - cardCenter.y;
+
+  if(rotDeg){
+    const rotRad = rotDeg * Math.PI / 180;
+    const localMoveX = moveX * Math.cos(-rotRad) - moveY * Math.sin(-rotRad);
+    const localMoveY = moveX * Math.sin(-rotRad) + moveY * Math.cos(-rotRad);
+    moveX = localMoveX;
+    moveY = localMoveY;
+  }
+
+  cardEl.style.setProperty('--centerMoveX', `${moveX}px`);
+  cardEl.style.setProperty('--centerMoveY', `${moveY}px`);
+  cardEl.classList.add('center-move');
+  if(hostEl){
+    hostEl.classList.add('center-move-host');
+  }
+
+  if(typeof startedAt === 'number' && (Date.now() - startedAt) > DECIDED_CENTER_MOVE_DURATION_MS){
+    cardEl.classList.add('center-static');
+  }else{
+    cardEl.classList.remove('center-static');
+  }
+}
+
+function applyCenterMoveForUid(uid){
+  const startedAt = decidedCenterMoveAnimated.get(uid);
+  const tagEl = document.querySelector(`.selected-sweets-tag[data-sweets-uid="${uid}"]`);
+  if(tagEl){
+    const cardEl = tagEl.querySelector('.selected-sweets-card');
+    applyCenterMoveToCard(cardEl, tagEl, 0, startedAt);
+  }
+
+  const wrapEl = document.querySelector(`.sweets-wrap[data-sweets-uid="${uid}"]`);
+  if(wrapEl){
+    const cardEl = wrapEl.querySelector('.sweets-mini');
+    const circle = wrapEl.closest('.otherplayerscircle');
+    const rotDeg = circle
+      ? parseRotationDegrees(getComputedStyle(circle).getPropertyValue('--rotDeg').trim())
+      : 0;
+    applyCenterMoveToCard(cardEl, wrapEl, rotDeg, startedAt);
+  }
+}
+
+function scheduleCenterMove(uid){
+  if(decidedCenterMoveAnimated.has(uid) || decidedCenterMoveTimers.has(uid)) return;
+  const rp = getRoundPick();
+  if(!rp || rp.phase !== 'done') return;
+  const decidedAt = decidedSweetsAnimated.get(uid);
+  if(typeof decidedAt !== 'number') return;
+  const delay = Math.max(0, decidedAt + DECIDED_CENTER_DELAY_MS - Date.now());
+  const timerId = setTimeout(() => {
+    decidedCenterMoveTimers.delete(uid);
+    if(decidedCenterMoveAnimated.has(uid)) return;
+    decidedCenterMoveAnimated.set(uid, Date.now());
+    applyCenterMoveForUid(uid);
+  }, delay);
+  decidedCenterMoveTimers.set(uid, timerId);
 }
 
 function cacheMySweetsSnapshot(){
@@ -2657,11 +2769,13 @@ function renderPlayerCircle(players){
             selected.classList.add('collect-hidden');
           }
           selected.dataset.sweetsUid = state.userId;
+          const cardWrap = document.createElement('div');
+          cardWrap.className = 'selected-sweets-card';
           const img = document.createElement('img');
           img.src = SWEETS_BACK_IMG;
           img.alt = `sweets ${sweetsCard.value ?? ''}`;
           img.onerror = () => { if(sweetsCard.fallback) img.src = sweetsCard.fallback; };
-          selected.appendChild(img);
+          cardWrap.appendChild(img);
 
          if(typeof sweetsCard.value !== 'undefined'){
             const valueTag = document.createElement('div');
@@ -2672,8 +2786,9 @@ function renderPlayerCircle(players){
             valueText.textContent = String(sweetsCard.value);
             valueTag.appendChild(star);
             valueTag.appendChild(valueText);
-            selected.appendChild(valueTag);
+            cardWrap.appendChild(valueTag);
           }
+          selected.appendChild(cardWrap);
 
           const vCount = getVoteCountFor(state.userId);
           if(vCount > 0){
@@ -2694,6 +2809,12 @@ function renderPlayerCircle(players){
             setTimeout(() => {
               selected.classList.remove('delayed-show');
             }, DECIDED_MOVE_DURATION_MS);
+          }
+          scheduleCenterMove(state.userId);
+          if(decidedCenterMoveAnimated.has(state.userId)){
+            requestAnimationFrame(() => {
+              applyCenterMoveForUid(state.userId);
+            });
           }
         }
       }
@@ -2792,6 +2913,14 @@ if(started){
         skipMove: hasCompletedDecidedMove(p.id),
       });
     }
+    if(decidedUids.includes(p.id)){
+      scheduleCenterMove(p.id);
+      if(decidedCenterMoveAnimated.has(p.id)){
+        requestAnimationFrame(() => {
+          applyCenterMoveForUid(p.id);
+        });
+      }
+    }
 
 
     const sweetsMini = document.createElement('div');
@@ -2851,6 +2980,16 @@ if(leaderSeat !== null && leaderSeat === p.seatIndex){
 }
   });
   applyDecidedSweetsMove(decidedMoveTargets);
+  if(roundPick?.phase === 'done' && decidedUids.length){
+    decidedUids.forEach((uid) => {
+      scheduleCenterMove(uid);
+      if(decidedCenterMoveAnimated.has(uid)){
+        requestAnimationFrame(() => {
+          applyCenterMoveForUid(uid);
+        });
+      }
+    });
+  }
   updateActionDeckUI();
   updateSweetsDeckUI();
 }
@@ -3064,6 +3203,9 @@ function resetCollectedSweetsHiddenCache(){
   if(!state.game?.roundEnding){
     collectedSweetsHidden.clear();
     decidedSweetsAnimated.clear();
+    decidedCenterMoveAnimated.clear();
+    decidedCenterMoveTimers.forEach((timerId) => clearTimeout(timerId));
+    decidedCenterMoveTimers.clear();
     document.querySelectorAll('.collect-hidden').forEach(el => {
       el.classList.remove('collect-hidden');
     });
