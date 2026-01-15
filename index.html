@@ -1213,8 +1213,8 @@
   left:50%;
   top:50%;
   transform:translate(-50%,-50%);
-  width:140px;
-  height:190px;
+  width:160px;
+  height:220px;
   z-index:615;
   pointer-events:none;
 }
@@ -1222,8 +1222,8 @@
   position:absolute;
   left:50%;
   top:50%;
-  width:90px;
-  height:135px;
+  width:120px;
+  height:170px;
   transform:translate(-50%,-50%);
   border-radius:12px;
   border:1px solid rgba(255,255,255,.25);
@@ -2503,7 +2503,7 @@ function createRoundedStarSvg(){
 }
 const decidedSweetsAnimated = new Map();
 const DECIDED_MOVE_DURATION_MS = 650;
-const DECIDED_CENTER_DELAY_MS = DECIDED_MOVE_DURATION_MS + 1000;
+const DECIDED_CENTER_DELAY_MS = DECIDED_MOVE_DURATION_MS + 1800;
 const DECIDED_CENTER_MOVE_DURATION_MS = 650;
 const decidedCenterMoveAnimated = new Map();
 const decidedCenterMoveTimers = new Map();
@@ -3621,58 +3621,97 @@ function _getCenterPoint(){
 }
 
 /** ★ シャッフル演出（中央） */
-async function _runCenterShuffle(token){
+/** ★ シャッフル演出（sweetshuffle1） */
+async function _runSweetShuffle1(token){
   const stage = document.createElement('div');
   stage.className = 'sweets-shuffle-stage';
   document.body.appendChild(stage);
   roundEndFx.nodes.add(stage);
 
-  const N = 5;
-  const cards = [];
-  for(let i=0;i<N;i++){
-    const c = document.createElement('div');
-    c.className = 'sweets-shuffle-card';
-    c.style.backgroundImage = `url('${SWEETS_BACK_IMG}')`;
-    c.style.zIndex = String(10 + i);
-    stage.appendChild(c);
-    cards.push(c);
-  }
+  const OFFSET_X = 4;
+  const OFFSET_Y = 4;
+  const OUT_X = 78;
+  const TILT_BASE = 5;
+  const TILT_MORE = 5;
+  const DUR_OUT = 220;
+  const DUR_IN = 220;
+  const PAUSE = 20;
+  const LOOPS = 3;
+  const base = 'translate(-50%,-50%)';
+  const baseFront = `${base} translate(0px,0px) rotate(${TILT_BASE}deg)`;
+  const baseBack = `${base} translate(${OFFSET_X}px,${OFFSET_Y}px) rotate(${TILT_BASE}deg)`;
+  const outTransform = `${base} translate(${OUT_X}px,0px) rotate(${TILT_BASE + TILT_MORE}deg)`;
 
-  // 1回だけの“シャッフルっぽい”クロス
-  const dur = 1200;
-  const easing = 'cubic-bezier(.22,.84,.44,1)';
+  const back = document.createElement('div');
+  back.className = 'sweets-shuffle-card';
+  back.style.backgroundImage = `url('${SWEETS_BACK_IMG}')`;
+  back.style.zIndex = '1';
+  back.style.transform = baseBack;
 
-  const animPromises = cards.map((el, i) => {
-    const side = (i % 2 === 0) ? 1 : -1;
-    const x1 = side * (34 + (i*2));
-    const y1 = (-18 + i*6);
-    const x2 = -x1;
-    const y2 = -y1;
+  const front = document.createElement('div');
+  front.className = 'sweets-shuffle-card';
+  front.style.backgroundImage = `url('${SWEETS_BACK_IMG}')`;
+  front.style.zIndex = '2';
+  front.style.transform = baseFront;
 
-    const a = el.animate([
-      { transform:`translate(-50%,-50%) translate(0px,0px) rotate(0deg)`, opacity:1 },
-      { transform:`translate(-50%,-50%) translate(${x1}px,${y1}px) rotate(${(i-2)*7}deg)`, opacity:1 },
-      { transform:`translate(-50%,-50%) translate(${x2}px,${y2}px) rotate(${(2-i)*7}deg)`, opacity:1 },
-      { transform:`translate(-50%,-50%) translate(0px,0px) rotate(0deg)`, opacity:1 },
+  stage.appendChild(back);
+  stage.appendChild(front);
+
+  const animateOnce = (el, keyframes, options) => {
+    const anim = el.animate(keyframes, options);
+    roundEndFx.anims.add(anim);
+    return new Promise(resolve => {
+      anim.onfinish = () => {
+        roundEndFx.anims.delete(anim);
+        resolve();
+      };
+      anim.oncancel = () => {
+        roundEndFx.anims.delete(anim);
+        resolve();
+      };
+    });
+  };
+
+  let frontEl = front;
+  let backEl = back;
+
+  for(let i=0;i<LOOPS;i++){
+    if(token !== roundEndFx.token) return;
+    await animateOnce(frontEl, [
+      { transform: baseFront },
+      { transform: outTransform },
     ], {
-      duration: dur,
-      easing,
-      delay: i * 40,
+      duration: DUR_OUT,
+      easing: 'ease-in-out',
       fill: 'forwards',
     });
 
-    roundEndFx.anims.add(a);
+    if(token !== roundEndFx.token) return;
+    frontEl.style.transform = outTransform;
+    frontEl.style.zIndex = '1';
+    backEl.style.zIndex = '2';
+    backEl.style.transform = baseFront;
 
-    return new Promise(resolve => {
-      a.onfinish = () => resolve();
-      a.oncancel = () => resolve();
+    await animateOnce(frontEl, [
+      { transform: outTransform },
+      { transform: baseBack },
+    ], {
+      duration: DUR_IN,
+      easing: 'ease-in-out',
+      fill: 'forwards',
     });
-  });
 
-  await Promise.all(animPromises);
+    if(token !== roundEndFx.token) return;
+    frontEl.style.transform = baseBack;
+
+    const tmp = frontEl;
+    frontEl = backEl;
+    backEl = tmp;
+
+    await new Promise(resolve => setTimeout(resolve, PAUSE));
+  }
+
   if(token !== roundEndFx.token) return;
-
-  // ステージはすぐ消す
   stage.remove();
   roundEndFx.nodes.delete(stage);
 }
@@ -3682,13 +3721,58 @@ async function animateRoundEndReveal(cards, selectedUids){
   _roundAnimRunning = true;
 
   try{
+    stopRoundEndFx();
+    const token = roundEndFx.token;
+
     document.querySelectorAll('.collect-card').forEach(el => el.remove());
     roundRevealRow.innerHTML = '';
     roundRevealOverlay.classList.add('hidden');
 
-    // ★（ここに「ラウンドの後処理」を後で足しやすいように置いておく）
-    // 例：passes/votes/voteChips/sweetsのリセット等は、ルール確定後にここへ追加
-    // await resetRoundStateLater();
+    const uids = Array.isArray(selectedUids) ? selectedUids : [];
+
+    const decidedTimes = uids
+      .map(uid => decidedSweetsAnimated.get(uid))
+      .filter(ts => typeof ts === 'number');
+    const decidedStartAt = decidedTimes.length ? Math.min(...decidedTimes) : Date.now();
+    const centerMoveStartAt = decidedStartAt + DECIDED_CENTER_DELAY_MS;
+    const shuffleStartAt = centerMoveStartAt + 1200;
+    const waitMs = Math.max(0, shuffleStartAt - Date.now());
+    if(waitMs > 0){
+      await new Promise(resolve => setTimeout(resolve, waitMs));
+    }
+    if(token !== roundEndFx.token) return;
+
+    uids.forEach(uid => {
+      const origin = _pickOriginElForUid(uid);
+      _hideOriginVisual(uid, origin);
+    });
+
+    await _runSweetShuffle1(token);
+    if(token !== roundEndFx.token) return;
+
+    roundRevealRow.innerHTML = '';
+    (Array.isArray(cards) ? cards : []).forEach(card => {
+      const el = document.createElement('div');
+      el.className = 'roundreveal-card';
+      const img = document.createElement('img');
+      img.src = card?.img || card?.fallback || SWEETS_BACK_IMG;
+      img.alt = `sweets ${card?.value ?? ''}`;
+      img.onerror = () => { if(card?.fallback) img.src = card.fallback; };
+      el.appendChild(img);
+      roundRevealRow.appendChild(el);
+    });
+    roundRevealOverlay.classList.remove('hidden');
+
+    await new Promise(resolve => setTimeout(resolve, 2800));
+    if(token !== roundEndFx.token) return;
+
+    roundRevealOverlay.classList.add('hidden');
+    roundRevealRow.innerHTML = '';
+
+    for(const restore of roundEndFx.restores){
+      try{ restore(); }catch(_){}
+    }
+    roundEndFx.restores = [];
   } finally {
     _roundAnimRunning = false;
   }
