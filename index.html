@@ -1,4 +1,7 @@
-<!DOCTYPE html>  
+
+
+
+<!DOCTYPE html>   
 <html lang="ja">
 <head>
 <meta charset="UTF-8" />
@@ -1172,6 +1175,34 @@
   background:var(--voteChipFill);
   box-shadow:0 10px 24px rgba(0,0,0,.18);
 }
+
+/* =========================
+   ★★ 選抜スイーツ：回収→シャッフル（中央）
+   ========================= */
+.sweets-shuffle-stage{
+  position:fixed;
+  left:50%;
+  top:50%;
+  transform:translate(-50%,-50%);
+  width:140px;
+  height:190px;
+  z-index:615;
+  pointer-events:none;
+}
+.sweets-shuffle-card{
+  position:absolute;
+  left:50%;
+  top:50%;
+  width:90px;
+  height:135px;
+  transform:translate(-50%,-50%);
+  border-radius:12px;
+  border:1px solid rgba(255,255,255,.25);
+  box-shadow:0 16px 44px rgba(0,0,0,.35);
+  background:center/cover no-repeat;
+  will-change:transform, opacity;
+}
+
 
 
 </style>
@@ -3301,112 +3332,212 @@ function toggleCollectHiddenForUids(uids, hidden){
   });
 }
 
+
+/* =========================
+   ★★★ ラウンド終了：回収→シャッフル→拡大表示（全員）
+   - ゴースト防止：元位置DOMを collect-hidden で不可視化
+   - 二重防止：stopRoundEndFx() + token で排他
+   ========================= */
+
+const roundEndFx = {
+  token: 0,
+  timers: new Set(),
+  anims: new Set(),
+  nodes: new Set(),
+  restores: [],
+};
+
+function _fxRememberRestore(fn){
+  roundEndFx.restores.push(fn);
+}
+function _fxSetTimeout(fn, ms, token){
+  const id = setTimeout(() => {
+    roundEndFx.timers.delete(id);
+    if(token !== roundEndFx.token) return;
+    fn();
+  }, ms);
+  roundEndFx.timers.add(id);
+  return id;
+}
+function _fxSleep(ms, token){
+  return new Promise(resolve => _fxSetTimeout(resolve, ms, token));
+}
+
+/** ★ 強制停止＆後始末（“前の”演出を完全に殺す） */
+function stopRoundEndFx(){
+  // token更新（これで進行中awaitは全部無効化）
+  roundEndFx.token++;
+
+  // timers
+  for(const t of roundEndFx.timers) clearTimeout(t);
+  roundEndFx.timers.clear();
+
+  // anims
+  for(const a of roundEndFx.anims){
+    try{ a.cancel(); }catch(_){}
+  }
+  roundEndFx.anims.clear();
+
+  // nodes
+  for(const n of roundEndFx.nodes){
+    try{ n.remove(); }catch(_){}
+  }
+  roundEndFx.nodes.clear();
+
+  // restore（途中停止時だけ元に戻す）
+  for(const r of roundEndFx.restores){
+    try{ r(); }catch(_){}
+  }
+  roundEndFx.restores = [];
+
+  // overlay掃除（ゴースト残し防止）
+  try{
+    roundRevealRow.innerHTML = '';
+    roundRevealOverlay.classList.add('hidden');
+  }catch(_){}
+}
+
+/** ★ “元位置”として最優先で使うDOMを探す（ゴースト防止のため） */
+function _pickOriginElForUid(uid){
+  // 1) decided表示（タグ上の selected-sweets-tag）
+  let el = document.querySelector(`.selected-sweets-tag[data-sweets-uid="${uid}"]`);
+  if(el) return el;
+
+  // 2) 他プレイヤーのスイーツ枠（sweets-wrap）
+  el = document.querySelector(`.sweets-wrap[data-sweets-uid="${uid}"]`);
+  if(el) return el;
+
+  // 3) 自分の手元スイーツ
+  if(uid === state.userId && mySweetsEl && !mySweetsEl.classList.contains('hidden')){
+    return mySweetsEl;
+  }
+
+  return null;
+}
+
+/** ★ 元位置を不可視化（“ゴースト”＝残像防止） */
+function _hideOriginVisual(uid, originEl){
+  if(!originEl) return;
+
+  // sweets-wrap / selected-sweets-tag は既存CSSの collect-hidden を使う
+  if(originEl.classList.contains('sweets-wrap') || originEl.classList.contains('selected-sweets-tag')){
+    if(!originEl.classList.contains('collect-hidden')){
+      originEl.classList.add('collect-hidden');
+      collectedSweetsHidden.add(uid);
+      _fxRememberRestore(()=> {
+        originEl.classList.remove('collect-hidden');
+        collectedSweetsHidden.delete(uid);
+      });
+    }
+    return;
+  }
+
+  // mySweetsEl など：visibilityで消す（レイアウトは保持）
+  const prevVis = originEl.style.visibility;
+  originEl.style.visibility = 'hidden';
+  collectedSweetsHidden.add(uid);
+  _fxRememberRestore(()=> {
+    originEl.style.visibility = prevVis;
+    collectedSweetsHidden.delete(uid);
+  });
+}
+
+/** ★ 回収カード（裏）を作成 */
+function _createCollectCardAtRect(rect){
+  const node = document.createElement('div');
+  node.className = 'collect-card';
+  node.style.left = `${rect.left}px`;
+  node.style.top  = `${rect.top}px`;
+  node.style.width  = `${rect.width}px`;
+  node.style.height = `${rect.height}px`;
+  // collect-card の background はCSSで swsweetsura.jpg になってる前提（既存のまま）
+  document.body.appendChild(node);
+  roundEndFx.nodes.add(node);
+  return node;
+}
+
+/** ★ 中央座標（PLAYを中心に。無理なら画面中央） */
+function _getCenterPoint(){
+  const pr = playCircleEl?.getBoundingClientRect?.();
+  if(pr && pr.width && pr.height){
+    return { x: pr.left + pr.width/2, y: pr.top + pr.height/2 };
+  }
+  return { x: window.innerWidth/2, y: window.innerHeight/2 };
+}
+
+/** ★ シャッフル演出（中央） */
+async function _runCenterShuffle(token){
+  const stage = document.createElement('div');
+  stage.className = 'sweets-shuffle-stage';
+  document.body.appendChild(stage);
+  roundEndFx.nodes.add(stage);
+
+  const N = 5;
+  const cards = [];
+  for(let i=0;i<N;i++){
+    const c = document.createElement('div');
+    c.className = 'sweets-shuffle-card';
+    c.style.backgroundImage = `url('${SWEETS_BACK_IMG}')`;
+    c.style.zIndex = String(10 + i);
+    stage.appendChild(c);
+    cards.push(c);
+  }
+
+  // 1回だけの“シャッフルっぽい”クロス
+  const dur = 1200;
+  const easing = 'cubic-bezier(.22,.84,.44,1)';
+
+  const animPromises = cards.map((el, i) => {
+    const side = (i % 2 === 0) ? 1 : -1;
+    const x1 = side * (34 + (i*2));
+    const y1 = (-18 + i*6);
+    const x2 = -x1;
+    const y2 = -y1;
+
+    const a = el.animate([
+      { transform:`translate(-50%,-50%) translate(0px,0px) rotate(0deg)`, opacity:1 },
+      { transform:`translate(-50%,-50%) translate(${x1}px,${y1}px) rotate(${(i-2)*7}deg)`, opacity:1 },
+      { transform:`translate(-50%,-50%) translate(${x2}px,${y2}px) rotate(${(2-i)*7}deg)`, opacity:1 },
+      { transform:`translate(-50%,-50%) translate(0px,0px) rotate(0deg)`, opacity:1 },
+    ], {
+      duration: dur,
+      easing,
+      delay: i * 40,
+      fill: 'forwards',
+    });
+
+    roundEndFx.anims.add(a);
+
+    return new Promise(resolve => {
+      a.onfinish = () => resolve();
+      a.oncancel = () => resolve();
+    });
+  });
+
+  await Promise.all(animPromises);
+  if(token !== roundEndFx.token) return;
+
+  // ステージはすぐ消す
+  stage.remove();
+  roundEndFx.nodes.delete(stage);
+}
+
 async function animateRoundEndReveal(cards, selectedUids){
   if(_roundAnimRunning) return;
   _roundAnimRunning = true;
 
   try{
-    const center = getRoundCollectCenter();
-    const clones = [];
-    const total = Array.isArray(selectedUids) ? selectedUids.length : 0;
-    const baseW = 90;
-    const baseH = 135;
-    const moveDuration = 600;
-    const moveDelay = 1500;
-    const shuffleDuration = 1500;
-    const preCollectDelay = 3000;
-
-    await new Promise(r => setTimeout(r, preCollectDelay));
-    toggleCollectHiddenForUids(selectedUids, true);
-
-    for(let i=0;i<total;i++){
-      const el = document.createElement('div');
-      el.className = 'collect-card';
-      const uid = selectedUids[i];
-      const fallbackRect = {
-        left: center.x - baseW / 2,
-        top: center.y - baseH / 2,
-        width: baseW,
-        height: baseH,
-      };
-      const sourceRect = getSweetsSourceRect(uid, fallbackRect);
-      const startLeft = sourceRect.left + sourceRect.width / 2 - baseW / 2;
-      const startTop = sourceRect.top + sourceRect.height / 2 - baseH / 2;
-      const centerLeft = center.x - baseW / 2;
-      const centerTop = center.y - baseH / 2;
-      const dx = centerLeft - startLeft;
-      const dy = centerTop - startTop;
-      const scaleX = sourceRect.width / baseW;
-      const scaleY = sourceRect.height / baseH;
-
-      el.style.left = `${startLeft}px`;
-      el.style.top  = `${startTop}px`;
-      el.style.transform = `translate(0px, 0px) scale(${scaleX}, ${scaleY})`;
-      document.body.appendChild(el);
-      clones.push(el);
-
-      el.animate([
-        { transform:`translate(0px,0px) scale(${scaleX}, ${scaleY})` },
-        { transform:`translate(${dx}px,${dy}px) scale(1,1)` },
-      ], { duration: moveDuration, easing:'ease-in-out', fill:'forwards' });
-    }
-
-    await new Promise(r => setTimeout(r, moveDuration + moveDelay));
-
-    clones.forEach((el) => {
-      el.style.left = `${center.x - baseW / 2}px`;
-      el.style.top = `${center.y - baseH / 2}px`;
-      el.style.transform = 'translate(0px,0px) scale(1,1)';
-    });
-
-    const jitterAnims = clones.map((el) => {
-      const jx = (Math.random()*18 - 9);
-      const jy = (Math.random()*18 - 9);
-      const rot = (Math.random()*18 - 9);
-      return el.animate([
-        { transform:`translate(0px,0px) rotate(0deg) scale(1.06)` },
-        { transform:`translate(${jx}px,${jy}px) rotate(${rot}deg) scale(1.06)` },
-        { transform:`translate(${-jx}px,${-jy}px) rotate(${-rot}deg) scale(1.06)` },
-        { transform:`translate(0px,0px) rotate(0deg) scale(1.06)` },
-      ], { duration: shuffleDuration, easing:'ease-in-out' });
-    });
-    await Promise.all(jitterAnims.map(a => a.finished.catch(()=>{})));
-
-    // 2) 表にして中央に公開（横並び・折り返しなし）
+    document.querySelectorAll('.collect-card').forEach(el => el.remove());
     roundRevealRow.innerHTML = '';
-    const showCards = (Array.isArray(cards) ? cards : []).filter(Boolean);
-
-    showCards.forEach(c => {
-      const box = document.createElement('div');
-      box.className = 'roundreveal-card';
-
-      const img = document.createElement('img');
-      img.src = c.img || '';
-      img.alt = `sweets ${c.value ?? ''}`;
-      img.onerror = () => { if(c.fallback) img.src = c.fallback; };
-
-      box.appendChild(img);
-    roundRevealRow.appendChild(box);
-  });
-
-  roundRevealOverlay.classList.remove('hidden');
-
-    // 3) 裏カードクローンは消す
-    clones.forEach(el => el.remove());
-
-    // 3秒表示
-    await new Promise(r => setTimeout(r, 3000));
     roundRevealOverlay.classList.add('hidden');
 
     // ★（ここに「ラウンドの後処理」を後で足しやすいように置いておく）
     // 例：passes/votes/voteChips/sweetsのリセット等は、ルール確定後にここへ追加
     // await resetRoundStateLater();
-
   } finally {
     _roundAnimRunning = false;
   }
 }
-
 /* =========================
    ドラッグ＆ドロップ（アクションカード）
    ========================= */
