@@ -973,7 +973,7 @@
 .sweets-wrap.hint-ok{ border-color:rgba(34,197,94,.75); }
 .sweets-wrap.hint-ng{ border-color:rgba(239,68,68,.75); }
 .sweets-wrap.roundpick-candidate{
-  animation:pulseCardStrong 1.05s ease-in-out infinite;
+  animation:pulseSweetsDeck 1.05s ease-in-out infinite;
 }
 .sweets-wrap.roundpick-selectable{
   cursor:pointer;
@@ -2507,6 +2507,10 @@ const DECIDED_CENTER_DELAY_MS = DECIDED_MOVE_DURATION_MS + 1800;
 const DECIDED_CENTER_MOVE_DURATION_MS = 650;
 const decidedCenterMoveAnimated = new Map();
 const decidedCenterMoveTimers = new Map();
+let centerMoveBatchTimerId = null;
+let centerMoveBatchKey = null;
+let decidedRoundKey = null;
+let decidedRoundStartAt = null;
 let lastMySweetsSnapshot = null;
 let mySweetsFlyAnimatedFor = null;
 
@@ -2520,6 +2524,7 @@ function applyDecidedSweetsMove(items){
   if(!Array.isArray(items) || !items.length) return;
   const playRect = playCircleEl?.getBoundingClientRect?.();
   if(!playRect || !playRect.width || !playRect.height) return;
+  const decidedStartAt = getDecidedStartAtForUids(items.map(item => item.uid).filter(Boolean));
 
   const playCenter = {
     x: playRect.left + playRect.width / 2,
@@ -2563,7 +2568,7 @@ function applyDecidedSweetsMove(items){
     sweetsWrap.style.setProperty('--decidedMoveY', `${localMoveY}px`);
     sweetsWrap.classList.add('decided-move');
     if(uid && !decidedSweetsAnimated.has(uid)){
-      decidedSweetsAnimated.set(uid, Date.now());
+      decidedSweetsAnimated.set(uid, decidedStartAt);
     }
 
   });
@@ -2633,20 +2638,88 @@ function applyCenterMoveForUid(uid){
   }
 }
 
-function scheduleCenterMove(uid){
-  if(decidedCenterMoveAnimated.has(uid) || decidedCenterMoveTimers.has(uid)) return;
+function getLatestDecidedAt(uids){
+  const list = Array.isArray(uids) ? uids : [];
+  const key = [...list].sort().join(',');
+  if(decidedRoundStartAt && key === decidedRoundKey){
+    return decidedRoundStartAt;
+  }
+  const times = list
+    .map(uid => decidedSweetsAnimated.get(uid))
+    .filter(ts => typeof ts === 'number');
+  return times.length ? Math.max(...times) : Date.now();
+}
+function getLatestAppliedDecidedAt(uids){
+  const list = Array.isArray(uids) ? uids : [];
+  const times = list
+    .map(uid => decidedSweetsAnimated.get(uid))
+    .filter(ts => typeof ts === 'number');
+  return times.length ? Math.max(...times) : Date.now();
+}
+
+function waitForDecidedTimestamps(uids, timeoutMs = 1200){
+  const list = Array.isArray(uids) ? uids : [];
+  if(!list.length) return Promise.resolve();
+  const start = Date.now();
+  return new Promise(resolve => {
+    const tick = () => {
+      const missing = list.some(uid => !decidedSweetsAnimated.has(uid));
+      if(!missing || (Date.now() - start) >= timeoutMs){
+        resolve();
+        return;
+      }
+      setTimeout(tick, 50);
+    };
+    tick();
+  });
+}
+
+
+function scheduleCenterMovesForUids(uids){
+  const list = Array.isArray(uids) ? uids : [];
+  if(!list.length) return;
   const rp = getRoundPick();
   if(!rp || rp.phase !== 'done') return;
-  const decidedAt = decidedSweetsAnimated.get(uid);
-  if(typeof decidedAt !== 'number') return;
-  const delay = Math.max(0, decidedAt + DECIDED_CENTER_DELAY_MS - Date.now());
-  const timerId = setTimeout(() => {
-    decidedCenterMoveTimers.delete(uid);
-    if(decidedCenterMoveAnimated.has(uid)) return;
-    decidedCenterMoveAnimated.set(uid, Date.now());
-    applyCenterMoveForUid(uid);
+  const allCentered = list.every(uid => decidedCenterMoveAnimated.has(uid));
+  if(allCentered) return;
+  const key = [...list].sort().join(',');
+  if(centerMoveBatchTimerId && centerMoveBatchKey === key) return;
+  if(centerMoveBatchTimerId){
+    clearTimeout(centerMoveBatchTimerId);
+    centerMoveBatchTimerId = null;
+  }
+  centerMoveBatchKey = key;
+
+  const latestDecidedAt = getLatestDecidedAt(list);
+  const delay = Math.max(0, latestDecidedAt + DECIDED_CENTER_DELAY_MS - Date.now());
+
+  centerMoveBatchTimerId = setTimeout(() => {
+    centerMoveBatchTimerId = null;
+    const startedAt = Date.now();
+    list.forEach(uid => {
+      if(decidedCenterMoveAnimated.has(uid)) return;
+      decidedCenterMoveAnimated.set(uid, startedAt);
+      applyCenterMoveForUid(uid);
+    });
   }, delay);
-  decidedCenterMoveTimers.set(uid, timerId);
+}
+
+function ensureDecidedRoundStart(uids){
+  const list = Array.isArray(uids) ? uids : [];
+  if(!list.length) return;
+  const key = [...list].sort().join(',');
+  if(decidedRoundKey === key) return;
+  decidedRoundKey = key;
+  decidedRoundStartAt = Date.now();
+}
+
+function getDecidedStartAtForUids(uids){
+  const list = Array.isArray(uids) ? uids : [];
+  const key = [...list].sort().join(',');
+  if(decidedRoundStartAt && key === decidedRoundKey){
+    return decidedRoundStartAt;
+  }
+  return Date.now();
 }
 
 function cacheMySweetsSnapshot(){
@@ -2734,6 +2807,9 @@ function renderPlayerCircle(players){
   const roundPickCanSelect = roundPickActive && roundPick?.leaderId === state.userId;
   const decidedUids = getDecidedSweetsUids();
   const started = !!state.room?.gameStarted;
+  if(roundPick?.phase === 'done' && decidedUids.length){
+    ensureDecidedRoundStart(decidedUids);
+  }
 
   players.forEach((p, idx) => {
     const k = (meIndex === -1) ? idx : (idx - meIndex + n) % n;
@@ -2823,8 +2899,7 @@ function renderPlayerCircle(players){
               selected.classList.remove('delayed-show');
             }, DECIDED_MOVE_DURATION_MS);
           }
-          scheduleCenterMove(state.userId);
-          if(decidedCenterMoveAnimated.has(state.userId)){
+         if(decidedCenterMoveAnimated.has(state.userId)){
             requestAnimationFrame(() => {
               applyCenterMoveForUid(state.userId);
             });
@@ -2926,14 +3001,12 @@ if(started){
         skipMove: hasCompletedDecidedMove(p.id),
       });
     }
-    if(decidedUids.includes(p.id)){
-      scheduleCenterMove(p.id);
-      if(decidedCenterMoveAnimated.has(p.id)){
-        requestAnimationFrame(() => {
-          applyCenterMoveForUid(p.id);
-        });
-      }
+    if(decidedUids.includes(p.id) && decidedCenterMoveAnimated.has(p.id)){
+      requestAnimationFrame(() => {
+        applyCenterMoveForUid(p.id);
+      });
     }
+
 
 
     const sweetsMini = document.createElement('div');
@@ -2992,17 +3065,20 @@ if(leaderSeat !== null && leaderSeat === p.seatIndex){
   tag.appendChild(chip);
 }
   });
-  applyDecidedSweetsMove(decidedMoveTargets);
-  if(roundPick?.phase === 'done' && decidedUids.length){
-    decidedUids.forEach((uid) => {
-      scheduleCenterMove(uid);
-      if(decidedCenterMoveAnimated.has(uid)){
-        requestAnimationFrame(() => {
-          applyCenterMoveForUid(uid);
-        });
-      }
-    });
-  }
+ requestAnimationFrame(() => {
+    applyDecidedSweetsMove(decidedMoveTargets);
+    if(roundPick?.phase === 'done' && decidedUids.length){
+      scheduleCenterMovesForUids(decidedUids);
+      decidedUids.forEach((uid) => {
+        if(decidedCenterMoveAnimated.has(uid)){
+          requestAnimationFrame(() => {
+            applyCenterMoveForUid(uid);
+          });
+        }
+      });
+    }
+  });
+
   updateActionDeckUI();
   updateSweetsDeckUI();
 }
@@ -3219,11 +3295,19 @@ function resetCollectedSweetsHiddenCache(){
     decidedCenterMoveAnimated.clear();
     decidedCenterMoveTimers.forEach((timerId) => clearTimeout(timerId));
     decidedCenterMoveTimers.clear();
+    if(centerMoveBatchTimerId){
+      clearTimeout(centerMoveBatchTimerId);
+      centerMoveBatchTimerId = null;
+    }
+    centerMoveBatchKey = null;
+    decidedRoundKey = null;
+    decidedRoundStartAt = null;
     document.querySelectorAll('.collect-hidden').forEach(el => {
       el.classList.remove('collect-hidden');
     });
   }
 }
+
 
 
 const roundPickDrag = {
@@ -3717,7 +3801,10 @@ async function _runSweetShuffle1(token){
 }
 
 async function animateRoundEndReveal(cards, selectedUids){
-  if(_roundAnimRunning) return;
+  if(_roundAnimRunning){
+    stopRoundEndFx();
+    _roundAnimRunning = false;
+  }
   _roundAnimRunning = true;
 
   try{
@@ -3729,12 +3816,11 @@ async function animateRoundEndReveal(cards, selectedUids){
     roundRevealOverlay.classList.add('hidden');
 
     const uids = Array.isArray(selectedUids) ? selectedUids : [];
+    ensureDecidedRoundStart(uids);
+    scheduleCenterMovesForUids(uids);
 
-    const decidedTimes = uids
-      .map(uid => decidedSweetsAnimated.get(uid))
-      .filter(ts => typeof ts === 'number');
-    const decidedStartAt = decidedTimes.length ? Math.min(...decidedTimes) : Date.now();
-    const centerMoveStartAt = decidedStartAt + DECIDED_CENTER_DELAY_MS;
+    await waitForDecidedTimestamps(uids);
+    const latestDecidedAt = getLatestAppliedDecidedAt(uids);    const centerMoveStartAt = latestDecidedAt + DECIDED_CENTER_DELAY_MS;
     const shuffleStartAt = centerMoveStartAt + 1200;
     const waitMs = Math.max(0, shuffleStartAt - Date.now());
     if(waitMs > 0){
