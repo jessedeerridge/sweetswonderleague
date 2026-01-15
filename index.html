@@ -1066,7 +1066,6 @@
   animation:sweetsTagMove .6s ease;
   pointer-events:none;
 }
-
 .selected-sweets-tag.delayed-show{
   opacity:0;
   visibility:hidden;
@@ -1214,44 +1213,23 @@
   left:50%;
   top:50%;
   transform:translate(-50%,-50%);
-  width:120px;
-  height:170px;
-  --shuffleOffsetX: 4px;
-  --shuffleOffsetY: 4px;
-  --shuffleOutX: 78px;
-  --shuffleTiltBase: 5deg;
-  --shuffleTiltMore: 5deg;
-  --shuffleDurOut: 220ms;
-  --shuffleDurIn: 220ms;
-  --shufflePause: 20ms;
+  width:140px;
+  height:190px;
   z-index:615;
   pointer-events:none;
 }
 .sweets-shuffle-card{
   position:absolute;
-  inset:0;
-  border-radius:14px;
-  border:1px solid #fff;
-  box-shadow:none;
-  background:url('swsweetsura.jpg') center/cover no-repeat;
-  transform-origin:center;
+  left:50%;
+  top:50%;
+  width:90px;
+  height:135px;
+  transform:translate(-50%,-50%);
+  border-radius:12px;
+  border:1px solid rgba(255,255,255,.25);
+  box-shadow:0 16px 44px rgba(0,0,0,.35);
+  background:center/cover no-repeat;
   will-change:transform, opacity;
-}
-.sweets-shuffle-card.back{
-  transform:translate(var(--shuffleOffsetX), var(--shuffleOffsetY)) rotate(var(--shuffleTiltBase));
-  z-index:1;
-}
-.sweets-shuffle-card.front{
-  transform:translate(0,0) rotate(var(--shuffleTiltBase));
-  z-index:2;
-}
-.sweets-shuffle-card.movingOut{
-  transition:transform var(--shuffleDurOut) ease-in-out;
-  transform:translate(var(--shuffleOutX), 0) rotate(calc(var(--shuffleTiltBase) + var(--shuffleTiltMore)));
-}
-.sweets-shuffle-card.movingIn{
-  transition:transform var(--shuffleDurIn) ease-in-out;
-  transform:translate(var(--shuffleOffsetX), var(--shuffleOffsetY)) rotate(var(--shuffleTiltBase));
 }
 
 
@@ -2525,7 +2503,7 @@ function createRoundedStarSvg(){
 }
 const decidedSweetsAnimated = new Map();
 const DECIDED_MOVE_DURATION_MS = 650;
-const DECIDED_CENTER_DELAY_MS = DECIDED_MOVE_DURATION_MS + 2000;
+const DECIDED_CENTER_DELAY_MS = DECIDED_MOVE_DURATION_MS + 1000;
 const DECIDED_CENTER_MOVE_DURATION_MS = 650;
 const decidedCenterMoveAnimated = new Map();
 const decidedCenterMoveTimers = new Map();
@@ -3649,56 +3627,52 @@ async function _runCenterShuffle(token){
   document.body.appendChild(stage);
   roundEndFx.nodes.add(stage);
 
-  const cardBack = document.createElement('div');
-  cardBack.className = 'sweets-shuffle-card back';
-  const cardFront = document.createElement('div');
-  cardFront.className = 'sweets-shuffle-card front';
-  stage.appendChild(cardBack);
-  stage.appendChild(cardFront);
-
-  let front = cardFront;
-  let back = cardBack;
-
-  const cssMs = (name) => {
-    const v = getComputedStyle(stage).getPropertyValue(name).trim();
-    if(v.endsWith('ms')) return parseFloat(v);
-    if(v.endsWith('s')) return parseFloat(v) * 1000;
-    return parseFloat(v);
-  };
-  const durOut = cssMs('--shuffleDurOut');
-  const durIn = cssMs('--shuffleDurIn');
-  const pause = cssMs('--shufflePause');
-
-  const swapLayers = () => {
-    front.classList.remove('front');
-    front.classList.add('back');
-    back.classList.remove('back');
-    back.classList.add('front');
-    const tmp = front;
-    front = back;
-    back = tmp;
-  };
-
-  for(let i=0;i<3;i++){
-    if(token !== roundEndFx.token) return;
-    front.classList.remove('movingIn');
-    void front.offsetWidth;
-    front.classList.add('movingOut');
-    await _fxSleep(durOut, token);
-
-    if(token !== roundEndFx.token) return;
-    front.classList.remove('movingOut');
-    swapLayers();
-
-    back.classList.remove('movingOut');
-    void back.offsetWidth;
-    back.classList.add('movingIn');
-    await _fxSleep(durIn, token);
-
-    back.classList.remove('movingIn');
-    await _fxSleep(pause, token);
+  const N = 5;
+  const cards = [];
+  for(let i=0;i<N;i++){
+    const c = document.createElement('div');
+    c.className = 'sweets-shuffle-card';
+    c.style.backgroundImage = `url('${SWEETS_BACK_IMG}')`;
+    c.style.zIndex = String(10 + i);
+    stage.appendChild(c);
+    cards.push(c);
   }
 
+  // 1回だけの“シャッフルっぽい”クロス
+  const dur = 1200;
+  const easing = 'cubic-bezier(.22,.84,.44,1)';
+
+  const animPromises = cards.map((el, i) => {
+    const side = (i % 2 === 0) ? 1 : -1;
+    const x1 = side * (34 + (i*2));
+    const y1 = (-18 + i*6);
+    const x2 = -x1;
+    const y2 = -y1;
+
+    const a = el.animate([
+      { transform:`translate(-50%,-50%) translate(0px,0px) rotate(0deg)`, opacity:1 },
+      { transform:`translate(-50%,-50%) translate(${x1}px,${y1}px) rotate(${(i-2)*7}deg)`, opacity:1 },
+      { transform:`translate(-50%,-50%) translate(${x2}px,${y2}px) rotate(${(2-i)*7}deg)`, opacity:1 },
+      { transform:`translate(-50%,-50%) translate(0px,0px) rotate(0deg)`, opacity:1 },
+    ], {
+      duration: dur,
+      easing,
+      delay: i * 40,
+      fill: 'forwards',
+    });
+
+    roundEndFx.anims.add(a);
+
+    return new Promise(resolve => {
+      a.onfinish = () => resolve();
+      a.oncancel = () => resolve();
+    });
+  });
+
+  await Promise.all(animPromises);
+  if(token !== roundEndFx.token) return;
+
+  // ステージはすぐ消す
   stage.remove();
   roundEndFx.nodes.delete(stage);
 }
@@ -3708,81 +3682,13 @@ async function animateRoundEndReveal(cards, selectedUids){
   _roundAnimRunning = true;
 
   try{
-    stopRoundEndFx();
-    const token = roundEndFx.token;
-    const selected = Array.isArray(selectedUids) ? selectedUids : [];
-    const center = _getCenterPoint();
-    const collectNodes = [];
-    const collectAnims = [];
-
-    selected.forEach(uid => {
-      const originEl = _pickOriginElForUid(uid);
-      if(originEl){
-        _hideOriginVisual(uid, originEl);
-      }
-      const rect = originEl?.getBoundingClientRect?.();
-      const safeRect = (rect && rect.width && rect.height)
-        ? rect
-        : {
-            left: center.x - 45,
-            top: center.y - 67.5,
-            width: 90,
-            height: 135,
-          };
-
-      const node = _createCollectCardAtRect(safeRect);
-      collectNodes.push(node);
-
-      const dx = center.x - (safeRect.left + safeRect.width / 2);
-      const dy = center.y - (safeRect.top + safeRect.height / 2);
-      const a = node.animate([
-        { transform:'translate(0px,0px) scale(1)' },
-        { transform:`translate(${dx}px, ${dy}px) scale(1)` },
-      ], {
-        duration: DECIDED_CENTER_MOVE_DURATION_MS,
-        easing: 'ease-in-out',
-        fill: 'forwards',
-      });
-      roundEndFx.anims.add(a);
-      collectAnims.push(new Promise(resolve => {
-        a.onfinish = () => resolve();
-        a.oncancel = () => resolve();
-      }));
-    });
-
-    if(collectAnims.length){
-      await Promise.all(collectAnims);
-    }
-    if(token !== roundEndFx.token) return;
-
-    collectNodes.forEach(node => {
-      try{ node.remove(); }catch(_){}
-      roundEndFx.nodes.delete(node);
-    });
-
-    await _runCenterShuffle(token);
-    if(token !== roundEndFx.token) return;
-
+    document.querySelectorAll('.collect-card').forEach(el => el.remove());
     roundRevealRow.innerHTML = '';
-    cards.forEach(card => {
-      if(!card) return;
-      const wrap = document.createElement('div');
-      wrap.className = 'roundreveal-card';
-      const img = document.createElement('img');
-      img.src = card.img;
-      img.alt = card.name || `sweets ${card.value ?? ''}`;
-      img.onerror = () => { if(card.fallback) img.src = card.fallback; };
-      wrap.appendChild(img);
-      roundRevealRow.appendChild(wrap);
-    });
-    roundRevealOverlay.classList.remove('hidden');
-
-    await _fxSleep(2800, token);
-    if(token !== roundEndFx.token) return;
-
     roundRevealOverlay.classList.add('hidden');
-    roundRevealRow.innerHTML = '';
-    stopRoundEndFx();
+
+    // ★（ここに「ラウンドの後処理」を後で足しやすいように置いておく）
+    // 例：passes/votes/voteChips/sweetsのリセット等は、ルール確定後にここへ追加
+    // await resetRoundStateLater();
   } finally {
     _roundAnimRunning = false;
   }
