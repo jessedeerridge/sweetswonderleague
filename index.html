@@ -2845,11 +2845,15 @@ function renderPlayerCircle(players){
           selected.className = 'selected-sweets-tag';
           let decidedStartedAt = decidedSweetsAnimated.get(state.userId);
           if(typeof decidedStartedAt !== 'number'){
-            decidedStartedAt = Date.now();
+            decidedStartedAt = getDecidedStartAtForUids(decidedUids);
             decidedSweetsAnimated.set(state.userId, decidedStartedAt);
           }
+          const canAnimateMySweets = !!(lastMySweetsSnapshot && lastMySweetsSnapshot.cardId === sweetsCard.id);
           const animationCompleted = hasCompletedDecidedMove(state.userId);
-          if(animationCompleted){
+          const shouldAnimateMySweets = !animationCompleted
+            && canAnimateMySweets
+            && mySweetsFlyAnimatedFor !== sweetsCard.id;
+          if(animationCompleted || !shouldAnimateMySweets){
             selected.classList.add('decided-static');
           }else{
             selected.classList.add('delayed-show');
@@ -2891,13 +2895,18 @@ function renderPlayerCircle(players){
             selected.appendChild(voteStack);
          }
           tag.appendChild(selected);
-          requestAnimationFrame(() => {
-            animateMySweetsToTag(selected, sweetsCard);
-          });
-          if(!animationCompleted){
+          if(shouldAnimateMySweets){
+            requestAnimationFrame(() => {
+              animateMySweetsToTag(selected, sweetsCard);
+            });
+          }
+          if(!animationCompleted && shouldAnimateMySweets){
+            const remaining = Math.max(0, DECIDED_MOVE_DURATION_MS - (Date.now() - decidedStartedAt));
             setTimeout(() => {
               selected.classList.remove('delayed-show');
-            }, DECIDED_MOVE_DURATION_MS);
+            }, remaining);
+          }else{
+            selected.classList.remove('delayed-show');
           }
          if(decidedCenterMoveAnimated.has(state.userId)){
             requestAnimationFrame(() => {
