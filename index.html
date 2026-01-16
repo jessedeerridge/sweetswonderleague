@@ -916,9 +916,8 @@
     position:fixed;
     width:90px;
     height:135px;
-    border-radius:12px;
+    border-radius:7px;
     border:1px solid rgba(255,255,255,.25);
-    box-shadow:0 16px 44px rgba(0,0,0,.35);
     background:url('swsweetsura.jpg') center/cover no-repeat;
     z-index:610;
     pointer-events:none;
@@ -1690,8 +1689,44 @@ function shuffle(arr){
 function clamp(n,min,max){ return Math.max(min, Math.min(max, n)); }
 function now(){ return Date.now(); }
 
+const roundRevealState = {
+  started: false,
+  finished: false,
+  startedAt: null,
+  finishedAt: null,
+};
+
+function resetRoundRevealState(){
+  roundRevealState.started = false;
+  roundRevealState.finished = false;
+  roundRevealState.startedAt = null;
+  roundRevealState.finishedAt = null;
+}
+
+function markRoundRevealStarted(){
+  roundRevealState.started = true;
+  roundRevealState.startedAt = now();
+  roundRevealState.finished = false;
+  roundRevealState.finishedAt = null;
+}
+
+function markRoundRevealFinished(){
+  roundRevealState.finished = true;
+  roundRevealState.finishedAt = now();
+}
+
+async function waitForRoundRevealCompletion(timeoutMs = 10000){
+  const start = now();
+  while(true){
+    if(roundRevealState.started && roundRevealState.finished) return true;
+    if(timeoutMs && now() - start > timeoutMs) return false;
+    await sleep(50);
+  }
+}
+
 function resetLocalGameEffects(){
   stopRoundEndFx();
+  resetRoundRevealState();
   resetCollectedSweetsHiddenCache();
 
   miniShuffleToken += 1;
@@ -2087,21 +2122,17 @@ function subscribeGame(){
 function subscribeEvents(){
   const evRef = ref(db, `rooms/${state.roomCode}/events`);
   eventsSubscribedAt = now();
-  onChildAdded(evRef, async snap => {
+ onChildAdded(evRef, async snap => {
     const key = snap.key;
     const ev = snap.val();
     if(!ev) return;
-    if(ev.sessionId && ev.sessionId !== currentGameSessionId){
-      resetLocalGameEffects();
-      currentGameSessionId = ev.sessionId;
-    } else if(!currentGameSessionId && ev.sessionId){
-      currentGameSessionId = ev.sessionId;
+    const expectedSessionId = state.game?.sessionId || currentGameSessionId || null;
+    if(ev.sessionId){
+      if(expectedSessionId && ev.sessionId !== expectedSessionId) return;
+      if(!currentGameSessionId) currentGameSessionId = ev.sessionId;
     }
-    if(!currentGameSessionId) return;
-
-    if(ev.sessionId !== currentGameSessionId) return;
+    if(!expectedSessionId && !currentGameSessionId) return;
     if(!ev.sessionId && typeof ev.at === 'number' && eventsSubscribedAt && ev.at < eventsSubscribedAt) return;
-
     if(ev.type === 'revealCard'){
       showReveal(ev.card);
     }
@@ -2124,7 +2155,8 @@ function subscribeEvents(){
     }
 
     if(state.isHost){
-      setTimeout(()=> remove(ref(db, `rooms/${state.roomCode}/events/${key}`)), 6000);
+      maybeHostStartRoundEndFlow().catch(()=>{});
+      maybeHostFireRoundRevealAfterLeaderPick().catch(()=>{});
     }
   });
 }
@@ -2555,6 +2587,34 @@ function getSweetsDeckTargetRect(){
   };
 }
 
+function getCollectAnimationSnapshot(el){
+  if(!el) return null;
+  const rect = el.getBoundingClientRect();
+  if(!rect.width || !rect.height) return null;
+  const width = el.offsetWidth || rect.width;
+  const height = el.offsetHeight || rect.height;
+  const centerX = rect.left + rect.width / 2;
+  const centerY = rect.top + rect.height / 2;
+  const hostCircle = el.closest('.otherplayerscircle');
+  const rotValue = hostCircle ? getComputedStyle(hostCircle).getPropertyValue('--rotDeg').trim() : '0deg';
+  const rotateDeg = parseRotationDegrees(rotValue);
+
+  return {
+    left: centerX - width / 2,
+    top: centerY - height / 2,
+    width,
+    height,
+    rotateDeg,
+  };
+}
+
+function normalizeRotationDegrees(fromDeg, toDeg){
+  const from = Number.isFinite(fromDeg) ? fromDeg : 0;
+  const to = Number.isFinite(toDeg) ? toDeg : 0;
+  const diff = ((from - to + 540) % 360) - 180;
+  return to + diff;
+}
+
 function animateOneCardToDeck(srcRect, target, { delay = 0, rotateFrom = 0, rotateTo = 0 } = {}){
   if(!srcRect || !srcRect.width || !srcRect.height || !target) return Promise.resolve();
 
@@ -2575,12 +2635,15 @@ function animateOneCardToDeck(srcRect, target, { delay = 0, rotateFrom = 0, rota
   const scaleY = target.h / srcRect.height;
   const scale  = Math.min(scaleX, scaleY);
 
+  const normalizedRotateFrom = normalizeRotationDegrees(rotateFrom, rotateTo);
+
   return new Promise(resolve => {
     fly.animate([
-      { transform:`translate(0px,0px) rotate(${rotateFrom}deg) scale(1)`, opacity:1 },
+      { transform:`translate(0px,0px) rotate(${normalizedRotateFrom}deg) scale(1)`, opacity:1 },
+      { transform:`translate(0px,0px) rotate(${rotateTo}deg) scale(1)`, opacity:1, offset:0.55 },
       { transform:`translate(${dx}px,${dy}px) rotate(${rotateTo}deg) scale(${scale})`, opacity:0.92 },
     ],{
-      duration: 620,
+      duration: 780,
       delay,
       easing: 'cubic-bezier(.22,.84,.44,1)',
       fill: 'forwards'
@@ -2592,8 +2655,11 @@ function animateOneCardToDeck(srcRect, target, { delay = 0, rotateFrom = 0, rota
 }
 
 async function animateReturnAllFieldSweetsToDeck(){
-  // 「拡大表示が終わったら」＝roundRevealOverlay が閉じるまで待つ
-  await waitUntilHidden(roundRevealOverlay, 4500);
+
+  // 「拡大公開が実行済み & 終了済み」を待つ
+  const revealDone = await waitForRoundRevealCompletion();
+  if(!revealDone) return;
+  await sleep(800);
 
   const target = getSweetsDeckTargetRect();
   if(!target) return;
@@ -2643,8 +2709,9 @@ async function animateReturnAllFieldSweetsToDeck(){
 
   // 回収アニメ（少しだけズラして気持ちよく）
   const tasks = sources.map((s, i) => {
-    const r = s.el.getBoundingClientRect();
-    return animateOneCardToDeck(r, target, { delay: i * 35 });
+    const snapshot = getCollectAnimationSnapshot(s.el);
+    if(!snapshot) return Promise.resolve();
+    return animateOneCardToDeck(snapshot, target, { delay: i * 35, rotateFrom: snapshot.rotateDeg, rotateTo: 0 });
   });
 
   await Promise.all(tasks);
@@ -4088,28 +4155,6 @@ async function maybeHostFireRoundRevealAfterLeaderPick(){
   await emitEvent({ type:'roundRevealSweets', selectedUids: selected, cards });
 }
 
-/* subscribeGame内から呼ばれるようにフック */
-const _origSubscribeGame = subscribeGame;
-subscribeGame = function(){
-  const gameRef = ref(db, `rooms/${state.roomCode}/game`);
-  onValue(gameRef, snap => {
-    state.game = snap.val() || {};
-    state.turn = state.game.turn || null;
-    state.turnEnding = false;
-    resetCollectedSweetsHiddenCache();
-    syncPassTurnState();
-    updateTurnUI();
-    if (latestPlayers.length) renderPlayerCircle(latestPlayers);
-
-    if(state.isHost){
-      maybeHostStartRoundEndFlow().catch(()=>{});
-      maybeHostFireRoundRevealAfterLeaderPick().catch(()=>{});
-    }
-
-    updateRoundPickUI();
-    updatePassRoundBtn();
-  });
-};
 
 /* =========================
    ★★★ ラウンド終了演出（全員）
@@ -4213,7 +4258,9 @@ function stopRoundEndFx(){
     roundRevealRow.innerHTML = '';
     roundRevealOverlay.classList.add('hidden');
   }catch(_){}
+  resetRoundRevealState();
 }
+
 
 /** ★ “元位置”として最優先で使うDOMを探す（ゴースト防止のため） */
 function _pickOriginElForUid(uid){
@@ -4426,9 +4473,13 @@ async function getSweetsExcludedDeckRectForMiniShuffle(){
   const prevVisibility = sweetsExcludedDeckUI.style.visibility;
   const prevAnimating = sweetsExcludeAnimating;
 
-  sweetsExcludeAnimating = true;
-  sweetsExcludedDeckUI.classList.remove('hidden');
-  sweetsExcludedDeckUI.style.visibility = 'hidden';
+ sweetsExcludedDeckUI.style.visibility = prevVisibility;
+  sweetsExcludeAnimating = prevAnimating;
+  if(wasHidden){
+    sweetsExcludedDeckUI.classList.add('hidden');
+  } else {
+    sweetsExcludedDeckUI.classList.remove('hidden');
+  }
   updateSweetsDeckUI();
 
   for(let i=0;i<6;i++){
@@ -4728,9 +4779,10 @@ async function animateRoundEndReveal(cards, selectedUids){
       img.src = card?.img || card?.fallback || SWEETS_BACK_IMG;
       img.alt = `sweets ${card?.value ?? ''}`;
       img.onerror = () => { if(card?.fallback) img.src = card.fallback; };
-      el.appendChild(img);
+     el.appendChild(img);
       roundRevealRow.appendChild(el);
     });
+    markRoundRevealStarted();
     roundRevealOverlay.classList.remove('hidden');
 
     await new Promise(resolve => setTimeout(resolve, 2800));
@@ -4738,6 +4790,7 @@ async function animateRoundEndReveal(cards, selectedUids){
 
     roundRevealOverlay.classList.add('hidden');
     roundRevealRow.innerHTML = '';
+    markRoundRevealFinished();
 
     for(const restore of roundEndFx.restores){
       try{ restore(); }catch(_){}
@@ -4745,8 +4798,12 @@ async function animateRoundEndReveal(cards, selectedUids){
     roundEndFx.restores = [];
   } finally {
     _roundAnimRunning = false;
+    if(roundRevealState.started && !roundRevealState.finished){
+      markRoundRevealFinished();
+    }
   }
 }
+
 /* =========================
    ドラッグ＆ドロップ（アクションカード）
    ========================= */
@@ -5669,4 +5726,3 @@ copyLinkBtn.addEventListener('click', async () => {
 
 </body>
 </html>
-
