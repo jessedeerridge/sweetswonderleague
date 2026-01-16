@@ -454,7 +454,7 @@
     position:absolute;
     left:50%;
     top:100%;
-    transform:translate(36px,3px);
+    transform:translate(12px,15px);
     width:var(--voteMiniSize);
     height:var(--voteMiniSize);
     border-radius:50%;
@@ -477,9 +477,11 @@
     z-index:999;
     will-change:transform;
   }
-  .vote-stack.animating{
-    opacity:0;
-  }
+.vote-stack{
+  --voteStackSize: var(--voteMiniSize);
+  min-height: var(--voteStackSize);
+}
+
   /* 自分の手札表示（大きめ横並び） */
   .my-hand-wrapper{margin-top:16px;text-align:center; position:relative;}
   .my-hand-title{display:none;}
@@ -1307,6 +1309,7 @@
   right:-22px;                 /* 少しだけ内側に寄せる（好みで調整OK） */
   top:10%;
   transform:translateY(-50%);
+  --voteStackSize: var(--voteChipSize);
 }
 /* ★ 自分のスイーツ上の投票チップだけ「手元チップと同サイズ」にする */
 .my-sweets .vote-stack{
@@ -1440,6 +1443,7 @@ top:calc(50% - 6.5px);
 }
 
 .round-chip-img.hidden{ display:none; }
+
 
 
 </style>
@@ -1913,9 +1917,16 @@ function resetLocalGameEffects(){
   roundRevealRow.innerHTML = '';
   roundRevealOverlay.classList.add('hidden');
 
+  lastVoteSnapshot = null;
+  lastPreparedVotesKey = '';
+  queuedVoteAnimations = [];
+  pendingVoteAdds.clear();
+
   updateActionDeckUI();
   updateSweetsDeckUI();
 }
+
+
 
 
 function refreshRoomLabels(){
@@ -2187,6 +2198,7 @@ function subscribeRoom(){
     hostSelectingPop.classList.toggle('hidden', !waiting);
     syncSeatUI();
 
+    prepareVoteAnimationsFromRoom();
     updateActionDeckUI();
     updateSweetsDeckUI();
     renderMyVoteChip();
@@ -2194,6 +2206,7 @@ renderMySweetsVoteStack();
     updatePassRoundBtn();
   });
 }
+
 function subscribeHostState(){
   const hostRef = ref(db, `rooms/${state.roomCode}/hostId`);
   onValue(hostRef, snap => {
@@ -3035,6 +3048,9 @@ function renderMyVoteChip(){
 }
 
 let lastVoteSnapshot = null;
+let lastPreparedVotesKey = '';
+let queuedVoteAnimations = [];
+const pendingVoteAdds = new Map();
 function getVoteSnapshot(votesObj){
   const snapshot = new Map();
   const votes = votesObj && typeof votesObj === 'object' ? votesObj : {};
@@ -3056,6 +3072,36 @@ function getNewVotes(prev, next){
     });
   });
   return diffs;
+}
+function prepareVoteAnimationsFromRoom(){
+  const votesObj = state.room?.votes || {};
+  const votesKey = JSON.stringify(votesObj);
+  if(votesKey === lastPreparedVotesKey) return;
+  lastPreparedVotesKey = votesKey;
+
+  const current = getVoteSnapshot(votesObj);
+  if(!lastVoteSnapshot){
+    lastVoteSnapshot = current;
+    queuedVoteAnimations = [];
+    pendingVoteAdds.clear();
+    return;
+  }
+  const newVotes = getNewVotes(lastVoteSnapshot, current);
+  if(newVotes.length){
+    queuedVoteAnimations = queuedVoteAnimations.concat(newVotes);
+    newVotes.forEach(({ targetUid }) => {
+      pendingVoteAdds.set(targetUid, (pendingVoteAdds.get(targetUid) || 0) + 1);
+    });
+  }
+  lastVoteSnapshot = current;
+}
+function getPendingVoteCount(targetUid){
+  return pendingVoteAdds.get(targetUid) || 0;
+}
+function getDisplayedVoteCountFor(targetUid){
+  const total = getVoteCountFor(targetUid);
+  const pending = getPendingVoteCount(targetUid);
+  return Math.max(total - pending, 0);
 }
 function getVoteChipSizePx(){
   const size = parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--voteMiniSize'));
@@ -3098,6 +3144,27 @@ function getVoteChipTargetInfo(targetUid){
     },
   };
 }
+function finalizeVoteChipArrival(targetUid, stackEl){
+  const stack = stackEl && stackEl.isConnected
+    ? stackEl
+    : document.querySelector(`.vote-stack[data-target-uid="${targetUid}"]`);
+  const pending = pendingVoteAdds.get(targetUid) || 0;
+  if(pending > 0){
+    pendingVoteAdds.set(targetUid, pending - 1);
+  }
+  if(!stack) return;
+
+  const actualCount = getVoteCountFor(targetUid);
+  const currentCount = stack.querySelectorAll('.vote-mini').length;
+  if(currentCount < actualCount){
+    const v = document.createElement('div');
+    v.className = 'vote-mini';
+    stack.appendChild(v);
+  }
+  if((pendingVoteAdds.get(targetUid) || 0) === 0){
+    stack.classList.remove('pending');
+  }
+}
 function animateVoteChipFly(voterUid, targetUid){
   if(voterUid === state.userId) return;
   const source = getVoteChipSourceRect(voterUid);
@@ -3111,11 +3178,10 @@ function animateVoteChipFly(voterUid, targetUid){
   fly.style.top = `${source.top}px`;
   fly.style.width = `${source.width}px`;
   fly.style.height = `${source.height}px`;
-  document.body.appendChild(fly);
+ document.body.appendChild(fly);
 
   const dx = target.left - source.left;
   const dy = target.top - source.top;
-  stack.classList.add('animating');
   fly.animate([
     { transform: 'translate(0px, 0px) scale(1)' },
     { transform: `translate(${dx}px, ${dy}px) scale(1)` },
@@ -3125,17 +3191,12 @@ function animateVoteChipFly(voterUid, targetUid){
     fill: 'forwards',
   }).onfinish = () => {
     fly.remove();
-    stack.classList.remove('animating');
+    finalizeVoteChipArrival(targetUid, stack);
   };
 }
 function scheduleVoteChipAnimations(){
-  const current = getVoteSnapshot(state.room?.votes || {});
-  if(!lastVoteSnapshot){
-    lastVoteSnapshot = current;
-    return;
-  }
-  const newVotes = getNewVotes(lastVoteSnapshot, current);
-  lastVoteSnapshot = current;
+  const newVotes = queuedVoteAnimations;
+  queuedVoteAnimations = [];
   if(!newVotes.length) return;
   requestAnimationFrame(() => {
     newVotes.forEach(({ voterUid, targetUid }) => {
@@ -3356,12 +3417,14 @@ function renderMySweetsVoteStack(){
   if(old) old.remove();
   if(!c) return;
 
-  const vCount = getVoteCountFor(state.userId);
-  if(vCount <= 0) return;
+  const pendingCount = getPendingVoteCount(state.userId);
+  const vCount = getDisplayedVoteCountFor(state.userId);
+  if(vCount <= 0 && pendingCount <= 0) return;
 
   const voteStack = document.createElement('div');
   voteStack.className = 'vote-stack';
   voteStack.dataset.targetUid = state.userId;
+  if(pendingCount > 0) voteStack.classList.add('pending');
 
   for(let i=0;i<vCount;i++){
     const v = document.createElement('div');
@@ -3827,11 +3890,13 @@ function renderPlayerCircle(players){
           }
           selected.appendChild(cardWrap);
 
-         const vCount = getVoteCountFor(state.userId);
-          if(vCount > 0){
+         const pendingCount = getPendingVoteCount(state.userId);
+          const vCount = getDisplayedVoteCountFor(state.userId);
+          if(vCount > 0 || pendingCount > 0){
             const voteStack = document.createElement('div');
             voteStack.className = 'vote-stack';
             voteStack.dataset.targetUid = state.userId;
+            if(pendingCount > 0) voteStack.classList.add('pending');
             for(let i=0;i<vCount;i++){
               const v = document.createElement('div');
               v.className = 'vote-mini';
@@ -3973,7 +4038,9 @@ if(started && roleAssigned){
     const voteStack = document.createElement('div');
     voteStack.className = 'vote-stack';
     voteStack.dataset.targetUid = p.id;
-    const vCount = getVoteCountFor(p.id);
+    const pendingCount = getPendingVoteCount(p.id);
+    const vCount = getDisplayedVoteCountFor(p.id);
+    if(pendingCount > 0) voteStack.classList.add('pending');
     for(let i=0;i<vCount;i++){
       const v = document.createElement('div');
       v.className = 'vote-mini';
