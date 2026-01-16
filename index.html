@@ -1,5 +1,5 @@
 
-<!DOCTYPE html>   
+<!DOCTYPE html>    
 <html lang="ja">
 <head>
 <meta charset="UTF-8" />
@@ -2060,13 +2060,11 @@ function subscribeEvents(){
     if(ev.type === 'roundRevealSweets'){
       // ev.cards: 表にするカード配列（スイーツカード）
       await animateRoundEndReveal(ev.cards || [], ev.selectedUids || []);
-  // ✅ ここを追加：拡大表示が終わったら、場のスイーツ→山札へ回収
   await animateReturnAllFieldSweetsToDeck();
   // ✅ その直後：除外札を「縦になって」山札へ回収
   await animateReturnExcludedDeckToSweetsDeck();
-  if(state.isHost){
-    await hostCommitReturnSweetsToDeck();
-  }
+  await hostFinalizeReturnSweetsToDeck(ev.cards || []);
+
     }
     if(ev.type === 'miniSweetsShuffleStart'){
       await runMiniSweetsShuffleAtStart();
@@ -2369,6 +2367,12 @@ function showReveal(card){
   }, 1000);
 }
 
+
+
+
+
+
+
 /* =========================
    指示カード：裏カード移動アニメ（全員）
    ========================= */
@@ -2396,6 +2400,38 @@ function animateFlyBackCard(fromSeat, toSeat){
     duration: 520,
     easing: 'cubic-bezier(.22,.84,.44,1)'
   }).onfinish = () => fly.remove();
+}
+
+/* =========================
+   文字を枠内に収める
+   ========================= */
+function fitEffectText(el){
+  if(!el) return;
+  const box = el.parentElement;
+  if(!box) return;
+
+  let size = 13;
+  el.style.fontSize = size + 'px';
+
+  for(let i=0;i<10;i++){
+    if(el.scrollHeight <= box.clientHeight - 2) break;
+    size = size - 1;
+    if(size < 9){ size = 9; break; }
+    el.style.fontSize = size + 'px';
+  }
+}
+
+/* =========================
+   ★ 受け取り指示カード
+   ========================= */
+function getMyReceivedCard(){
+  const myData = state.hands?.[state.userId];
+  const rec = myData?.received;
+  if(Array.isArray(rec) && rec.length) return rec[0];
+  return null;
+}
+function hasReceivedInstruction(){
+  return !!getMyReceivedCard();
 }
 
 
@@ -2478,65 +2514,6 @@ function animateOneCardToDeck(srcRect, target, { delay = 0, rotateFrom = 0, rota
     };
   });
 }
-
-// ✅ 追加：ラウンド終了時に「手札のスイーツを回収して山札へ戻す（DB確定）」
-// - アニメは各端末で既存のまま
-// - データ更新はホストだけが行う（多重更新を防ぐ）
-async function hostCommitReturnSweetsToDeck(){
-  if(!state.isHost || !state.roomCode) return;
-
-  const base = `rooms/${state.roomCode}`;
-  const roomSnap = await get(ref(db, base));
-  const roomData = roomSnap.val() || {};
-
-  const hands = roomData.hands || {};
-  const decks = roomData.decks || {};
-
-  // 山札キーの揺れ吸収（基本は sweets）
-  const sweetsMainKey =
-    Array.isArray(decks.sweetsDeck) ? 'sweetsDeck' :
-    Array.isArray(decks.sweets)     ? 'sweets'     : 'sweets';
-
-  const deck     = Array.isArray(decks[sweetsMainKey]) ? decks[sweetsMainKey] : [];
-  const excluded = Array.isArray(decks.sweetsExcluded) ? decks.sweetsExcluded : [];
-
-  // 1) 返却対象（全員の hands.sweets）を集める + hands.sweets を空にする
-  const returned = [];
-  const newHands = {};
-
-  for(const [uid, h] of Object.entries(hands)){
-    const sweetsArr = Array.isArray(h?.sweets) ? h.sweets : [];
-    if(sweetsArr.length) returned.push(...sweetsArr);
-
-    newHands[uid] = { ...(h || {}), sweets: [] };
-  }
-
-  // 2) 二重追加防止（idでユニークに）
-  const ids = new Set(deck.map(c => c?.id).filter(Boolean));
-  const uniqueAppend = (arr) => (Array.isArray(arr) ? arr : []).filter(c => {
-    if(!c || !c.id) return false;
-    if(ids.has(c.id)) return false;
-    ids.add(c.id);
-    return true;
-  });
-
-  const newDeck = deck
-    .concat(uniqueAppend(returned))
-    .concat(uniqueAppend(excluded)); // ← 除外も最終的には山札へ合流
-
-  // 3) DB反映（まとめて）
-  const updates = {};
-  updates[`${base}/hands`] = newHands;
-  updates[`${base}/decks/${sweetsMainKey}`] = newDeck;
-  updates[`${base}/decks/sweetsExcluded`] = [];
-
-  await update(ref(db), updates);
-
-  // 表示用overrideのズレを避ける（必要なら）
-  sweetsDeckCountOverride = null;
-  sweetsExcludedCountOverride = null;
-}
-
 
 async function animateReturnAllFieldSweetsToDeck(){
   // 「拡大表示が終わったら」＝roundRevealOverlay が閉じるまで待つ
@@ -2623,37 +2600,63 @@ async function animateReturnExcludedDeckToSweetsDeck(){
   sweetsExcludedDeckUI.style.visibility = prevVis;
 }
 
-/* =========================
-   文字を枠内に収める
-   ========================= */
-function fitEffectText(el){
-  if(!el) return;
-  const box = el.parentElement;
-  if(!box) return;
+// ✅ ホストだけ：ラウンド終了後に「全スイーツ（selected/非selected/手元）＋除外」をDB上で山札へ戻す
+async function hostFinalizeReturnSweetsToDeck(revealedCards = []){
+  if(!state.isHost || !state.roomCode) return;
 
-  let size = 13;
-  el.style.fontSize = size + 'px';
+  const base = `rooms/${state.roomCode}`;
 
-  for(let i=0;i<10;i++){
-    if(el.scrollHeight <= box.clientHeight - 2) break;
-    size = size - 1;
-    if(size < 9){ size = 9; break; }
-    el.style.fontSize = size + 'px';
+  // 最新を取り直す（stateのズレ対策）
+  const [handsSnap, decksSnap] = await Promise.all([
+    get(ref(db, `${base}/hands`)),
+    get(ref(db, `${base}/decks`)),
+  ]);
+
+  const hands = handsSnap.val() || {};
+  const decks = decksSnap.val() || {};
+  const deckSweets = Array.isArray(decks.sweets) ? decks.sweets : [];
+  const excluded   = Array.isArray(decks.sweetsExcluded) ? decks.sweetsExcluded : [];
+
+  // 返すカードを「id」でユニーク化（重複防止）
+  const returned = new Map();
+  const add = (c) => {
+    if(!c || !c.id) return;
+    if(!returned.has(c.id)) returned.set(c.id, c);
+  };
+
+  // ① イベントで公開されたカード（selected/非selectedの実体になっている想定）
+  (Array.isArray(revealedCards) ? revealedCards : []).forEach(add);
+
+  // ② hands に残っているスイーツ（手元含む）も全部回収（これが枚数不足の主因）
+  Object.values(hands).forEach(h => {
+    const arr = h?.sweets;
+    if(Array.isArray(arr)) arr.forEach(add);
+  });
+
+  // ③ 除外も山札へ戻す（今回の仕様）
+  excluded.forEach(add);
+
+  const returnedIds = new Set(returned.keys());
+
+  // 既に山札に紛れ込んでいた場合でも二重化しないよう、先に除去してから足す
+  const baseDeck = deckSweets.filter(c => !(c && c.id && returnedIds.has(c.id)));
+  const newDeck  = shuffle([...baseDeck, ...Array.from(returned.values())]);
+
+  // hands の sweets を全員ぶん空にする
+  for(const uid of Object.keys(hands)){
+    if(hands[uid] && Array.isArray(hands[uid].sweets)){
+      hands[uid].sweets = [];
+    }
   }
+
+  // DB反映（decksは部分更新でOK）
+  await update(ref(db, base), {
+    'hands': hands,
+    'decks/sweets': newDeck,
+    'decks/sweetsExcluded': [],   // 除外は空に
+  });
 }
 
-/* =========================
-   ★ 受け取り指示カード
-   ========================= */
-function getMyReceivedCard(){
-  const myData = state.hands?.[state.userId];
-  const rec = myData?.received;
-  if(Array.isArray(rec) && rec.length) return rec[0];
-  return null;
-}
-function hasReceivedInstruction(){
-  return !!getMyReceivedCard();
-}
 
 /* =========================
    ★ 投票（チップ表示＆条件）
@@ -5584,3 +5587,5 @@ copyLinkBtn.addEventListener('click', async () => {
 
 </body>
 </html>
+
+
