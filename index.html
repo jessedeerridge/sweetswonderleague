@@ -1,6 +1,4 @@
 
-
-
 <!DOCTYPE html>   
 <html lang="ja">
 <head>
@@ -2062,6 +2060,13 @@ function subscribeEvents(){
     if(ev.type === 'roundRevealSweets'){
       // ev.cards: 表にするカード配列（スイーツカード）
       await animateRoundEndReveal(ev.cards || [], ev.selectedUids || []);
+  // ✅ ここを追加：拡大表示が終わったら、場のスイーツ→山札へ回収
+  await animateReturnAllFieldSweetsToDeck();
+  // ✅ その直後：除外札を「縦になって」山札へ回収
+  await animateReturnExcludedDeckToSweetsDeck();
+  if(state.isHost){
+    await hostCommitReturnSweetsToDeck();
+  }
     }
     if(ev.type === 'miniSweetsShuffleStart'){
       await runMiniSweetsShuffleAtStart();
@@ -2391,6 +2396,231 @@ function animateFlyBackCard(fromSeat, toSeat){
     duration: 520,
     easing: 'cubic-bezier(.22,.84,.44,1)'
   }).onfinish = () => fly.remove();
+}
+
+
+/* =========================
+   ★ スイーツ回収（拡大表示終了後）
+   - 場のスイーツ（selected / 非selected）を山札へ
+   - その直後、除外札は縦になって山札へ
+   ========================= */
+
+function sleep(ms){ return new Promise(r => setTimeout(r, ms)); }
+
+async function waitUntilHidden(el, timeoutMs = 4500){
+  const start = Date.now();
+  while(Date.now() - start < timeoutMs){
+    if(!el || el.classList.contains('hidden')) return;
+    await sleep(50);
+  }
+}
+
+function isVisibleRect(el){
+  if(!el) return false;
+  const r = el.getBoundingClientRect();
+  return !!(r.width && r.height);
+}
+
+function isFieldElement(el){
+  if(!el) return false;
+  // オーバーレイ中のカードは対象外
+  if(el.closest('#roundRevealOverlay')) return false;
+  if(el.closest('#revealOverlay')) return false;
+  if(el.closest('#sweetsBackdrop')) return false;
+  return isVisibleRect(el);
+}
+
+function getSweetsDeckTargetRect(){
+  if(!sweetsDeckUI) return null;
+  const r = sweetsDeckUI.getBoundingClientRect();
+  if(!r.width || !r.height) return null;
+  return {
+    x: r.left + r.width/2,
+    y: r.top + r.height/2,
+    w: r.width,
+    h: r.height,
+    raw: r
+  };
+}
+
+function animateOneCardToDeck(srcRect, target, { delay = 0, rotateFrom = 0, rotateTo = 0 } = {}){
+  if(!srcRect || !srcRect.width || !srcRect.height || !target) return Promise.resolve();
+
+  const fly = document.createElement('div');
+  fly.className = 'collect-card';
+  fly.style.left = `${srcRect.left}px`;
+  fly.style.top  = `${srcRect.top}px`;
+  fly.style.width  = `${srcRect.width}px`;
+  fly.style.height = `${srcRect.height}px`;
+  fly.style.backgroundImage = `url('${SWEETS_BACK_IMG}')`;
+  fly.style.zIndex = '999999';
+  document.body.appendChild(fly);
+
+  const dx = target.x - (srcRect.left + srcRect.width/2);
+  const dy = target.y - (srcRect.top  + srcRect.height/2);
+
+  const scaleX = target.w / srcRect.width;
+  const scaleY = target.h / srcRect.height;
+  const scale  = Math.min(scaleX, scaleY);
+
+  return new Promise(resolve => {
+    fly.animate([
+      { transform:`translate(0px,0px) rotate(${rotateFrom}deg) scale(1)`, opacity:1 },
+      { transform:`translate(${dx}px,${dy}px) rotate(${rotateTo}deg) scale(${scale})`, opacity:0.92 },
+    ],{
+      duration: 620,
+      delay,
+      easing: 'cubic-bezier(.22,.84,.44,1)',
+      fill: 'forwards'
+    }).onfinish = () => {
+      fly.remove();
+      resolve();
+    };
+  });
+}
+
+// ✅ 追加：ラウンド終了時に「手札のスイーツを回収して山札へ戻す（DB確定）」
+// - アニメは各端末で既存のまま
+// - データ更新はホストだけが行う（多重更新を防ぐ）
+async function hostCommitReturnSweetsToDeck(){
+  if(!state.isHost || !state.roomCode) return;
+
+  const base = `rooms/${state.roomCode}`;
+  const roomSnap = await get(ref(db, base));
+  const roomData = roomSnap.val() || {};
+
+  const hands = roomData.hands || {};
+  const decks = roomData.decks || {};
+
+  // 山札キーの揺れ吸収（基本は sweets）
+  const sweetsMainKey =
+    Array.isArray(decks.sweetsDeck) ? 'sweetsDeck' :
+    Array.isArray(decks.sweets)     ? 'sweets'     : 'sweets';
+
+  const deck     = Array.isArray(decks[sweetsMainKey]) ? decks[sweetsMainKey] : [];
+  const excluded = Array.isArray(decks.sweetsExcluded) ? decks.sweetsExcluded : [];
+
+  // 1) 返却対象（全員の hands.sweets）を集める + hands.sweets を空にする
+  const returned = [];
+  const newHands = {};
+
+  for(const [uid, h] of Object.entries(hands)){
+    const sweetsArr = Array.isArray(h?.sweets) ? h.sweets : [];
+    if(sweetsArr.length) returned.push(...sweetsArr);
+
+    newHands[uid] = { ...(h || {}), sweets: [] };
+  }
+
+  // 2) 二重追加防止（idでユニークに）
+  const ids = new Set(deck.map(c => c?.id).filter(Boolean));
+  const uniqueAppend = (arr) => (Array.isArray(arr) ? arr : []).filter(c => {
+    if(!c || !c.id) return false;
+    if(ids.has(c.id)) return false;
+    ids.add(c.id);
+    return true;
+  });
+
+  const newDeck = deck
+    .concat(uniqueAppend(returned))
+    .concat(uniqueAppend(excluded)); // ← 除外も最終的には山札へ合流
+
+  // 3) DB反映（まとめて）
+  const updates = {};
+  updates[`${base}/hands`] = newHands;
+  updates[`${base}/decks/${sweetsMainKey}`] = newDeck;
+  updates[`${base}/decks/sweetsExcluded`] = [];
+
+  await update(ref(db), updates);
+
+  // 表示用overrideのズレを避ける（必要なら）
+  sweetsDeckCountOverride = null;
+  sweetsExcludedCountOverride = null;
+}
+
+
+async function animateReturnAllFieldSweetsToDeck(){
+  // 「拡大表示が終わったら」＝roundRevealOverlay が閉じるまで待つ
+  await waitUntilHidden(roundRevealOverlay, 4500);
+
+  const target = getSweetsDeckTargetRect();
+  if(!target) return;
+
+  const sources = [];
+
+  // 1) selected（ネームタグ上の selected-sweets-card）
+  document.querySelectorAll('.selected-sweets-card').forEach(cardEl => {
+    if(!isFieldElement(cardEl)) return;
+    sources.push({
+      el: cardEl,
+      host: cardEl.closest('.selected-sweets-tag') || cardEl,
+      uid: (cardEl.closest('.selected-sweets-tag')?.dataset?.sweetsUid) || null
+    });
+  });
+
+  // 2) 非selected（他プレイヤーの sweets-wrap 内 sweets-mini）
+  document.querySelectorAll('.sweets-wrap .sweets-mini').forEach(miniEl => {
+    if(!isFieldElement(miniEl)) return;
+    sources.push({
+      el: miniEl,
+      host: miniEl.closest('.sweets-wrap') || miniEl,
+      uid: (miniEl.closest('.sweets-wrap')?.dataset?.sweetsUid) || null
+    });
+  });
+
+  // 3) 自分のスイーツ（手元表示が残っている場合も回収）
+  const myImg = mySweetsEl?.querySelector('img');
+  if(myImg && isFieldElement(myImg)){
+    sources.push({
+      el: myImg,
+      host: mySweetsEl,
+      uid: state.userId || null
+    });
+  }
+
+  if(!sources.length) return;
+
+  // フリッカー防止：render側でも消えるように（既存キャッシュを利用）
+  sources.forEach(s => { if(s.uid) collectedSweetsHidden.add(s.uid); });
+
+  // 元DOMを先に不可視化（回収中に二重に見えないように）
+  sources.forEach(s => {
+    if(s.host?.classList) s.host.classList.add('collect-hidden');
+    else if(s.el) s.el.style.visibility = 'hidden';
+  });
+
+  // 回収アニメ（少しだけズラして気持ちよく）
+  const tasks = sources.map((s, i) => {
+    const r = s.el.getBoundingClientRect();
+    return animateOneCardToDeck(r, target, { delay: i * 35 });
+  });
+
+  await Promise.all(tasks);
+}
+
+async function animateReturnExcludedDeckToSweetsDeck(){
+  // 「その直後」
+  await sleep(30);
+
+  // 除外が無いなら何もしない
+  const excludedDeck = state.room?.decks?.sweetsExcluded;
+  const liveExcluded = Array.isArray(excludedDeck) ? excludedDeck.length : 0;
+  const excludedCount = (sweetsExcludedCountOverride ?? liveExcluded);
+  if(excludedCount <= 0) return;
+
+  const target = getSweetsDeckTargetRect();
+  if(!target) return;
+
+  if(!sweetsExcludedDeckUI || !isVisibleRect(sweetsExcludedDeckUI)) return;
+  const exRect = sweetsExcludedDeckUI.getBoundingClientRect();
+
+  // UIを一瞬隠して「飛ぶ1枚」だけ見せる（見た目重複防止）
+  const prevVis = sweetsExcludedDeckUI.style.visibility;
+  sweetsExcludedDeckUI.style.visibility = 'hidden';
+
+  // 横(90deg) → 縦(0deg) になりつつ山札へ
+  await animateOneCardToDeck(exRect, target, { delay: 0, rotateFrom: 90, rotateTo: 0 });
+
+  sweetsExcludedDeckUI.style.visibility = prevVis;
 }
 
 /* =========================
