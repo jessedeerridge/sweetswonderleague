@@ -63,6 +63,18 @@
   }
   .host-selecting-pop.hidden{display:none;}
 
+  /* ★ 次リーダー選択ポップ */
+  .leader-select-pop{
+    position:fixed;left:50%;bottom:10px;transform:translateX(-50%);
+    background:#facc15;color:#7c4a00;
+    padding:12px 16px;border-radius:14px;
+    border:1px solid #d97706;
+    box-shadow:0 18px 40px rgba(0,0,0,.28);
+    z-index:226;font-weight:800;white-space:nowrap;
+    pointer-events:none;
+  }
+  .leader-select-pop.hidden{display:none;}
+
 /* ★ プレイヤー円配置用（拡大：直径だいたい400前後） */
 .player-circle{
   position:relative;
@@ -275,6 +287,11 @@
     from{transform:translateY(0);}
     to{transform:translateY(-30px);}
   }
+  @keyframes leaderPickPulse {
+    0%{transform:scale(1);}
+    50%{transform:scale(1.12);}
+    100%{transform:scale(1);}
+  }
 /* ✅ スイーツ山札専用：鼓動（例：強め） */
 @keyframes pulseSweetsDeck {
   0%   { transform: scale(1); }
@@ -312,6 +329,10 @@
     display:flex;align-items:center;gap:6px;
   }
   .player-tag.me{ background:#111;color:#fff;border-color:#111; }
+  .player-tag.leader-pick-candidate{
+    animation:leaderPickPulse 1.05s ease-in-out infinite;
+  }
+  .player-tag.leader-pick-selectable{ cursor:pointer; }
 
   /* ★ 手番の青枠：ネームタグ輪郭の外側 */
   .player-tag.active-turn{
@@ -337,6 +358,16 @@
   background:url('swleader.png') center/contain no-repeat;
   filter:drop-shadow(0 2px 6px rgba(0,0,0,.35));
   pointer-events:none;
+}
+.leader-chip-fly{
+  position:fixed;
+  width:21.6px;
+  height:21.6px;
+  background:url('swleader.png') center/contain no-repeat;
+  filter:drop-shadow(0 2px 6px rgba(0,0,0,.35));
+  pointer-events:none;
+  z-index:620;
+  will-change:transform;
 }
 
 
@@ -1155,6 +1186,10 @@
 .selected-sweets-tag.collect-hidden .sweets-number-tag{
   opacity:0;
 }
+.selected-sweets-tag.erased-card .selected-sweets-card{
+  opacity:0;
+  visibility:hidden;
+}
 .selected-sweets-card{
   position:relative;
   width:100%;
@@ -1438,6 +1473,7 @@
 
 <!-- ★ 参加者：ホスト人数選択中ポップ -->
 <div id="hostSelectingPop" class="host-selecting-pop hidden">ホストが人数を選択中</div>
+<div id="leaderSelectPop" class="leader-select-pop hidden">最多票の中からリーダーを選んでください。</div>
 
 <!-- 着席ポップ -->
 <div id="seatPop" class="seat-pop hidden">
@@ -1580,12 +1616,14 @@ const state = {
 };
 let latestPlayers = [];
 const collectedSweetsHidden = new Set();
+const erasedSelectedSweets = new Set();
 let miniShuffleRunning = false;
 let miniShuffleToken = 0;
 let sweetsExcludeAnimating = false;
 let sweetsDeckCountOverride = null;
 let sweetsExcludedCountOverride = null;
 let sweetsOverrideClearTimer = null;
+let lastLeaderSeat = null;
 /* =========================
    DOM
    ========================= */
@@ -1600,6 +1638,7 @@ const roomInfoLobby = document.getElementById('roomInfoLobby');
 const copyLinkBtn = document.getElementById('copyLinkBtn');
 
 const hostSelectingPop = document.getElementById('hostSelectingPop');
+const leaderSelectPop = document.getElementById('leaderSelectPop');
 
 const seatPop = document.getElementById('seatPop');
 const seatTabs = document.getElementById('seatTabs');
@@ -2026,6 +2065,7 @@ function subscribeRoles(){
 function subscribeGame(){
   const gameRef = ref(db, `rooms/${state.roomCode}/game`);
   onValue(gameRef, snap => {
+    const prevLeaderSeat = lastLeaderSeat;
     state.game = snap.val() || {};
     state.turn = state.game.turn || null;
     state.turnEnding = false;
@@ -2033,6 +2073,13 @@ function subscribeGame(){
     syncPassTurnState();
     updateTurnUI();
     if (latestPlayers.length) renderPlayerCircle(latestPlayers);
+    const nextLeaderSeat = state.turn?.leaderSeat ?? null;
+    if(prevLeaderSeat !== null && nextLeaderSeat !== null && prevLeaderSeat !== nextLeaderSeat){
+      requestAnimationFrame(() => {
+        animateLeaderChipMove(prevLeaderSeat, nextLeaderSeat);
+      });
+    }
+    lastLeaderSeat = nextLeaderSeat;
 
     // ★ ホスト：全員PASSになったらラウンド終了処理へ
     if(state.isHost){
@@ -2041,6 +2088,7 @@ function subscribeGame(){
 
     // ★ リーダー選択UI更新（同票解決）
     updateRoundPickUI();
+    updateLeaderPickUI();
     updatePassRoundBtn();
   });
 }
@@ -3063,6 +3111,12 @@ function renderPlayerCircle(players){
     ? roundPick.candidates
     : [];
   const roundPickCanSelect = roundPickActive && roundPick?.leaderId === state.userId;
+  const leaderPick = getLeaderPick();
+  const leaderPickActive = leaderPick?.phase === 'choose';
+  const leaderPickCandidates = leaderPickActive && Array.isArray(leaderPick.candidates)
+    ? leaderPick.candidates
+    : [];
+  const leaderPickCanSelect = leaderPickActive && leaderPick?.leaderId === state.userId;
   const decidedUids = getDecidedSweetsUids();
   const started = !!state.room?.gameStarted;
   if(roundPick?.phase === 'done' && decidedUids.length){
@@ -3087,6 +3141,17 @@ function renderPlayerCircle(players){
       tag.style.top = `${y}%`;
       tag.dataset.seat = String(p.seatIndex);
       tag.dataset.uid = p.id;
+      const isLeaderPickCandidate = leaderPickActive && leaderPickCandidates.includes(p.id);
+      if(isLeaderPickCandidate && p.id !== leaderPick?.leaderId){
+        tag.classList.add('leader-pick-candidate');
+      }
+      if(leaderPickCanSelect && isLeaderPickCandidate){
+        tag.classList.add('leader-pick-selectable');
+        tag.addEventListener('pointerdown', (e) => {
+          e.stopPropagation();
+          pickNextLeader(p.id);
+        });
+      }
 
       playerCircle.appendChild(tag);
 
@@ -3118,6 +3183,9 @@ function renderPlayerCircle(players){
           }
           if(isCollectHidden){
             selected.classList.add('collect-hidden');
+          }
+          if(erasedSelectedSweets.has(state.userId)){
+            selected.classList.add('erased-card');
           }
           selected.dataset.sweetsUid = state.userId;
           const cardWrap = document.createElement('div');
@@ -3207,6 +3275,17 @@ if(activeSeat === p.seatIndex) tag.classList.add('active-turn');
 tag.textContent = p.name;
 tag.dataset.seat = String(p.seatIndex);
 tag.dataset.uid = p.id;
+const isLeaderPickCandidate = leaderPickActive && leaderPickCandidates.includes(p.id);
+if(isLeaderPickCandidate && p.id !== leaderPick?.leaderId){
+  tag.classList.add('leader-pick-candidate');
+}
+if(leaderPickCanSelect && isLeaderPickCandidate){
+  tag.classList.add('leader-pick-selectable');
+  tag.addEventListener('pointerdown', (e) => {
+    e.stopPropagation();
+    pickNextLeader(p.id);
+  });
+}
 
 // 追い出しクリックは今まで通り
 const onKick = () => {
@@ -3543,6 +3622,9 @@ function isLeaderMe(){
   const rp = getRoundPick();
   return !!rp && (rp.leaderId === state.userId);
 }
+function getLeaderPick(){
+  return state.game?.leaderPick || null;
+}
 function getDecidedSweetsUids(){
   const rp = getRoundPick();
   if(!rp) return [];
@@ -3569,8 +3651,13 @@ function resetCollectedSweetsHiddenCache(){
     centerMoveBatchKey = null;
     decidedRoundKey = null;
     decidedRoundStartAt = null;
+    _leaderPickScheduledKey = null;
     document.querySelectorAll('.collect-hidden').forEach(el => {
       el.classList.remove('collect-hidden');
+    });
+    erasedSelectedSweets.clear();
+    document.querySelectorAll('.selected-sweets-tag.erased-card').forEach(el => {
+      el.classList.remove('erased-card');
     });
   }
 }
@@ -3716,6 +3803,32 @@ function updateRoundPickUI(){
   }
 
 }
+function updateLeaderPickUI(){
+  const lp = getLeaderPick();
+  const active = !!lp && lp.phase === 'choose';
+  leaderSelectPop.classList.toggle('hidden', !active);
+}
+
+async function applyLeaderSeatUpdate(uid){
+  if(!state.roomCode || !uid) return;
+  const nextPlayer = latestPlayers.find(p => p.id === uid);
+  if(!nextPlayer) return;
+
+  await update(ref(db, `rooms/${state.roomCode}/game/turn`), {
+    leaderSeat: nextPlayer.seatIndex,
+  });
+  await update(ref(db, `rooms/${state.roomCode}/game`), { leaderPick: null });
+}
+
+async function pickNextLeader(uid){
+  const lp = getLeaderPick();
+  if(!lp || lp.phase !== 'choose') return;
+  if(lp.leaderId !== state.userId) return;
+  const candidates = Array.isArray(lp.candidates) ? lp.candidates : [];
+  if(!candidates.includes(uid)) return;
+
+  await applyLeaderSeatUpdate(uid);
+}
 async function leaderPickOne(uid){
   const rp = getRoundPick();
   if(!rp || rp.phase !== 'choose') return;
@@ -3776,11 +3889,119 @@ async function maybeHostFireRoundRevealAfterLeaderPick(){
   await emitEvent({ type:'roundRevealSweets', selectedUids: selected, cards });
 }
 
+const LEADER_PICK_DELAY_MS = 3000;
+let _leaderPickScheduledKey = null;
+
+function getTopVoteCandidates(){
+  const stats = getSweetsVoteStats();
+  if(!stats.length) return [];
+  const maxVotes = Math.max(...stats.map(item => item.votes));
+  return stats.filter(item => item.votes === maxVotes).map(item => item.uid);
+}
+
+async function maybeHostStartLeaderPickAfterReveal(selectedUids){
+  if(!state.isHost) return;
+  if(!state.roomCode) return;
+  if(!state.game?.roundEnding) return;
+  const currentPick = getLeaderPick();
+  if(currentPick?.phase === 'choose') return;
+
+  const key = Array.isArray(selectedUids) ? selectedUids.join(',') : '';
+  if(_leaderPickScheduledKey === key) return;
+  _leaderPickScheduledKey = key;
+
+  const candidates = getTopVoteCandidates();
+  if(!candidates.length) return;
+
+  const leaderId = getLeaderPlayerId();
+  if(candidates.length === 1){
+    await applyLeaderSeatUpdate(candidates[0]);
+    return;
+  }
+  if(candidates.length === 2 && leaderId && candidates.includes(leaderId)){
+    const nextUid = candidates.find(uid => uid !== leaderId);
+    if(nextUid){
+      await applyLeaderSeatUpdate(nextUid);
+    }
+    return;
+  }
+
+  await update(ref(db, `rooms/${state.roomCode}/game`), {
+    leaderPick: {
+      phase: 'choose',
+      candidates,
+      leaderId,
+      leaderSeat: state.turn?.leaderSeat ?? null,
+    }
+  });
+}
+
+function getLeaderChipRectForTag(tag){
+  if(!tag) return null;
+  const rect = tag.getBoundingClientRect();
+  if(!rect.width || !rect.height) return null;
+  const size = 21.6;
+  const offset = 22;
+  return {
+    left: rect.right + offset - size,
+    top: rect.top + rect.height / 2 - size / 2,
+    size,
+  };
+}
+
+function animateLeaderChipMove(prevSeat, nextSeat){
+  if(prevSeat == null || nextSeat == null) return;
+  if(prevSeat === nextSeat) return;
+  const fromTag = document.querySelector(`.player-tag[data-seat="${prevSeat}"]`);
+  const toTag = document.querySelector(`.player-tag[data-seat="${nextSeat}"]`);
+  if(!fromTag || !toTag) return;
+  const fromRect = getLeaderChipRectForTag(fromTag);
+  const toRect = getLeaderChipRectForTag(toTag);
+  if(!fromRect || !toRect) return;
+
+  const fly = document.createElement('div');
+  fly.className = 'leader-chip-fly';
+  fly.style.left = `${fromRect.left}px`;
+  fly.style.top = `${fromRect.top}px`;
+  document.body.appendChild(fly);
+
+  const targetChip = toTag.querySelector('.leader-chip');
+  if(targetChip){
+    targetChip.style.visibility = 'hidden';
+  }
+
+  const dx = toRect.left - fromRect.left;
+  const dy = toRect.top - fromRect.top;
+  const anim = fly.animate([
+    { transform: 'translate(0px, 0px) scale(1)' },
+    { transform: `translate(${dx * 0.2}px, ${dy * 0.2}px) scale(1.4)` },
+    { transform: `translate(${dx}px, ${dy}px) scale(1)` },
+  ], {
+    duration: 700,
+    easing: 'ease-in-out',
+    fill: 'forwards',
+  });
+
+  anim.onfinish = () => {
+    fly.remove();
+    if(targetChip){
+      targetChip.style.visibility = '';
+    }
+  };
+  anim.oncancel = () => {
+    fly.remove();
+    if(targetChip){
+      targetChip.style.visibility = '';
+    }
+  };
+}
+
 /* subscribeGame内から呼ばれるようにフック */
 const _origSubscribeGame = subscribeGame;
 subscribeGame = function(){
   const gameRef = ref(db, `rooms/${state.roomCode}/game`);
   onValue(gameRef, snap => {
+    const prevLeaderSeat = lastLeaderSeat;
     state.game = snap.val() || {};
     state.turn = state.game.turn || null;
     state.turnEnding = false;
@@ -3788,6 +4009,13 @@ subscribeGame = function(){
     syncPassTurnState();
     updateTurnUI();
     if (latestPlayers.length) renderPlayerCircle(latestPlayers);
+    const nextLeaderSeat = state.turn?.leaderSeat ?? null;
+    if(prevLeaderSeat !== null && nextLeaderSeat !== null && prevLeaderSeat !== nextLeaderSeat){
+      requestAnimationFrame(() => {
+        animateLeaderChipMove(prevLeaderSeat, nextLeaderSeat);
+      });
+    }
+    lastLeaderSeat = nextLeaderSeat;
 
     if(state.isHost){
       maybeHostStartRoundEndFlow().catch(()=>{});
@@ -3795,6 +4023,7 @@ subscribeGame = function(){
     }
 
     updateRoundPickUI();
+    updateLeaderPickUI();
     updatePassRoundBtn();
   });
 };
@@ -3834,6 +4063,17 @@ function toggleCollectHiddenForUids(uids, hidden){
     });
     if(hidden){
       collectedSweetsHidden.add(uid);
+    }
+  });
+}
+
+function eraseSelectedSweetsCards(uids){
+  const list = Array.isArray(uids) ? uids : [];
+  list.forEach(uid => {
+    erasedSelectedSweets.add(uid);
+    const tagEl = document.querySelector(`.selected-sweets-tag[data-sweets-uid="${uid}"]`);
+    if(tagEl){
+      tagEl.classList.add('erased-card');
     }
   });
 }
@@ -4424,6 +4664,11 @@ async function animateRoundEndReveal(cards, selectedUids){
 
     roundRevealOverlay.classList.add('hidden');
     roundRevealRow.innerHTML = '';
+
+    eraseSelectedSweetsCards(uids);
+    _fxSetTimeout(() => {
+      maybeHostStartLeaderPickAfterReveal(uids).catch(()=>{});
+    }, LEADER_PICK_DELAY_MS, token);
 
     for(const restore of roundEndFx.restores){
       try{ restore(); }catch(_){}
