@@ -1583,6 +1583,9 @@ let sweetsExcludeAnimating = false;
 let sweetsDeckCountOverride = null;
 let sweetsExcludedCountOverride = null;
 let sweetsOverrideClearTimer = null;
+let currentGameSessionId = null;
+let eventsSubscribedAt = 0;
+let turnBlockedByShuffle = false;
 /* =========================
    DOM
    ========================= */
@@ -1686,6 +1689,39 @@ function shuffle(arr){
 }
 function clamp(n,min,max){ return Math.max(min, Math.min(max, n)); }
 function now(){ return Date.now(); }
+
+function resetLocalGameEffects(){
+  stopRoundEndFx();
+  resetCollectedSweetsHiddenCache();
+
+  miniShuffleToken += 1;
+  miniShuffleRunning = false;
+  sweetsExcludeAnimating = false;
+  turnBlockedByShuffle = false;
+
+  if(revealTimer){
+    clearTimeout(revealTimer);
+    revealTimer = null;
+  }
+  revealOverlay.classList.add('hidden');
+
+  if(sweetsOverrideClearTimer){
+    clearTimeout(sweetsOverrideClearTimer);
+    sweetsOverrideClearTimer = null;
+  }
+  sweetsDeckCountOverride = null;
+  sweetsExcludedCountOverride = null;
+
+  document.querySelectorAll('.sweets-shuffle-stage, .sweets-move-card, .collect-card')
+    .forEach(el => el.remove());
+
+  roundRevealRow.innerHTML = '';
+  roundRevealOverlay.classList.add('hidden');
+
+  updateActionDeckUI();
+  updateSweetsDeckUI();
+}
+
 
 function refreshRoomLabels(){
   if (!state.roomCode || !state.userName) return;
@@ -2026,7 +2062,14 @@ function subscribeGame(){
     state.game = snap.val() || {};
     state.turn = state.game.turn || null;
     state.turnEnding = false;
-    resetCollectedSweetsHiddenCache();
+    const nextSessionId = state.game?.sessionId || null;
+    const sessionChanged = nextSessionId !== currentGameSessionId;
+    if(sessionChanged){
+      resetLocalGameEffects();
+      currentGameSessionId = nextSessionId;
+    } else {
+      resetCollectedSweetsHiddenCache();
+    }
     syncPassTurnState();
     updateTurnUI();
     if (latestPlayers.length) renderPlayerCircle(latestPlayers);
@@ -2043,10 +2086,21 @@ function subscribeGame(){
 }
 function subscribeEvents(){
   const evRef = ref(db, `rooms/${state.roomCode}/events`);
+  eventsSubscribedAt = now();
   onChildAdded(evRef, async snap => {
     const key = snap.key;
     const ev = snap.val();
     if(!ev) return;
+    if(ev.sessionId && ev.sessionId !== currentGameSessionId){
+      resetLocalGameEffects();
+      currentGameSessionId = ev.sessionId;
+    } else if(!currentGameSessionId && ev.sessionId){
+      currentGameSessionId = ev.sessionId;
+    }
+    if(!currentGameSessionId) return;
+
+    if(ev.sessionId !== currentGameSessionId) return;
+    if(!ev.sessionId && typeof ev.at === 'number' && eventsSubscribedAt && ev.at < eventsSubscribedAt) return;
 
     if(ev.type === 'revealCard'){
       showReveal(ev.card);
@@ -2092,6 +2146,28 @@ function isPassedPlayerId(uid){
   const pm = getPassedMap();
   return !!pm?.[uid];
 }
+function isTurnBlocked(){
+  return !!turnBlockedByShuffle;
+}
+
+async function hostGrantTurnAfterMiniShuffle(){
+  if(!state.isHost || !state.roomCode) return;
+  if(state.game?.turn) return;
+  const seats = getSeatedSeatOrder();
+  if(!seats.length) return;
+  const randomSeat = seats[Math.floor(Math.random() * seats.length)];
+  const player = getPlayerBySeat(randomSeat);
+  const turnRef = ref(db, `rooms/${state.roomCode}/game/turn`);
+  await set(turnRef, {
+    activeSeat: randomSeat,
+    activePlayerId: player?.id ?? null,
+    startSeat: randomSeat,
+    leaderSeat: randomSeat,
+    turnNo: 1,
+    updatedAt: serverTimestamp(),
+  });
+}
+
 function getNextOccupiedSeatSkippingPassed(currentSeat){
   const seats = getSeatedSeatOrder();
   if(!seats.length) return null;
@@ -2110,6 +2186,7 @@ function getNextOccupiedSeatSkippingPassed(currentSeat){
 }
 function isMyTurn(){
   if(!state.turn) return false;
+  if(isTurnBlocked()) return false;
   return (state.turn.activePlayerId === state.userId);
 }
 async function endTurn(reason){
@@ -2280,15 +2357,7 @@ async function hostGameStart(){
 
   if(players.length === 0) return;
 
-  const startPlayer = players[Math.floor(Math.random()*players.length)];
-  const startSeat = startPlayer.seatIndex;
   const seats = players.map(p=>p.seatIndex).sort((a,b)=>a-b);
-
-  const leaderSeat = (() => {
-    const idx = seats.indexOf(startSeat);
-    if(idx === -1) return seats[seats.length-1];
-    return seats[(idx - 1 + seats.length) % seats.length];
-  })();
 
   let actionDeck = buildActionDeck(players.length);
   const sweetsDeck = buildSweetsDeck(players.length);
@@ -2304,37 +2373,41 @@ async function hostGameStart(){
   });
 
   const pool = buildRolePool(players.length);
-  const roles = {};
+ const roles = {};
   players.forEach((p, i) => { roles[p.id] = pool[i]; });
 
   const base = `rooms/${state.roomCode}`;
-
+  const gameSessionId = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+  await update(ref(db, `${base}/game`), { turn: null });
   await update(ref(db, `${base}`), { gameStarted: true });
-  await set(ref(db, `${base}/hands`), hands);
-  await set(ref(db, `${base}/roles`), roles);
+  await remove(ref(db, `${base}/events`));
+  await set(ref(db, `${base}/hands`), {});
+  await set(ref(db, `${base}/roles`), {});
   await set(ref(db, `${base}/discard`), { action: [] });
 
   await set(ref(db, `${base}/decks`), { action: actionDeck, sweets: sweetsDeck, sweetsExcluded: [] });
+
+
+
+  await Promise.all([
+    set(ref(db, `${base}/hands`), hands),
+    set(ref(db, `${base}/roles`), roles),
+  ]);
 
   await set(ref(db, `${base}/votes`), {});
   await set(ref(db, `${base}/game`), {
     status: 'playing',
     startedAt: serverTimestamp(),
+    sessionId: gameSessionId,
     seatOrder: seats,
     passes: {},               // ★ ラウンドPASS
     roundEnding: false,       // ★ ラウンド終了中フラグ
     roundPick: null,          // ★ 同票解決状態
-    turn: {
-      activeSeat: startSeat,
-      activePlayerId: startPlayer.id,
-      startSeat,
-      leaderSeat,
-      turnNo: 1,
-      updatedAt: serverTimestamp(),
-    }
+    turn: null
+
   });
 
-  await emitEvent({ type: 'miniSweetsShuffleStart' });
+  await emitEvent({ type: 'miniSweetsShuffleStart', sessionId: gameSessionId });
 
   updateActionDeckUI();
   updateSweetsDeckUI();
@@ -2348,8 +2421,12 @@ async function hostGameStart(){
 async function emitEvent(payload){
   if(!state.roomCode) return;
   const evRef = ref(db, `rooms/${state.roomCode}/events`);
-  await push(evRef, { ...payload, at: now() });
+  const sessionId = payload.sessionId ?? currentGameSessionId ?? state.game?.sessionId ?? null;
+  const eventPayload = { ...payload, at: now() };
+  if(sessionId) eventPayload.sessionId = sessionId;
+  await push(evRef, eventPayload);
 }
+
 
 /* =========================
    中央拡大（全員1秒）
@@ -3458,8 +3535,9 @@ circle.appendChild(tag);
 
 // handData は後でミニ手札にも使うので先に取る
 const handData = state.hands?.[p.id];
+const roleAssigned = !!state.roles?.[p.id];
 
-if(started){
+if(started && roleAssigned){
   // ★ 内側：スイーツ未獲得なら「正体カードだけ中央」、獲得後は「正体＋スイーツ」
   const cardsRow = document.createElement('div');
   cardsRow.className = 'other-cards-row';
@@ -3600,7 +3678,9 @@ function updateTurnUI(){
 
   const activeP = getPlayerBySeat(state.turn.activeSeat);
   const activeName = activeP?.name ?? '？';
-  turnBadge.textContent = `手番：${activeName}（${state.turn.activeSeat}）`;
+  turnBadge.textContent = isTurnBlocked()
+    ? 'シャッフル中…'
+    : `手番：${activeName}（${state.turn.activeSeat}）`;
 
   const show = (state.seatedTable !== null);
   turnBar.classList.toggle('hidden', !show);
@@ -4452,146 +4532,156 @@ async function maybeHostApplySweetsSplit(deck, playerCount){
 
 async function runMiniSweetsShuffleAtStart(){
   if(miniShuffleRunning) return;
-  const rect = await getSweetsDeckRectForMiniShuffle();
- if(!rect){
+  turnBlockedByShuffle = true;
+  updateTurnUI();
+  try{
+    const rect = await getSweetsDeckRectForMiniShuffle();
+    if(!rect){
+      const deck = await getSweetsDeckForMiniShuffle();
+      const totalCount = Array.isArray(deck) ? deck.length : 0;
+      const playerCount = getPlayerCountForSweetsSplit();
+      const keepCount = clamp(playerCount + 2, 0, totalCount);
+      const moveCount = Math.max(0, totalCount - keepCount);
+      if(moveCount > 0){
+        sweetsExcludeAnimating = true;
+        setSweetsCountOverrides(keepCount, moveCount, 5000);
+        updateSweetsDeckUI();
+        sweetsExcludeAnimating = false;
+      }
+      await maybeHostApplySweetsSplit(deck, playerCount);
+      await hostGrantTurnAfterMiniShuffle();
+      return;
+    }
+
+    const token = ++miniShuffleToken;
+    miniShuffleRunning = true;
+    updateSweetsDeckUI();
+
+    const cardSample = sweetsDeckUI.querySelector('.card');
+    const cardStyle = cardSample ? getComputedStyle(cardSample) : null;
+    const cardRadius = cardStyle?.borderRadius || '7px';
+    const cardBorder = cardStyle?.border || '1px solid rgba(0,0,0,.18)';
+    const cardShadow = cardStyle?.boxShadow || 'none';
+
+    const stage = document.createElement('div');
+    stage.className = 'sweets-shuffle-stage';
+    stage.style.left = `${rect.left + rect.width / 2}px`;
+    stage.style.top = `${rect.top + rect.height / 2}px`;
+    stage.style.width = `${rect.width}px`;
+    stage.style.height = `${rect.height}px`;
+    document.body.appendChild(stage);
+
+    try{
+      const BASE_W = 120;
+      const BASE_H = 170;
+      const scale = Math.min(rect.width / BASE_W, rect.height / BASE_H);
+      const OFFSET_X = 4 * scale;
+      const OFFSET_Y = 4 * scale;
+      const OUT_X = 78 * scale;
+      const TILT_BASE = 5;
+      const TILT_MORE = 5;
+      const DUR_OUT = 220;
+      const DUR_IN = 220;
+      const PAUSE = 20;
+      const LOOPS = 3;
+      const base = 'translate(-50%,-50%)';
+      const baseFront = `${base} translate(0px,0px) rotate(${TILT_BASE}deg)`;
+      const baseBack = `${base} translate(${OFFSET_X}px,${OFFSET_Y}px) rotate(${TILT_BASE}deg)`;
+      const outTransform = `${base} translate(${OUT_X}px,0px) rotate(${TILT_BASE + TILT_MORE}deg)`;
+
+      const createCard = (zIndex, transform) => {
+        const el = document.createElement('div');
+        el.className = 'sweets-shuffle-card';
+        el.style.width = `${rect.width}px`;
+        el.style.height = `${rect.height}px`;
+        el.style.borderRadius = cardRadius;
+        el.style.border = cardBorder;
+        el.style.boxShadow = cardShadow;
+        el.style.backgroundImage = `url('${SWEETS_BACK_IMG}')`;
+        el.style.zIndex = String(zIndex);
+        el.style.transform = transform;
+        return el;
+      };
+
+      const back = createCard(1, baseBack);
+      const front = createCard(2, baseFront);
+      stage.appendChild(back);
+      stage.appendChild(front);
+
+      const animateOnce = (el, keyframes, options) => new Promise(resolve => {
+        const anim = el.animate(keyframes, options);
+        anim.onfinish = resolve;
+        anim.oncancel = resolve;
+      });
+
+      let frontEl = front;
+      let backEl = back;
+
+      for(let i=0;i<LOOPS;i++){
+        if(token !== miniShuffleToken) return;
+        await animateOnce(frontEl, [
+          { transform: baseFront },
+          { transform: outTransform },
+        ], {
+          duration: DUR_OUT,
+          easing: 'ease-in-out',
+          fill: 'forwards',
+        });
+
+        if(token !== miniShuffleToken) return;
+        frontEl.style.transform = outTransform;
+        frontEl.style.zIndex = '1';
+        backEl.style.zIndex = '2';
+        backEl.style.transform = baseFront;
+
+        await animateOnce(frontEl, [
+          { transform: outTransform },
+          { transform: baseBack },
+        ], {
+          duration: DUR_IN,
+          easing: 'ease-in-out',
+          fill: 'forwards',
+        });
+
+        if(token !== miniShuffleToken) return;
+        frontEl.style.transform = baseBack;
+
+        const tmp = frontEl;
+        frontEl = backEl;
+        backEl = tmp;
+
+        await new Promise(resolve => setTimeout(resolve, PAUSE));
+      }
+    } finally {
+      stage.remove();
+      if(token === miniShuffleToken){
+        miniShuffleRunning = false;
+        updateSweetsDeckUI();
+      }
+    }
+    if(token !== miniShuffleToken) return;
+
     const deck = await getSweetsDeckForMiniShuffle();
     const totalCount = Array.isArray(deck) ? deck.length : 0;
     const playerCount = getPlayerCountForSweetsSplit();
     const keepCount = clamp(playerCount + 2, 0, totalCount);
     const moveCount = Math.max(0, totalCount - keepCount);
-    if(moveCount > 0){
-      sweetsExcludeAnimating = true;
+
+    const targetRect = await getSweetsExcludedDeckRectForMiniShuffle();
+    if(rect && targetRect && moveCount > 0){
+      await animateSweetsExcludeMove(rect, targetRect, totalCount, keepCount);
+    } else if(moveCount > 0){
       setSweetsCountOverrides(keepCount, moveCount, 5000);
       updateSweetsDeckUI();
-      sweetsExcludeAnimating = false;
     }
+
     await maybeHostApplySweetsSplit(deck, playerCount);
-    return;
-  }
-
-  const token = ++miniShuffleToken;
-  miniShuffleRunning = true;
-  updateSweetsDeckUI();
-
-  const cardSample = sweetsDeckUI.querySelector('.card');
-  const cardStyle = cardSample ? getComputedStyle(cardSample) : null;
-  const cardRadius = cardStyle?.borderRadius || '7px';
-  const cardBorder = cardStyle?.border || '1px solid rgba(0,0,0,.18)';
-  const cardShadow = cardStyle?.boxShadow || 'none';
-
-  const stage = document.createElement('div');
-  stage.className = 'sweets-shuffle-stage';
-  stage.style.left = `${rect.left + rect.width / 2}px`;
-  stage.style.top = `${rect.top + rect.height / 2}px`;
-  stage.style.width = `${rect.width}px`;
-  stage.style.height = `${rect.height}px`;
-  document.body.appendChild(stage);
-
-  try{
-    const BASE_W = 120;
-    const BASE_H = 170;
-    const scale = Math.min(rect.width / BASE_W, rect.height / BASE_H);
-    const OFFSET_X = 4 * scale;
-    const OFFSET_Y = 4 * scale;
-    const OUT_X = 78 * scale;
-    const TILT_BASE = 5;
-    const TILT_MORE = 5;
-    const DUR_OUT = 220;
-    const DUR_IN = 220;
-    const PAUSE = 20;
-    const LOOPS = 3;
-    const base = 'translate(-50%,-50%)';
-    const baseFront = `${base} translate(0px,0px) rotate(${TILT_BASE}deg)`;
-    const baseBack = `${base} translate(${OFFSET_X}px,${OFFSET_Y}px) rotate(${TILT_BASE}deg)`;
-    const outTransform = `${base} translate(${OUT_X}px,0px) rotate(${TILT_BASE + TILT_MORE}deg)`;
-
-    const createCard = (zIndex, transform) => {
-      const el = document.createElement('div');
-      el.className = 'sweets-shuffle-card';
-      el.style.width = `${rect.width}px`;
-      el.style.height = `${rect.height}px`;
-      el.style.borderRadius = cardRadius;
-      el.style.border = cardBorder;
-      el.style.boxShadow = cardShadow;
-      el.style.backgroundImage = `url('${SWEETS_BACK_IMG}')`;
-      el.style.zIndex = String(zIndex);
-      el.style.transform = transform;
-      return el;
-    };
-
-    const back = createCard(1, baseBack);
-    const front = createCard(2, baseFront);
-    stage.appendChild(back);
-    stage.appendChild(front);
-
-    const animateOnce = (el, keyframes, options) => new Promise(resolve => {
-      const anim = el.animate(keyframes, options);
-      anim.onfinish = resolve;
-      anim.oncancel = resolve;
-    });
-
-    let frontEl = front;
-    let backEl = back;
-
-    for(let i=0;i<LOOPS;i++){
-      if(token !== miniShuffleToken) return;
-      await animateOnce(frontEl, [
-        { transform: baseFront },
-        { transform: outTransform },
-      ], {
-        duration: DUR_OUT,
-        easing: 'ease-in-out',
-        fill: 'forwards',
-      });
-
-      if(token !== miniShuffleToken) return;
-      frontEl.style.transform = outTransform;
-      frontEl.style.zIndex = '1';
-      backEl.style.zIndex = '2';
-      backEl.style.transform = baseFront;
-
-      await animateOnce(frontEl, [
-        { transform: outTransform },
-        { transform: baseBack },
-      ], {
-        duration: DUR_IN,
-        easing: 'ease-in-out',
-        fill: 'forwards',
-      });
-
-      if(token !== miniShuffleToken) return;
-      frontEl.style.transform = baseBack;
-
-      const tmp = frontEl;
-      frontEl = backEl;
-      backEl = tmp;
-
-      await new Promise(resolve => setTimeout(resolve, PAUSE));
-    }
+    if(token !== miniShuffleToken) return;
+    await hostGrantTurnAfterMiniShuffle();
   } finally {
-    stage.remove();
-    if(token === miniShuffleToken){
-      miniShuffleRunning = false;
-      updateSweetsDeckUI();
-    }
+    turnBlockedByShuffle = false;
+    updateTurnUI();
   }
-  if(token !== miniShuffleToken) return;
-
-  const deck = await getSweetsDeckForMiniShuffle();
-  const totalCount = Array.isArray(deck) ? deck.length : 0;
-  const playerCount = getPlayerCountForSweetsSplit();
-  const keepCount = clamp(playerCount + 2, 0, totalCount);
-  const moveCount = Math.max(0, totalCount - keepCount);
-
-  const targetRect = await getSweetsExcludedDeckRectForMiniShuffle();
-  if(rect && targetRect && moveCount > 0){
-    await animateSweetsExcludeMove(rect, targetRect, totalCount, keepCount);
-  } else if(moveCount > 0){
-    setSweetsCountOverrides(keepCount, moveCount, 5000);
-    updateSweetsDeckUI();
-  }
-
-  await maybeHostApplySweetsSplit(deck, playerCount);
 }
 
 async function animateRoundEndReveal(cards, selectedUids){
@@ -5472,6 +5562,7 @@ btnStartPopClose.addEventListener('click', () => {
 
 btnGameStart.addEventListener('click', async () => {
   if (!state.isHost) return;
+  resetLocalGameEffects();
   await hostGameStart();
   startPop.classList.add('hidden');
 });
@@ -5493,10 +5584,10 @@ btnResetRoom.addEventListener('click', async () => {
     remove(ref(db, `${base}/gameStarted`)),
   ]);
 
+  resetLocalGameEffects();
   state.seatedTable = null;
   startPop.classList.add('hidden');
   await syncSeatUI();
-
   updateActionDeckUI();
   updateSweetsDeckUI();
   renderMyVoteChip();
@@ -5578,5 +5669,4 @@ copyLinkBtn.addEventListener('click', async () => {
 
 </body>
 </html>
-
 
