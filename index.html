@@ -1500,6 +1500,8 @@ const state = {
 };
 let latestPlayers = [];
 const collectedSweetsHidden = new Set();
+let miniShuffleRunning = false;
+let miniShuffleToken = 0;
 /* =========================
    DOM
    ========================= */
@@ -1718,7 +1720,7 @@ function updateSweetsDeckUI(){
   const started = !!state.room?.gameStarted;
   centerDecksEl.classList.toggle('hidden', !started);
 
-  sweetsDeckUI.classList.toggle('hidden', !started);
+  sweetsDeckUI.classList.toggle('hidden', !started || miniShuffleRunning);
   sweetsDeckCountEl.textContent = String(count);
 
   const stackN =
@@ -1928,6 +1930,9 @@ function subscribeEvents(){
     if(ev.type === 'roundRevealSweets'){
       // ev.cards: 表にするカード配列（スイーツカード）
       await animateRoundEndReveal(ev.cards || [], ev.selectedUids || []);
+    }
+    if(ev.type === 'miniSweetsShuffleStart'){
+      await runMiniSweetsShuffleAtStart();
     }
 
     if(state.isHost){
@@ -2184,6 +2189,8 @@ async function hostGameStart(){
       updatedAt: serverTimestamp(),
     }
   });
+
+  await emitEvent({ type: 'miniSweetsShuffleStart' });
 
   updateActionDeckUI();
   updateSweetsDeckUI();
@@ -3916,6 +3923,155 @@ async function _runSweetShuffle1(token){
   if(token !== roundEndFx.token) return;
   stage.remove();
   roundEndFx.nodes.delete(stage);
+}
+
+async function getSweetsDeckRectForMiniShuffle(){
+  if(!sweetsDeckUI) return null;
+  let rect = sweetsDeckUI.getBoundingClientRect();
+  if(rect && rect.width > 0 && rect.height > 0){
+    return rect;
+  }
+
+  const wasCenterHidden = centerDecksEl.classList.contains('hidden');
+  const wasSweetsHidden = sweetsDeckUI.classList.contains('hidden');
+  const prevCenterVisibility = centerDecksEl.style.visibility;
+  const prevSweetsVisibility = sweetsDeckUI.style.visibility;
+
+  centerDecksEl.classList.remove('hidden');
+  sweetsDeckUI.classList.remove('hidden');
+  centerDecksEl.style.visibility = 'hidden';
+  sweetsDeckUI.style.visibility = 'hidden';
+
+  for(let i=0;i<6;i++){
+    rect = sweetsDeckUI.getBoundingClientRect();
+    if(rect && rect.width > 0 && rect.height > 0){
+      break;
+    }
+    await new Promise(resolve => requestAnimationFrame(() => resolve()));
+  }
+
+  centerDecksEl.style.visibility = prevCenterVisibility;
+  sweetsDeckUI.style.visibility = prevSweetsVisibility;
+  if(wasSweetsHidden) sweetsDeckUI.classList.add('hidden');
+  if(wasCenterHidden) centerDecksEl.classList.add('hidden');
+
+  if(rect && rect.width > 0 && rect.height > 0){
+    return rect;
+  }
+  return null;
+}
+
+async function runMiniSweetsShuffleAtStart(){
+  if(miniShuffleRunning) return;
+  const rect = await getSweetsDeckRectForMiniShuffle();
+  if(!rect) return;
+
+  const token = ++miniShuffleToken;
+  miniShuffleRunning = true;
+  updateSweetsDeckUI();
+
+  const cardSample = sweetsDeckUI.querySelector('.card');
+  const cardStyle = cardSample ? getComputedStyle(cardSample) : null;
+  const cardRadius = cardStyle?.borderRadius || '7px';
+  const cardBorder = cardStyle?.border || '1px solid rgba(0,0,0,.18)';
+  const cardShadow = cardStyle?.boxShadow || 'none';
+
+  const stage = document.createElement('div');
+  stage.className = 'sweets-shuffle-stage';
+  stage.style.left = `${rect.left + rect.width / 2}px`;
+  stage.style.top = `${rect.top + rect.height / 2}px`;
+  stage.style.width = `${rect.width}px`;
+  stage.style.height = `${rect.height}px`;
+  document.body.appendChild(stage);
+
+  try{
+    const BASE_W = 120;
+    const BASE_H = 170;
+    const scale = Math.min(rect.width / BASE_W, rect.height / BASE_H);
+    const OFFSET_X = 4 * scale;
+    const OFFSET_Y = 4 * scale;
+    const OUT_X = 78 * scale;
+    const TILT_BASE = 5;
+    const TILT_MORE = 5;
+    const DUR_OUT = 220;
+    const DUR_IN = 220;
+    const PAUSE = 20;
+    const LOOPS = 3;
+    const base = 'translate(-50%,-50%)';
+    const baseFront = `${base} translate(0px,0px) rotate(${TILT_BASE}deg)`;
+    const baseBack = `${base} translate(${OFFSET_X}px,${OFFSET_Y}px) rotate(${TILT_BASE}deg)`;
+    const outTransform = `${base} translate(${OUT_X}px,0px) rotate(${TILT_BASE + TILT_MORE}deg)`;
+
+    const createCard = (zIndex, transform) => {
+      const el = document.createElement('div');
+      el.className = 'sweets-shuffle-card';
+      el.style.width = `${rect.width}px`;
+      el.style.height = `${rect.height}px`;
+      el.style.borderRadius = cardRadius;
+      el.style.border = cardBorder;
+      el.style.boxShadow = cardShadow;
+      el.style.backgroundImage = `url('${SWEETS_BACK_IMG}')`;
+      el.style.zIndex = String(zIndex);
+      el.style.transform = transform;
+      return el;
+    };
+
+    const back = createCard(1, baseBack);
+    const front = createCard(2, baseFront);
+    stage.appendChild(back);
+    stage.appendChild(front);
+
+    const animateOnce = (el, keyframes, options) => new Promise(resolve => {
+      const anim = el.animate(keyframes, options);
+      anim.onfinish = resolve;
+      anim.oncancel = resolve;
+    });
+
+    let frontEl = front;
+    let backEl = back;
+
+    for(let i=0;i<LOOPS;i++){
+      if(token !== miniShuffleToken) return;
+      await animateOnce(frontEl, [
+        { transform: baseFront },
+        { transform: outTransform },
+      ], {
+        duration: DUR_OUT,
+        easing: 'ease-in-out',
+        fill: 'forwards',
+      });
+
+      if(token !== miniShuffleToken) return;
+      frontEl.style.transform = outTransform;
+      frontEl.style.zIndex = '1';
+      backEl.style.zIndex = '2';
+      backEl.style.transform = baseFront;
+
+      await animateOnce(frontEl, [
+        { transform: outTransform },
+        { transform: baseBack },
+      ], {
+        duration: DUR_IN,
+        easing: 'ease-in-out',
+        fill: 'forwards',
+      });
+
+      if(token !== miniShuffleToken) return;
+      frontEl.style.transform = baseBack;
+
+      const tmp = frontEl;
+      frontEl = backEl;
+      backEl = tmp;
+
+      await new Promise(resolve => setTimeout(resolve, PAUSE));
+    }
+  } finally {
+    stage.remove();
+    if(token === miniShuffleToken){
+      miniShuffleRunning = false;
+      updateSweetsDeckUI();
+    }
+  }
 }
 
 async function animateRoundEndReveal(cards, selectedUids){
