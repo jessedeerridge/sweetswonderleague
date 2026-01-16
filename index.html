@@ -148,13 +148,22 @@
   }
 
   /* スイーツ山札（クリック可能） */
-  .sweets-deck{
+ .sweets-deck{
     position:relative;
     width:28px; height:40px;
     pointer-events:auto;
     cursor:pointer;
     user-select:none;
     touch-action:none;
+  }
+  .sweets-deck-wrap{
+    position:relative;
+    width:28px;
+    height:40px;
+  }
+  .sweets-deck-wrap .sweets-deck{
+    position:absolute;
+    inset:0;
   }
   .sweets-deck.hidden{display:none;}
   .sweets-deck .stack{position:absolute; inset:0;}
@@ -180,9 +189,53 @@
     background:rgba(255,255,255,.92);
     border:1px solid rgba(0,0,0,.18);
     color:#111;
+   line-height:1.1;
+    pointer-events:none;
+  }
+  .sweets-exclude-deck{
+    position:absolute;
+    right:-43px;
+    top:0px;
+    width:28px;
+    height:40px;
+    pointer-events:none;
+    user-select:none;
+  }
+  .sweets-exclude-deck.hidden{display:none;}
+  .sweets-exclude-deck .stack{position:absolute; inset:0;}
+  .sweets-exclude-deck .card{
+    position:absolute;
+    width:28px; height:40px;
+    border-radius:7px;
+    border:1px solid rgba(0,0,0,.18);
+    background:url('swsweetsura.jpg') center/cover no-repeat;
+    box-shadow:none;
+    transform:rotate(90deg);
+    transform-origin:center;
+  }
+  .sweets-exclude-deck .card.c2{ transform:translate(1px,-1px) rotate(90deg); opacity:.95; }
+  .sweets-exclude-deck .card.c3{ transform:translate(2px,-2px) rotate(90deg); opacity:.90; }
+  .sweets-exclude-deck .card.c4{ transform:translate(3px,-3px) rotate(90deg); opacity:.86; }
+  .sweets-exclude-deck .card.c5{ transform:translate(4px,-4px) rotate(90deg); opacity:.82; }
+  .sweets-exclude-deck .count{
+    position:absolute;
+    right:-8px; top:-8px;
+    font-size:11px;
+    font-weight:900;
+    padding:2px 6px;
+    border-radius:999px;
+    background:rgba(255,255,255,.92);
+    border:1px solid rgba(0,0,0,.18);
+    color:#111;
     line-height:1.1;
     pointer-events:none;
   }
+/* 除外札全体を少し薄く */
+#sweetsExcludedDeckUI{
+  opacity: .50;   /* 好みで調整 */
+}
+
+
 
   /* ★ 自分のターンだけ「大小アニメ（鼓動）」 */
   @keyframes pulseCard {
@@ -190,11 +243,26 @@
     50%{transform:scale(1.06);}
     100%{transform:scale(1);}
   }
-  @keyframes pulseCardStrong {
+ @keyframes pulseCardStrong {
     0%{transform:scale(1);}
     50%{transform:scale(1.12);}
     100%{transform:scale(1);}
   }
+  .sweets-move-card{
+    position:fixed;
+    left:0;
+    top:0;
+    width:28px;
+    height:40px;
+    border-radius:7px;
+    border:1px solid rgba(0,0,0,.18);
+    background:url('swsweetsura.jpg') center/cover no-repeat;
+    box-shadow:0 8px 18px rgba(0,0,0,.2);
+    z-index:620;
+    pointer-events:none;
+    will-change:transform;
+  }
+
   @keyframes sweetsDecidedMove {
     from{transform:translateY(0);}
     to{transform:translateY(-60px);}
@@ -1321,15 +1389,27 @@
             <div id="actionDeckCount" class="count">0</div>
           </div>
 
-          <div id="sweetsDeckUI" class="sweets-deck hidden" aria-label="スイーツ山札">
-            <div class="stack" aria-hidden="true">
-              <div class="card c5"></div>
-              <div class="card c4"></div>
-              <div class="card c3"></div>
-              <div class="card c2"></div>
-              <div class="card c1"></div>
+         <div class="sweets-deck-wrap">
+            <div id="sweetsDeckUI" class="sweets-deck hidden" aria-label="スイーツ山札">
+              <div class="stack" aria-hidden="true">
+                <div class="card c5"></div>
+                <div class="card c4"></div>
+                <div class="card c3"></div>
+                <div class="card c2"></div>
+                <div class="card c1"></div>
+              </div>
+              <div id="sweetsDeckCount" class="count">0</div>
             </div>
-            <div id="sweetsDeckCount" class="count">0</div>
+            <div id="sweetsExcludedDeckUI" class="sweets-exclude-deck hidden" aria-label="スイーツ除外山札">
+              <div class="stack" aria-hidden="true">
+                <div class="card c5"></div>
+                <div class="card c4"></div>
+                <div class="card c3"></div>
+                <div class="card c2"></div>
+                <div class="card c1"></div>
+              </div>
+              <div id="sweetsExcludedDeckCount" class="count">0</div>
+            </div>
           </div>
         </div>
       </div>
@@ -1502,6 +1582,10 @@ let latestPlayers = [];
 const collectedSweetsHidden = new Set();
 let miniShuffleRunning = false;
 let miniShuffleToken = 0;
+let sweetsExcludeAnimating = false;
+let sweetsDeckCountOverride = null;
+let sweetsExcludedCountOverride = null;
+let sweetsOverrideClearTimer = null;
 /* =========================
    DOM
    ========================= */
@@ -1540,6 +1624,9 @@ const actionDeckUI = document.getElementById('actionDeckUI');
 const actionDeckCountEl = document.getElementById('actionDeckCount');
 const sweetsDeckUI = document.getElementById('sweetsDeckUI');
 const sweetsDeckCountEl = document.getElementById('sweetsDeckCount');
+const sweetsExcludedDeckUI = document.getElementById('sweetsExcludedDeckUI');
+const sweetsExcludedDeckCountEl = document.getElementById('sweetsExcludedDeckCount');
+
 
 /* スイーツ一覧（ローカル） */
 const sweetsBackdrop = document.getElementById('sweetsBackdrop');
@@ -1713,16 +1800,35 @@ function getMySweetsCard(){
 function hasSweets(){
   return !!getMySweetsCard();
 }
-function updateSweetsDeckUI(){
-  const deck = state.room?.decks?.sweets;
-  const count = Array.isArray(deck) ? deck.length : 0;
-
-  const started = !!state.room?.gameStarted;
-  centerDecksEl.classList.toggle('hidden', !started);
-
-  sweetsDeckUI.classList.toggle('hidden', !started || miniShuffleRunning);
-  sweetsDeckCountEl.textContent = String(count);
-
+function clearSweetsCountOverridesIfSynced(liveCount, liveExcluded){
+  if(sweetsDeckCountOverride === null && sweetsExcludedCountOverride === null) return;
+  if(sweetsDeckCountOverride === liveCount && sweetsExcludedCountOverride === liveExcluded){
+    sweetsDeckCountOverride = null;
+    sweetsExcludedCountOverride = null;
+    if(sweetsOverrideClearTimer){
+      clearTimeout(sweetsOverrideClearTimer);
+      sweetsOverrideClearTimer = null;
+    }
+  }
+}
+function setSweetsCountOverrides(deckCount, excludedCount, autoClearMs = 0){
+  sweetsDeckCountOverride = deckCount;
+  sweetsExcludedCountOverride = excludedCount;
+  if(sweetsOverrideClearTimer){
+    clearTimeout(sweetsOverrideClearTimer);
+    sweetsOverrideClearTimer = null;
+  }
+  if(autoClearMs > 0){
+    sweetsOverrideClearTimer = setTimeout(() => {
+      sweetsDeckCountOverride = null;
+      sweetsExcludedCountOverride = null;
+      sweetsOverrideClearTimer = null;
+      updateSweetsDeckUI();
+    }, autoClearMs);
+  }
+}
+function updateDeckStackUI(deckEl, count){
+  if(!deckEl) return;
   const stackN =
     count >= 10 ? 5 :
     count >= 8  ? 4 :
@@ -1730,12 +1836,38 @@ function updateSweetsDeckUI(){
     count >= 2  ? 2 :
     count >= 1  ? 1 : 0;
 
-  const cards = sweetsDeckUI.querySelectorAll('.card');
+  const cards = deckEl.querySelectorAll('.card');
   cards.forEach((el) => {
     const cls = [...el.classList].find(c => /^c[1-5]$/.test(c));
     const idx = cls ? Number(cls.slice(1)) : 1;
     el.style.display = (idx <= stackN) ? '' : 'none';
   });
+}
+
+function updateSweetsDeckUI(){
+  const deck = state.room?.decks?.sweets;
+  const excludedDeck = state.room?.decks?.sweetsExcluded;
+  const liveCount = Array.isArray(deck) ? deck.length : 0;
+  const liveExcluded = Array.isArray(excludedDeck) ? excludedDeck.length : 0;
+
+  clearSweetsCountOverridesIfSynced(liveCount, liveExcluded);
+
+  const count = sweetsDeckCountOverride ?? liveCount;
+  const excludedCount = sweetsExcludedCountOverride ?? liveExcluded;
+
+
+  const started = !!state.room?.gameStarted;
+  centerDecksEl.classList.toggle('hidden', !started);
+
+  sweetsDeckUI.classList.toggle('hidden', !started || miniShuffleRunning);
+  sweetsExcludedDeckUI.classList.toggle('hidden', !started || miniShuffleRunning || (!sweetsExcludeAnimating && excludedCount <= 0));
+  sweetsDeckCountEl.textContent = String(count);
+
+ sweetsExcludedDeckCountEl.textContent = String(excludedCount);
+
+  updateDeckStackUI(sweetsDeckUI, count);
+  updateDeckStackUI(sweetsExcludedDeckUI, excludedCount);
+
 
   const pulsing = isMyTurn() && !hasSweets() && !hasReceivedInstruction();
   sweetsDeckUI.classList.toggle('pulsing', pulsing);
@@ -2099,10 +2231,20 @@ function buildSweetsPool(){
   }));
 }
 function buildSweetsDeck(playerCount){
-  const pickN = clamp(playerCount + 2, 0, 12);
   const pool = buildSweetsPool();
-  const picked = shuffle(pool).slice(0, pickN);
-  return shuffle(picked);
+  return shuffle(pool);
+}
+function splitSweetsDeck(deck, playerCount){
+  const total = Array.isArray(deck) ? deck.length : 0;
+  const keepCount = clamp(playerCount + 2, 0, total);
+  if(!Array.isArray(deck) || total <= keepCount){
+    return { sweets: Array.isArray(deck) ? deck : [], excluded: [] };
+  }
+  const shuffled = shuffle([...deck]);
+  return {
+    sweets: shuffled.slice(0, keepCount),
+    excluded: shuffled.slice(keepCount),
+  };
 }
 
 /* =========================
@@ -2170,7 +2312,7 @@ async function hostGameStart(){
   await set(ref(db, `${base}/roles`), roles);
   await set(ref(db, `${base}/discard`), { action: [] });
 
-  await set(ref(db, `${base}/decks`), { action: actionDeck, sweets: sweetsDeck });
+  await set(ref(db, `${base}/decks`), { action: actionDeck, sweets: sweetsDeck, sweetsExcluded: [] });
 
   await set(ref(db, `${base}/votes`), {});
   await set(ref(db, `${base}/game`), {
@@ -3961,10 +4103,147 @@ async function getSweetsDeckRectForMiniShuffle(){
   return null;
 }
 
+async function getSweetsExcludedDeckRectForMiniShuffle(){
+  if(!sweetsExcludedDeckUI) return null;
+  let rect = sweetsExcludedDeckUI.getBoundingClientRect();
+  if(rect && rect.width > 0 && rect.height > 0){
+    return rect;
+  }
+
+  const wasHidden = sweetsExcludedDeckUI.classList.contains('hidden');
+  const prevVisibility = sweetsExcludedDeckUI.style.visibility;
+  const prevAnimating = sweetsExcludeAnimating;
+
+  sweetsExcludeAnimating = true;
+  sweetsExcludedDeckUI.classList.remove('hidden');
+  sweetsExcludedDeckUI.style.visibility = 'hidden';
+  updateSweetsDeckUI();
+
+  for(let i=0;i<6;i++){
+    rect = sweetsExcludedDeckUI.getBoundingClientRect();
+    if(rect && rect.width > 0 && rect.height > 0){
+      break;
+    }
+    await new Promise(resolve => requestAnimationFrame(() => resolve()));
+  }
+
+  sweetsExcludedDeckUI.style.visibility = prevVisibility;
+  sweetsExcludeAnimating = prevAnimating;
+  if(wasHidden) sweetsExcludedDeckUI.classList.add('hidden');
+
+  if(rect && rect.width > 0 && rect.height > 0){
+    return rect;
+  }
+  return null;
+}
+
+function getPlayerCountForSweetsSplit(){
+  const seatOrder = state.game?.seatOrder;
+  if(Array.isArray(seatOrder) && seatOrder.length){
+    return seatOrder.length;
+  }
+  if(Array.isArray(latestPlayers) && latestPlayers.length){
+    return latestPlayers.length;
+  }
+  const tables = state.room?.tables;
+  if(tables && typeof tables === 'object'){
+    return Object.values(tables).filter(t => t && t.playerId).length;
+  }
+  return 0;
+}
+
+async function getSweetsDeckForMiniShuffle(){
+  const deck = state.room?.decks?.sweets;
+  if(Array.isArray(deck) && deck.length){
+    return deck;
+  }
+  if(!state.roomCode) return deck;
+  try{
+    const snap = await get(ref(db, `rooms/${state.roomCode}/decks/sweets`));
+    const data = snap.val();
+    if(Array.isArray(data)) return data;
+  }catch(_){}
+  return deck;
+}
+
+async function animateSweetsExcludeMove(fromRect, toRect, totalCount, keepCount){
+  const moveCount = Math.max(0, totalCount - keepCount);
+  if(moveCount <= 0) return;
+
+  sweetsExcludeAnimating = true;
+  setSweetsCountOverrides(totalCount, 0);
+  updateSweetsDeckUI();
+
+  const dx = toRect.left - fromRect.left;
+  const dy = toRect.top - fromRect.top;
+  const duration = 260;
+
+  for(let i=0;i<moveCount;i++){
+    const card = document.createElement('div');
+    card.className = 'sweets-move-card';
+    card.style.width = `${fromRect.width}px`;
+    card.style.height = `${fromRect.height}px`;
+    card.style.left = `${fromRect.left}px`;
+    card.style.top = `${fromRect.top}px`;
+    document.body.appendChild(card);
+
+    const anim = card.animate([
+      { transform: 'translate(0px,0px) rotate(0deg)' },
+      { transform: `translate(${dx}px, ${dy}px) rotate(90deg)` },
+    ], {
+      duration,
+      easing: 'ease-in-out',
+      fill: 'forwards',
+    });
+
+    await new Promise(resolve => {
+      anim.onfinish = resolve;
+      anim.oncancel = resolve;
+    });
+    card.remove();
+
+    sweetsDeckCountOverride = Math.max(0, (sweetsDeckCountOverride ?? totalCount) - 1);
+    sweetsExcludedCountOverride = Math.max(0, (sweetsExcludedCountOverride ?? 0) + 1);
+    updateSweetsDeckUI();
+
+    await new Promise(resolve => setTimeout(resolve, 40));
+  }
+
+  sweetsExcludeAnimating = false;
+  setSweetsCountOverrides(keepCount, moveCount, 5000);
+  updateSweetsDeckUI();
+}
+
+async function maybeHostApplySweetsSplit(deck, playerCount){
+  if(!state.isHost || !state.roomCode) return;
+  const currentExcluded = state.room?.decks?.sweetsExcluded;
+  if(Array.isArray(currentExcluded) && currentExcluded.length) return;
+  const keepCount = clamp(playerCount + 2, 0, Array.isArray(deck) ? deck.length : 0);
+  if(!Array.isArray(deck) || deck.length <= keepCount) return;
+
+  const { sweets, excluded } = splitSweetsDeck(deck, playerCount);
+  const decksRef = ref(db, `rooms/${state.roomCode}/decks`);
+  await update(decksRef, { sweets, sweetsExcluded: excluded });
+}
+
 async function runMiniSweetsShuffleAtStart(){
   if(miniShuffleRunning) return;
   const rect = await getSweetsDeckRectForMiniShuffle();
-  if(!rect) return;
+ if(!rect){
+    const deck = await getSweetsDeckForMiniShuffle();
+    const totalCount = Array.isArray(deck) ? deck.length : 0;
+    const playerCount = getPlayerCountForSweetsSplit();
+    const keepCount = clamp(playerCount + 2, 0, totalCount);
+    const moveCount = Math.max(0, totalCount - keepCount);
+    if(moveCount > 0){
+      sweetsExcludeAnimating = true;
+      setSweetsCountOverrides(keepCount, moveCount, 5000);
+      updateSweetsDeckUI();
+      sweetsExcludeAnimating = false;
+    }
+    await maybeHostApplySweetsSplit(deck, playerCount);
+    return;
+  }
 
   const token = ++miniShuffleToken;
   miniShuffleRunning = true;
@@ -4072,6 +4351,23 @@ async function runMiniSweetsShuffleAtStart(){
       updateSweetsDeckUI();
     }
   }
+  if(token !== miniShuffleToken) return;
+
+  const deck = await getSweetsDeckForMiniShuffle();
+  const totalCount = Array.isArray(deck) ? deck.length : 0;
+  const playerCount = getPlayerCountForSweetsSplit();
+  const keepCount = clamp(playerCount + 2, 0, totalCount);
+  const moveCount = Math.max(0, totalCount - keepCount);
+
+  const targetRect = await getSweetsExcludedDeckRectForMiniShuffle();
+  if(rect && targetRect && moveCount > 0){
+    await animateSweetsExcludeMove(rect, targetRect, totalCount, keepCount);
+  } else if(moveCount > 0){
+    setSweetsCountOverrides(keepCount, moveCount, 5000);
+    updateSweetsDeckUI();
+  }
+
+  await maybeHostApplySweetsSplit(deck, playerCount);
 }
 
 async function animateRoundEndReveal(cards, selectedUids){
