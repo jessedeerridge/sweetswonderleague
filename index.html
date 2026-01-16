@@ -1705,11 +1705,6 @@ const leaderboardImgEl   = document.getElementById('leaderboardImg');
 
 const centerDecksEl = document.getElementById('centerDecks');
 
-/* ✅ 追加：ラウンドチップ（R1/R2/R3） */
-const roundChipsEl = document.getElementById('roundChips');
-const roundChipImgEls = Array.from(document.querySelectorAll('#roundChips .round-chip-img'));
-
-
 /* 中央の山札UI */
 const actionDeckUI = document.getElementById('actionDeckUI');
 const actionDeckCountEl = document.getElementById('actionDeckCount');
@@ -1780,45 +1775,6 @@ function shuffle(arr){
 }
 function clamp(n,min,max){ return Math.max(min, Math.min(max, n)); }
 function now(){ return Date.now(); }
-
-/* ✅ 追加：勝利点テーブル（人数×ラウンド） */
-function getRoundWinThreshold(playerCount, roundNo){
-  const r = clamp(roundNo ?? 1, 1, 3);
-  if(playerCount <= 4)  return [8,10,12][r-1];
-  if(playerCount <= 6)  return [12,14,16][r-1];
-  return [16,18,20][r-1]; // 7〜8人想定
-}
-
-/* ✅ 追加：選ばれたスイーツ合計点（cards配列のvalue合計） */
-function calcSweetsTotalPoints(cards){
-  const arr = Array.isArray(cards) ? cards : [];
-  return arr.reduce((sum, c) => {
-    const v =
-      (c && typeof c.value === 'number') ? c.value :
-      (c && typeof c.name === 'string') ? (parseInt(c.name, 10) || 0) :
-      0;
-    return sum + v;
-  }, 0);
-}
-
-/* ✅ 追加：roundchip表示（game.roundChipsを反映） */
-function renderRoundChipsFromGame(){
-  if(!roundChipImgEls || !roundChipImgEls.length) return;
-  const chips = (state.game && typeof state.game === 'object' && state.game.roundChips) ? state.game.roundChips : {};
-  roundChipImgEls.forEach((img, idx) => {
-    const r = String(idx + 1);
-    const src = chips?.[r] || chips?.[idx + 1] || null; // 数字キー/文字キー両対応
-    if(src){
-      img.src = src;
-      img.classList.remove('hidden');
-    }else{
-      img.removeAttribute('src');
-      img.classList.add('hidden');
-    }
-  });
-}
-
-
 
 const roundRevealState = {
   started: false,
@@ -2239,7 +2195,6 @@ function subscribeGame(){
     syncPassTurnState();
     updateTurnUI();
     if (latestPlayers.length) renderPlayerCircle(latestPlayers);
-    renderRoundChipsFromGame();
 
     // ★ ホスト：全員PASSになったらラウンド終了処理へ
     if(state.isHost){
@@ -2568,8 +2523,6 @@ async function hostGameStart(){
     passes: {},               // ★ ラウンドPASS
     roundEnding: false,       // ★ ラウンド終了中フラグ
     roundPick: null,          // ★ 同票解決状態
-    roundNo: 1,
-    roundChips: {},
     turn: null
 
   });
@@ -2890,10 +2843,6 @@ async function hostFinalizeReturnSweetsToDeck(revealedCards = []){
     get(ref(db, `${base}/decks`)),
   ]);
 
-  const gameSnap = await get(ref(db, `${base}/game`));
-  const gameNow = gameSnap.val() || {};
-
-
   const hands = handsSnap.val() || {};
   const decks = decksSnap.val() || {};
   const deckSweets = Array.isArray(decks.sweets) ? decks.sweets : [];
@@ -2936,30 +2885,6 @@ async function hostFinalizeReturnSweetsToDeck(revealedCards = []){
     'hands': hands,
     'decks/sweets': newDeck,
     'decks/sweetsExcluded': [],   // 除外は空に
-    /* ✅ 追加：ここから勝敗判定→roundchip→round+1 */
-    ...( (() => {
-      const playerCount = Array.isArray(gameNow.seatOrder) ? gameNow.seatOrder.length : (latestPlayers?.length || 0);
-      const currentRound = (typeof gameNow.roundNo === 'number') ? gameNow.roundNo : 1;
-
-      const pts = calcSweetsTotalPoints(revealedCards);          // 選ばれたスイーツ合計点
-      const th  = getRoundWinThreshold(playerCount || 1, currentRound);
-      const win = pts >= th;
-
-      // roundchipは1〜3のスロットにのみ描画（キーは "1","2","3" で持つ）
-      const prev = (gameNow.roundChips && typeof gameNow.roundChips === 'object') ? gameNow.roundChips : {};
-      const nextChips = { ...prev };
-      if(currentRound >= 1 && currentRound <= 3){
-        nextChips[String(currentRound)] = win ? 'winchip.png' : 'losechip.png';
-      }
-
-      return {
-        'game/roundChips': nextChips,
-        'game/roundNo': currentRound + 1,          // 処理が終わった後で +1
-        'game/lastRoundPoints': pts,               // （任意：デバッグ用。不要なら消してOK）
-        'game/lastRoundThreshold': th,             // （任意：デバッグ用）
-      };
-    })() )
-
   });
 }
 
