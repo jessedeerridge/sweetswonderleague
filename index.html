@@ -232,6 +232,30 @@
   opacity: .50;   /* 好みで調整 */
 }
 
+/* ✅ 除外デッキ：出現を「傾き＋フェード」で */
+.sweets-exclude-deck{
+  /* ふわっと出すための基準状態 */
+  opacity: 1;
+  visibility: visible;
+  transform: translateX(0px) rotate(0deg) scale(1);
+  will-change: opacity, transform;
+  transition:
+    opacity .22s ease,
+    transform .22s cubic-bezier(.22,.84,.44,1),
+    visibility 0s linear 0s;
+}
+
+/* ✅ 重要：.hidden を display:none にさせず、アニメ可能な隠し方に上書き */
+.sweets-exclude-deck.hidden{
+  display: block;                 /* ← これが肝。display:none を殺す */
+  opacity: 0;
+  visibility: hidden;
+  transform: translateX(10px) rotate(-25deg) scale(.85); /* ← “傾く”の正体 */
+  transition:
+    opacity .18s ease,
+    transform .18s ease,
+    visibility 0s linear .18s;    /* ← フェード後に不可視へ */
+}
 
 
   /* ★ 自分のターンだけ「大小アニメ（鼓動）」 */
@@ -2112,8 +2136,8 @@ function subscribeGame(){
     // ★ ホスト：全員PASSになったらラウンド終了処理へ
     if(state.isHost){
       maybeHostStartRoundEndFlow().catch(()=>{});
+      maybeHostFireRoundRevealAfterLeaderPick().catch(()=>{});
     }
-
     // ★ リーダー選択UI更新（同票解決）
     updateRoundPickUI();
     updatePassRoundBtn();
@@ -2156,7 +2180,6 @@ function subscribeEvents(){
 
     if(state.isHost){
       maybeHostStartRoundEndFlow().catch(()=>{});
-      maybeHostFireRoundRevealAfterLeaderPick().catch(()=>{});
     }
   });
 }
@@ -3902,12 +3925,10 @@ async function maybeHostStartRoundEndFlow(){
       phase: 'done',
       need: 0,
       selected: finalSelected,
+      revealFiredKey: null,
     }
   });
 
-  // イベント発火（全員演出）
-  const cards = finalSelected.map(uid => getSweetsCardByUid(uid)).filter(Boolean);
-  await emitEvent({ type:'roundRevealSweets', selectedUids: finalSelected, cards });
 }
 
 /* =========================
@@ -3953,6 +3974,8 @@ function resetCollectedSweetsHiddenCache(){
     });
   }
 }
+
+
 
 
 
@@ -4124,11 +4147,11 @@ async function leaderPickOne(uid){
     return;
   }
 
-  // 確定
   await update(ref(db, `rooms/${state.roomCode}/game/roundPick`), {
     phase:'done',
     need: 0,
     selected: nextSelected,
+    revealFiredKey: null,
   });
 
   // ホストがイベント発火するのが原則だが、念のためリーダーでも発火できるようにする（重複は回避）
@@ -4138,18 +4161,19 @@ async function leaderPickOne(uid){
 }
 
 /* ★ ホスト：roundPick が done になったらイベント発火（未発火なら） */
-let _roundRevealFiredKey = null;
 async function maybeHostFireRoundRevealAfterLeaderPick(){
-  if(!state.isHost) return;
+ if(!state.isHost) return;
   const rp = getRoundPick();
   if(!rp || rp.phase !== 'done') return;
   if(!state.game?.roundEnding) return;
 
   const selected = Array.isArray(rp.selected) ? rp.selected : [];
-  // 再発火防止（同じselectedで1回）
   const key = selected.join(',');
-  if(_roundRevealFiredKey === key) return;
-  _roundRevealFiredKey = key;
+  if(rp.revealFiredKey === key) return;
+
+  await update(ref(db, `rooms/${state.roomCode}/game/roundPick`), {
+    revealFiredKey: key,
+  });
 
   const cards = selected.map(uid => getSweetsCardByUid(uid)).filter(Boolean);
   await emitEvent({ type:'roundRevealSweets', selectedUids: selected, cards });
