@@ -447,10 +447,39 @@
     position:absolute;left:50%;top:0;width:16px;height:22px;
     border-radius:4px;border:1px solid #bbb;
     background:url('swactionura.jpg') center/cover no-repeat;
-    transform-origin:bottom center;
+  transform-origin:bottom center;
     box-shadow:0 2px 6px rgba(0,0,0,.15);
   }
-
+  .player-tag .other-vote-chip{
+    position:absolute;
+    left:50%;
+    top:100%;
+    transform:translate(36px,3px);
+    width:var(--voteMiniSize);
+    height:var(--voteMiniSize);
+    border-radius:50%;
+    border:2px solid var(--voteChipStroke);
+    background:var(--voteChipFill);
+    box-shadow:0 10px 24px rgba(0,0,0,.18);
+    pointer-events:none;
+  }
+  .vote-chip-fly{
+    position:fixed;
+    left:0;
+    top:0;
+    width:var(--voteMiniSize);
+    height:var(--voteMiniSize);
+    border-radius:50%;
+    border:2px solid var(--voteChipStroke);
+    background:var(--voteChipFill);
+    box-shadow:0 12px 28px rgba(0,0,0,.25);
+    pointer-events:none;
+    z-index:999;
+    will-change:transform;
+  }
+  .vote-stack.animating{
+    opacity:0;
+  }
   /* 自分の手札表示（大きめ横並び） */
   .my-hand-wrapper{margin-top:16px;text-align:center; position:relative;}
   .my-hand-title{display:none;}
@@ -2972,6 +3001,11 @@ function getMyVoteChips(){
   const v = myData.voteChips;
   return (typeof v === 'number') ? v : 1;
 }
+function getPlayerVoteChips(uid){
+  const data = state.hands?.[uid] || {};
+  const v = data.voteChips;
+  return (typeof v === 'number') ? v : 1;
+}
 function getSweetsOwners(){
   return latestPlayers
     .filter(p => {
@@ -2996,9 +3030,121 @@ function renderMyVoteChip(){
   }
 
   const chips = getMyVoteChips();
-  myVoteChipEl.classList.toggle('hidden', chips <= 0);
+ myVoteChipEl.classList.toggle('hidden', chips <= 0);
   myVoteChipEl.classList.toggle('pulsing', canVoteNow());
 }
+
+let lastVoteSnapshot = null;
+function getVoteSnapshot(votesObj){
+  const snapshot = new Map();
+  const votes = votesObj && typeof votesObj === 'object' ? votesObj : {};
+  Object.entries(votes).forEach(([targetUid, voters]) => {
+    if(!voters || typeof voters !== 'object') return;
+    snapshot.set(targetUid, new Set(Object.keys(voters)));
+  });
+  return snapshot;
+}
+function getNewVotes(prev, next){
+  const diffs = [];
+  if(!prev) return diffs;
+  next.forEach((voters, targetUid) => {
+    voters.forEach(voterUid => {
+      const prevSet = prev.get(targetUid);
+      if(!prevSet || !prevSet.has(voterUid)){
+        diffs.push({ voterUid, targetUid });
+      }
+    });
+  });
+  return diffs;
+}
+function getVoteChipSizePx(){
+  const size = parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--voteMiniSize'));
+  return Number.isFinite(size) ? size : 14;
+}
+function getVoteChipSourceRect(voterUid){
+  const tag = document.querySelector(`.player-tag[data-uid="${voterUid}"]`);
+  if(!tag) return null;
+  const miniHand = tag.querySelector('.mini-hand');
+  const size = getVoteChipSizePx();
+  if(miniHand){
+    const rect = miniHand.getBoundingClientRect();
+    return {
+      left: rect.right + 6,
+      top: rect.top + (rect.height - size) / 2,
+      width: size,
+      height: size,
+    };
+  }
+  const tagRect = tag.getBoundingClientRect();
+  return {
+    left: tagRect.right + 6,
+    top: tagRect.top + (tagRect.height - size) / 2,
+    width: size,
+    height: size,
+  };
+}
+function getVoteChipTargetInfo(targetUid){
+  const stack = document.querySelector(`.vote-stack[data-target-uid="${targetUid}"]`);
+  if(!stack) return null;
+  const rect = stack.getBoundingClientRect();
+  const size = getVoteChipSizePx();
+  return {
+    stack,
+    rect: {
+      left: rect.left + (rect.width - size) / 2,
+      top: rect.top + (rect.height - size) / 2,
+      width: size,
+      height: size,
+    },
+  };
+}
+function animateVoteChipFly(voterUid, targetUid){
+  if(voterUid === state.userId) return;
+  const source = getVoteChipSourceRect(voterUid);
+  const targetInfo = getVoteChipTargetInfo(targetUid);
+  if(!source || !targetInfo) return;
+  const { stack, rect: target } = targetInfo;
+
+  const fly = document.createElement('div');
+  fly.className = 'vote-chip-fly';
+  fly.style.left = `${source.left}px`;
+  fly.style.top = `${source.top}px`;
+  fly.style.width = `${source.width}px`;
+  fly.style.height = `${source.height}px`;
+  document.body.appendChild(fly);
+
+  const dx = target.left - source.left;
+  const dy = target.top - source.top;
+  stack.classList.add('animating');
+  fly.animate([
+    { transform: 'translate(0px, 0px) scale(1)' },
+    { transform: `translate(${dx}px, ${dy}px) scale(1)` },
+  ], {
+    duration: 600,
+    easing: 'ease-in-out',
+    fill: 'forwards',
+  }).onfinish = () => {
+    fly.remove();
+    stack.classList.remove('animating');
+  };
+}
+function scheduleVoteChipAnimations(){
+  const current = getVoteSnapshot(state.room?.votes || {});
+  if(!lastVoteSnapshot){
+    lastVoteSnapshot = current;
+    return;
+  }
+  const newVotes = getNewVotes(lastVoteSnapshot, current);
+  lastVoteSnapshot = current;
+  if(!newVotes.length) return;
+  requestAnimationFrame(() => {
+    newVotes.forEach(({ voterUid, targetUid }) => {
+      animateVoteChipFly(voterUid, targetUid);
+    });
+  });
+}
+
+
 
 /* =========================
    ★★★ PASSボタン表示条件（ラウンド用）
@@ -3215,6 +3361,7 @@ function renderMySweetsVoteStack(){
 
   const voteStack = document.createElement('div');
   voteStack.className = 'vote-stack';
+  voteStack.dataset.targetUid = state.userId;
 
   for(let i=0;i<vCount;i++){
     const v = document.createElement('div');
@@ -3680,10 +3827,11 @@ function renderPlayerCircle(players){
           }
           selected.appendChild(cardWrap);
 
-          const vCount = getVoteCountFor(state.userId);
+         const vCount = getVoteCountFor(state.userId);
           if(vCount > 0){
             const voteStack = document.createElement('div');
             voteStack.className = 'vote-stack';
+            voteStack.dataset.targetUid = state.userId;
             for(let i=0;i<vCount;i++){
               const v = document.createElement('div');
               v.className = 'vote-mini';
@@ -3824,6 +3972,7 @@ if(started && roleAssigned){
     // 投票チップ（スイーツ右に重ね）
     const voteStack = document.createElement('div');
     voteStack.className = 'vote-stack';
+    voteStack.dataset.targetUid = p.id;
     const vCount = getVoteCountFor(p.id);
     for(let i=0;i<vCount;i++){
       const v = document.createElement('div');
@@ -3862,6 +4011,14 @@ if (handData && Array.isArray(handData.action) && handData.action.length){
   });
 
   tag.appendChild(miniHand);
+
+  const voteChips = getPlayerVoteChips(p.id);
+  if(voteChips > 0){
+    const voteChip = document.createElement('div');
+    voteChip.className = 'other-vote-chip';
+    voteChip.dataset.voterUid = p.id;
+    tag.appendChild(voteChip);
+  }
 }
 
 playerCircle.appendChild(circle);
@@ -3885,7 +4042,7 @@ if(leaderSeat !== null && leaderSeat === p.seatIndex){
       });
     }
   });
-
+  scheduleVoteChipAnimations();
   updateActionDeckUI();
   updateSweetsDeckUI();
 }
