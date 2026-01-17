@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-<title>テンプレ</title>
+<title>スイーツワンダーリーグ</title>
 <style>
   :root{
     --leaderChipSize: 21.6px;
@@ -578,7 +578,7 @@ display:none;
     width:78px;height:118px;border-radius:12px;border:1px solid #ddd;
     box-shadow:0 10px 24px rgba(0,0,0,.18);
     background:#fff;
-    overflow:hidden;  
+    overflow:visible;
     flex:0 0 auto;
   }
   .my-sweets.hidden{display:none;}
@@ -1516,7 +1516,7 @@ display:none;
 <body>
 
 <header>
-  <h1>テンプレ</h1>
+  <h1>スイーツワンダーリーグ</h1>
   <div style="display:flex;align-items:center;gap:6px;">
     <div class="small" id="roomInfo"></div>
     <button class="btn ghost" id="copyLinkBtn">COPY</button>
@@ -2621,6 +2621,7 @@ function getActionEffectText(cardName){
     '交換': '選んだプレイヤーとスイーツを交換する。',
     '試行錯誤': '一番上の除外カードをレシピに加える。そしてレシピから1枚選んで除外する。',
     '激推し': '新たな投票チップを得て、投票する。',
+    '事故': '選んだプレイヤーのスイーツをレシピに戻す。',
     '応援': '渡されたら、次の手番で一番数字が大きいスイーツを作る。',
     '脅迫': '渡されたら、次の手番で一番数字が小さいスイーツを作る。',
     '賄賂': '渡されたら、次の手番で受け取った相手のスイーツに投票する。',
@@ -3301,24 +3302,18 @@ function getVoteChipSourceRect(voterUid){
       height: rect.height,
     };
   }
-  const miniHand = tag.querySelector('.mini-hand');
+  const roleMini = tag.querySelector('.role-mini');
   const size = getVoteChipSizePx();
-  if(miniHand){
-    const rect = miniHand.getBoundingClientRect();
+  if(roleMini){
+    const rect = roleMini.getBoundingClientRect();
     return {
-      left: rect.right + 6,
-      top: rect.top + (rect.height - size) / 2,
+      left: rect.right - 6 - size,
+      top: rect.bottom - 6 - size,
       width: size,
       height: size,
     };
   }
-  const tagRect = tag.getBoundingClientRect();
-  return {
-    left: tagRect.right + 6,
-    top: tagRect.top + (tagRect.height - size) / 2,
-    width: size,
-    height: size,
-  };
+  return null;
 }
 function getVoteChipTargetInfo(targetUid){
   const stack = document.querySelector(`.vote-stack[data-target-uid="${targetUid}"]`);
