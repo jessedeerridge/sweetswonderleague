@@ -373,12 +373,13 @@
 }
 
 @keyframes leaderPickPulse{
-  0%{ transform:scale(1); }
-  50%{ transform:scale(1.12); }
-  100%{ transform:scale(1); }
+  0%{ scale:1; }
+  50%{ scale:1.12; }
+  100%{ scale:1; }
 }
 .leader-pick-candidate{
   animation:leaderPickPulse 1.1s ease-in-out infinite;
+  transform-origin:center;
 }
 .leader-pick-selectable{
   cursor:pointer;
@@ -417,7 +418,18 @@
   pointer-events:none;
 }
 
-
+.action-deal-card{
+  position:fixed;
+  left:0;
+  top:0;
+  background:url('swactionura.jpg') center/cover no-repeat;
+  border:1px solid rgba(0,0,0,.18);
+  border-radius:7px;
+  box-shadow:0 10px 24px rgba(0,0,0,.18);
+  pointer-events:none;
+  z-index:720;
+  will-change:transform;
+}
   /* ★★ 他プレイヤー：ミニスイーツ（裏）＋周りを円で囲む＝swarea */
 /* 他プレイヤー：スイーツ枠（山札と同サイズ） */
 .sweets-area{
@@ -2356,6 +2368,10 @@ function subscribeEvents(){
     if(ev.type === 'flyBackCard'){
       animateFlyBackCard(ev.fromSeat, ev.toSeat);
     }
+    if(ev.type === 'dealActionCard'){
+      const delayMs = (typeof ev.delayMs === 'number') ? ev.delayMs : 0;
+      animateActionDealCard(ev.toSeat, delayMs);
+    }
 
     // ★ ラウンド終了演出（全員）
     if(ev.type === 'roundRevealSweets'){
@@ -2368,7 +2384,7 @@ function subscribeEvents(){
 
     }
     if(ev.type === 'miniSweetsShuffleStart'){
-      await runMiniSweetsShuffleAtStart();
+      await runMiniSweetsShuffleAtStart(ev);
     }
 
     if(state.isHost){
@@ -2426,8 +2442,42 @@ async function hostGrantTurnAfterMiniShuffle(){
     activePlayerId: player?.id ?? null,
     startSeat: randomSeat,
     leaderSeat: randomSeat,
-    turnNo: 1,
+   turnNo: 1,
     updatedAt: serverTimestamp(),
+  });
+}
+
+async function hostRestartTurnAfterActionDeal(leaderSeat){
+  if(!state.isHost || !state.roomCode) return;
+  if(leaderSeat == null) return;
+
+  const base = `rooms/${state.roomCode}/game`;
+  const gameSnap = await get(ref(db, base));
+  const gameNow = gameSnap.val() || {};
+  const seatOrder = Array.isArray(gameNow.seatOrder) && gameNow.seatOrder.length
+    ? gameNow.seatOrder
+    : getSeatedSeatOrder();
+  if(!seatOrder.length) return;
+
+  const leaderIdx = seatOrder.indexOf(leaderSeat);
+  const nextSeat = (leaderIdx === -1)
+    ? seatOrder[0]
+    : seatOrder[(leaderIdx + 1) % seatOrder.length];
+  const nextPlayer = getPlayerBySeat(nextSeat);
+
+  await update(ref(db, base), {
+    passes: {},
+    roundEnding: false,
+    roundPick: null,
+    leaderPick: null,
+    turn: {
+      activeSeat: nextSeat,
+      activePlayerId: nextPlayer?.id ?? null,
+      startSeat: nextSeat,
+      leaderSeat: leaderSeat,
+      turnNo: 1,
+      updatedAt: serverTimestamp(),
+    },
   });
 }
 
@@ -2477,29 +2527,44 @@ async function endTurn(reason){
    デッキ構築（アクションカード）
    ========================= */
 const ACTION_COUNTS_BASE = [
-  { name:'ああ', count:3, kind:'normal' },
-  { name:'いい', count:3, kind:'normal' },
-  { name:'うう', count:3, kind:'normal' },
-  { name:'ええ', count:3, kind:'normal' },
-  { name:'おお', count:3, kind:'normal' },
-  { name:'かか', count:3, kind:'normal' },
+  { name:'監禁', count:1, kind:'normal' },
+  { name:'盗聴', count:1, kind:'normal' },
+  { name:'世代交代', count:1, kind:'normal' },
+  { name:'宣伝', count:1, kind:'normal' },
 
-  { name:'きき', count:3, kind:'instruction' },
-  { name:'くく', count:3, kind:'instruction' },
-  { name:'けけ', count:3, kind:'instruction' },
+  { name:'強奪', count:2, kind:'normal' },
+  { name:'偵察', count:2, kind:'normal' },
+  { name:'ひらめき', count:2, kind:'normal' },
+  { name:'仕込み', count:2, kind:'normal' },
+  { name:'交換', count:2, kind:'normal' },
+  { name:'試行錯誤',     count:2, kind:'normal' },
+  { name:'事故',     count:2, kind:'normal' },
+  { name:'激推し',     count:4, kind:'normal' },
+  { name:'無視', count:2, kind:'instruction' },
 
-  { name:'',     count:3, kind:'instruction' },
-  { name:'応援', count:3, kind:'instruction' },
-  { name:'賄賂', count:3, kind:'instruction' },
 
-  { name:'無視', count:3, kind:'instruction' },
+  { name:'応援', count:4, kind:'instruction' },
+  { name:'賄賂', count:4, kind:'instruction' },
+  { name:'脅迫', count:4, kind:'instruction' },
+
 ];
 const ACTION_COUNTS_7P = [
-  { name:'ああ', count:2, kind:'normal' },
-  { name:'いい', count:2, kind:'normal' },
-  { name:'うう', count:2, kind:'normal' },
+  { name:'強奪', count:1, kind:'normal' },
+  { name:'偵察', count:1, kind:'normal' },
+  { name:'ひらめき', count:1, kind:'normal' },
+  { name:'仕込み', count:1, kind:'normal' },
+  { name:'交換', count:1, kind:'normal' },
+  { name:'試行錯誤',     count:1, kind:'normal' },
+  { name:'事故',     count:1, kind:'normal' },
+  { name:'激推し',     count:1, kind:'normal' },
+  { name:'無視', count:1, kind:'instruction' },
+
+
+  { name:'応援', count:1, kind:'instruction' },
+  { name:'賄賂', count:1, kind:'instruction' },
+  { name:'脅迫', count:1, kind:'instruction' },
 ];
-const INSTRUCTION_NEED_TARGET = new Set(['きき','くく','けけ','応援','賄賂','']);
+const INSTRUCTION_NEED_TARGET = new Set(['応援','脅迫','賄賂','無視']);
 const INSTRUCTION_CAN_SELF = new Set(['無視']);
 
 function cardNameToImg(name){
@@ -2525,17 +2590,19 @@ function buildActionDeck(playerCount){
 }
 function getActionEffectText(cardName){
   const map = {
-    'ああ': '（効果は後で）',
-    'いい': '（効果は後で）',
-    'うう': '（効果は後で）',
-    'ええ': '（効果は後で）',
-    'おお': '（効果は後で）',
-    'かか': '（効果は後で）',
-    'きき': '（指示：相手に使う／効果は後で）',
-    'くく': '（指示：相手に使う／効果は後で）',
-    'けけ': '（指示：相手に使う／効果は後で）',
-    '':     '（指示：相手に使う／効果は後で）',
+    '監禁': '（効果は後で）',
+    '盗聴': '（効果は後で）',
+    '世代交代': '（効果は後で）',
+    '宣伝': '（効果は後で）',
+    '強奪': '（効果は後で）',
+    '偵察': '（効果は後で）',
+    'ひらめき': '（効果は後で）',
+    '仕込み': '（効果は後で）',
+    '交換': '（効果は後で）',
+    '試行錯誤': '（効果は後で）',
+    '激推し': '（効果は後で）',
     '応援': '（指示：相手に使う／効果は後で）',
+    '脅迫': '（指示：相手に使う／効果は後で）',
     '賄賂': '（指示：相手に使う／効果は後で）',
     '無視': '（指示：自分/相手OK／効果は後で）',
   };
@@ -2667,13 +2734,14 @@ async function hostGameStart(){
     roundEnding: false,       // ★ ラウンド終了中フラグ
     roundPick: null,          // ★ 同票解決状態
     leaderPick: null,         // ★ リーダー移行状態
+    actionDealKey: null,      // ★ リーダー配布の重複防止
     roundNo: 1,
     roundChips: {},
     turn: null
 
   });
 
-  await emitEvent({ type: 'miniSweetsShuffleStart', sessionId: gameSessionId });
+  await emitEvent({ type: 'miniSweetsShuffleStart', reason: 'gameStart', sessionId: gameSessionId });
 
   updateActionDeckUI();
   updateSweetsDeckUI();
@@ -3081,6 +3149,7 @@ async function hostFinalizeReturnSweetsToDeck(revealedCards = []){
     'decks/sweets': newDeck,
     'decks/sweetsExcluded': [],   // 除外は空に
     'game/leaderPick': leaderPickPayload,
+    'game/actionDealKey': null,
     /* ✅ 追加：ここから勝敗判定→roundchip→round+1 */
     ...( (() => {
       const playerCount = Array.isArray(gameNow.seatOrder) ? gameNow.seatOrder.length : (latestPlayers?.length || 0);
@@ -4483,7 +4552,7 @@ function animateLeaderChipMove(prevSeat, nextSeat){
     { transform: `translate(${dx}px, ${dy}px) scale(1.4)` },
     { transform: `translate(${dx}px, ${dy}px) scale(1)` },
   ], {
-    duration: 700,
+    duration: 1200,
     easing: 'ease-in-out',
     fill: 'forwards',
   }).onfinish = () => {
@@ -4491,6 +4560,127 @@ function animateLeaderChipMove(prevSeat, nextSeat){
     if(targetChip) targetChip.classList.remove('leader-chip-hidden');
   };
 }
+
+
+function getActionDeckRect(){
+  if(!actionDeckUI) return null;
+  const rect = actionDeckUI.getBoundingClientRect();
+  if(!rect.width || !rect.height) return null;
+  return rect;
+}
+function getPlayerTagRectBySeat(seat){
+  const tag = document.querySelector(`.player-tag[data-seat="${seat}"]`);
+  if(!tag) return null;
+  const rect = tag.getBoundingClientRect();
+  if(!rect.width || !rect.height) return null;
+  return rect;
+}
+function animateActionDealCard(toSeat, delayMs = 0){
+  const from = getActionDeckRect();
+  const to = getPlayerTagRectBySeat(toSeat);
+  if(!from || !to) return;
+
+  const card = document.createElement('div');
+  card.className = 'action-deal-card';
+  card.style.left = `${from.left}px`;
+  card.style.top = `${from.top}px`;
+  card.style.width = `${from.width}px`;
+  card.style.height = `${from.height}px`;
+  document.body.appendChild(card);
+
+  const dx = (to.left + to.width / 2) - (from.left + from.width / 2);
+  const dy = (to.top + to.height / 2) - (from.top + from.height / 2);
+  const scale = Math.min(to.width / from.width, to.height / from.height, 1.2);
+
+  card.animate([
+    { transform: 'translate(0px, 0px) rotate(-12deg) scale(1)' },
+    { transform: `translate(${dx}px, ${dy}px) rotate(0deg) scale(${scale})` },
+  ], {
+    duration: 600,
+    delay: delayMs,
+    easing: 'ease-in-out',
+    fill: 'forwards',
+  }).onfinish = () => {
+    card.remove();
+  };
+}
+function schedulePostActionDealMiniShuffle(leaderSeat, delayMs){
+  if(!state.isHost || !state.roomCode) return;
+  const waitMs = Math.max(0, delayMs || 0);
+  setTimeout(() => {
+    emitEvent({
+      type: 'miniSweetsShuffleStart',
+      reason: 'afterActionDeal',
+      leaderSeat,
+    });
+  }, waitMs);
+}
+
+async function hostDealActionCardsFromLeader(leaderSeat){
+  if(!state.isHost || !state.roomCode) return;
+  if(leaderSeat == null) return;
+
+  const base = `rooms/${state.roomCode}`;
+  const [handsSnap, decksSnap, gameSnap] = await Promise.all([
+    get(ref(db, `${base}/hands`)),
+    get(ref(db, `${base}/decks`)),
+    get(ref(db, `${base}/game`)),
+  ]);
+  const hands = handsSnap.val() || {};
+  const decks = decksSnap.val() || {};
+  const gameNow = gameSnap.val() || {};
+
+  if(gameNow?.actionDealKey){
+    return;
+  }
+
+  const deck = Array.isArray(decks.action) ? [...decks.action] : [];
+
+  const seatOrder = Array.isArray(gameNow.seatOrder) && gameNow.seatOrder.length
+    ? gameNow.seatOrder
+    : getSeatedSeatOrder();
+  const startIdx = seatOrder.indexOf(leaderSeat);
+  if(startIdx === -1) return;
+
+  const deals = [];
+  for(let i = 0; i < seatOrder.length; i++){
+    const seat = seatOrder[(startIdx + i) % seatOrder.length];
+    const player = getPlayerBySeat(seat);
+    if(!player) continue;
+    const hand = hands[player.id];
+    const action = Array.isArray(hand?.action) ? hand.action : [];
+    if(action.length >= 3) continue;
+    if(!deck.length) break;
+    const card = deck.shift();
+    if(!card) continue;
+    action.push(card);
+    hands[player.id] = { ...(hand || {}), action };
+    deals.push({ seat });
+  }
+
+
+  const dealKey = `${leaderSeat}-${Date.now()}`;
+  const updates = {
+    'game/actionDealKey': dealKey,
+  };
+  if(deals.length){
+    updates.hands = hands;
+    updates['decks/action'] = deck;
+  }
+
+  await update(ref(db, base), updates);
+  for(let i = 0; i < deals.length; i++){
+    await emitEvent({
+      type: 'dealActionCard',
+      toSeat: deals[i].seat,
+      delayMs: i * 120,
+    });
+  }
+  const lastDelay = (deals.length > 0) ? ((deals.length - 1) * 120 + 650) : 200;
+  schedulePostActionDealMiniShuffle(leaderSeat, lastDelay);
+
+}
+
 
 function maybeHostApplyLeaderPick(){
   if(!state.isHost || !state.roomCode) return;
@@ -4531,7 +4721,19 @@ function maybeHostApplyLeaderPick(){
       decidedId,
       appliedAt: Date.now(),
     });
-    await set(ref(db, `rooms/${state.roomCode}/votes`), {});
+    const handsSnap = await get(ref(db, `rooms/${state.roomCode}/hands`));
+    const hands = handsSnap.val() || {};
+    Object.keys(hands).forEach(uid => {
+      if(!hands[uid] || typeof hands[uid] !== 'object') hands[uid] = {};
+      hands[uid].voteChips = 1;
+    });
+    await Promise.all([
+      set(ref(db, `rooms/${state.roomCode}/votes`), {}),
+      set(ref(db, `rooms/${state.roomCode}/hands`), hands),
+    ]);
+    setTimeout(() => {
+      hostDealActionCardsFromLeader(seat);
+    }, 650);
   }, delay);
 }
 function isLeaderMe(){
@@ -5200,11 +5402,16 @@ async function maybeHostApplySweetsSplit(deck, playerCount){
   await update(decksRef, { sweets, sweetsExcluded: excluded });
 }
 
-async function runMiniSweetsShuffleAtStart(){
+async function runMiniSweetsShuffleAtStart(opts = {}){
   if(miniShuffleRunning) return;
+  const reason = opts?.reason || null;
+  const leaderSeatForRestart = (typeof opts?.leaderSeat === 'number')
+    ? opts.leaderSeat
+    : (state.turn?.leaderSeat ?? null);
   turnBlockedByShuffle = true;
   updateTurnUI();
   try{
+
     const rect = await getSweetsDeckRectForMiniShuffle();
     if(!rect){
       const deck = await getSweetsDeckForMiniShuffle();
@@ -5218,8 +5425,12 @@ async function runMiniSweetsShuffleAtStart(){
         updateSweetsDeckUI();
         sweetsExcludeAnimating = false;
       }
-      await maybeHostApplySweetsSplit(deck, playerCount);
-      await hostGrantTurnAfterMiniShuffle();
+     await maybeHostApplySweetsSplit(deck, playerCount);
+      if(reason === 'afterActionDeal'){
+        await hostRestartTurnAfterActionDeal(leaderSeatForRestart);
+      }else{
+        await hostGrantTurnAfterMiniShuffle();
+      }
       return;
     }
 
@@ -5347,7 +5558,11 @@ async function runMiniSweetsShuffleAtStart(){
 
     await maybeHostApplySweetsSplit(deck, playerCount);
     if(token !== miniShuffleToken) return;
-    await hostGrantTurnAfterMiniShuffle();
+    if(reason === 'afterActionDeal'){
+      await hostRestartTurnAfterActionDeal(leaderSeatForRestart);
+    }else{
+      await hostGrantTurnAfterMiniShuffle();
+    }
   } finally {
     turnBlockedByShuffle = false;
     updateTurnUI();
