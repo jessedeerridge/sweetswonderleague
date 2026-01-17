@@ -357,14 +357,12 @@ display:none;
   }
   .player-tag{
     position:absolute;transform:translate(-50%,-50%);
-    padding:4px 8px;border-radius:999px;background:#f8f8f8;
-    border:1px solid #ddd;font-size:12px;white-space:nowrap;
+    padding:4px 8px;border-radius:999px;background:var(--tagFill, #f8f8f8);
+    border:1px solid var(--tagBorder, #ddd);font-size:12px;white-space:nowrap;
+    color:var(--tagText, #111);
     display:flex;align-items:center;gap:6px;
   }
   .player-tag.me{
-    background:#111;
-    color:#fff;
-    border-color:#111;
     transform:translate(-50%,-50%) translateY(45px);
   }
   /* ★ 手番の青枠：ネームタグ輪郭の外側 */
@@ -377,6 +375,69 @@ display:none;
     position:relative;
     transform:none;
     left:auto; top:auto;
+  }
+
+  /* =========================
+     ★ ネームタグ&投票チップ デザイン（8種）
+     ========================= */
+  .tag-chip-style-1{
+    --tagFill: linear-gradient(180deg, #e0f2fe 0%, #bae6fd 100%);
+    --tagBorder: #ffffff;
+    --tagText: #0f172a;
+    --voteChipFill: linear-gradient(135deg, #bae6fd 0%, #7dd3fc 100%);
+    --voteChipStroke: #ffffff;
+  }
+  .tag-chip-style-2{
+    --tagFill: repeating-linear-gradient(45deg, #f97316 0 6px, #7c2d12 6px 12px);
+    --tagBorder: #7c2d12;
+    --tagText: #fff7ed;
+    --voteChipFill: repeating-linear-gradient(45deg, #f97316 0 4px, #7c2d12 4px 8px);
+    --voteChipStroke: #7c2d12;
+  }
+  .tag-chip-style-3{
+    --tagFill: radial-gradient(circle at 20% 30%, #f9a8d4 0 12%, transparent 13%),
+      radial-gradient(circle at 80% 70%, #f9a8d4 0 12%, transparent 13%),
+      linear-gradient(180deg, #ecfdf5 0%, #d1fae5 100%);
+    --tagBorder: #10b981;
+    --tagText: #065f46;
+    --voteChipFill: radial-gradient(circle at 30% 30%, #f9a8d4 0 18%, transparent 19%),
+      linear-gradient(180deg, #d1fae5 0%, #a7f3d0 100%);
+    --voteChipStroke: #10b981;
+  }
+  .tag-chip-style-4{
+    --tagFill: linear-gradient(135deg, #ede9fe 0%, #ddd6fe 60%, #c4b5fd 100%);
+    --tagBorder: #a78bfa;
+    --tagText: #4c1d95;
+    --voteChipFill: linear-gradient(135deg, #ddd6fe 0%, #c4b5fd 100%);
+    --voteChipStroke: #a78bfa;
+  }
+  .tag-chip-style-5{
+    --tagFill: repeating-linear-gradient(90deg, #fef9c3 0 8px, #fde68a 8px 16px);
+    --tagBorder: #f59e0b;
+    --tagText: #92400e;
+    --voteChipFill: repeating-linear-gradient(90deg, #fef9c3 0 6px, #fde68a 6px 12px);
+    --voteChipStroke: #f59e0b;
+  }
+  .tag-chip-style-6{
+    --tagFill: linear-gradient(160deg, #fef2f2 0%, #fecaca 60%, #fca5a5 100%);
+    --tagBorder: #ef4444;
+    --tagText: #7f1d1d;
+    --voteChipFill: linear-gradient(160deg, #fecaca 0%, #fca5a5 100%);
+    --voteChipStroke: #ef4444;
+  }
+  .tag-chip-style-7{
+    --tagFill: linear-gradient(135deg, #cffafe 0%, #99f6e4 100%);
+    --tagBorder: #14b8a6;
+    --tagText: #0f766e;
+    --voteChipFill: linear-gradient(135deg, #99f6e4 0%, #5eead4 100%);
+    --voteChipStroke: #14b8a6;
+  }
+  .tag-chip-style-8{
+    --tagFill: repeating-linear-gradient(135deg, #fce7f3 0 6px, #fbcfe8 6px 12px);
+    --tagBorder: #ec4899;
+    --tagText: #9d174d;
+    --voteChipFill: repeating-linear-gradient(135deg, #fbcfe8 0 5px, #f472b6 5px 10px);
+    --voteChipStroke: #ec4899;
   }
 
 /* ★ リーダーチップ（1.2倍） */
@@ -1813,6 +1874,16 @@ const state = {
   turn: null,
 };
 let latestPlayers = [];
+const TAG_CHIP_STYLES = [
+  'tag-chip-style-1',
+  'tag-chip-style-2',
+  'tag-chip-style-3',
+  'tag-chip-style-4',
+  'tag-chip-style-5',
+  'tag-chip-style-6',
+  'tag-chip-style-7',
+  'tag-chip-style-8',
+];
 const collectedSweetsHidden = new Set();
 let miniShuffleRunning = false;
 let miniShuffleToken = 0;
@@ -2365,7 +2436,8 @@ function subscribePlayers(){
       .map(([seatIndex, t]) => (t && t.playerId ? {
         id: t.playerId,
         name: t.playerName || '名無し',
-        seatIndex: Number(seatIndex)
+        seatIndex: Number(seatIndex),
+        tagChipStyle: t.tagChipStyle || null,
       } : null))
       .filter(Boolean)
       .sort((a,b) => a.seatIndex - b.seatIndex);
@@ -2487,6 +2559,34 @@ function subscribeEvents(){
       maybeHostStartRoundEndFlow().catch(()=>{});
     }
   });
+}
+
+function normalizeTagChipStyle(styleClass){
+  return TAG_CHIP_STYLES.includes(styleClass) ? styleClass : null;
+}
+function applyTagChipStyle(el, styleClass){
+  if(!el) return;
+  TAG_CHIP_STYLES.forEach(style => el.classList.remove(style));
+  const normalized = normalizeTagChipStyle(styleClass);
+  if(normalized) el.classList.add(normalized);
+}
+function getTagChipStyleByUid(uid){
+  if(!uid) return null;
+  const tables = state.room?.tables;
+  if(!tables || typeof tables !== 'object') return null;
+  const entry = Object.values(tables).find(t => t && t.playerId === uid);
+  return normalizeTagChipStyle(entry?.tagChipStyle);
+}
+function pickRandomTagChipStyle(tables){
+  const used = new Set();
+  Object.values(tables || {}).forEach((t) => {
+    if(t && normalizeTagChipStyle(t.tagChipStyle)){
+      used.add(t.tagChipStyle);
+    }
+  });
+  const available = TAG_CHIP_STYLES.filter(style => !used.has(style));
+  const pool = available.length ? available : TAG_CHIP_STYLES;
+  return pool[Math.floor(Math.random() * pool.length)];
 }
 
 /* =========================
@@ -3324,6 +3424,7 @@ function canVoteNow(){
 }
 function renderMyVoteChip(){
   const started = !!state.room?.gameStarted;
+  applyTagChipStyle(myVoteChipEl, getTagChipStyleByUid(state.userId));
   if(!started){
     myVoteChipEl.classList.add('hidden');
     myVoteChipEl.classList.remove('pulsing');
@@ -3368,6 +3469,7 @@ function buildVoteStackEl(targetUid){
   const voteStack = document.createElement('div');
   voteStack.className = 'vote-stack';
   voteStack.dataset.targetUid = targetUid;
+  applyTagChipStyle(voteStack, getTagChipStyleByUid(targetUid));
   for(let i=0;i<vCount;i++){
     const v = document.createElement('div');
     v.className = 'vote-mini';
@@ -3425,6 +3527,7 @@ function animateVoteChipFly(voterUid, targetUid){
 
   const fly = document.createElement('div');
   fly.className = 'vote-chip-fly';
+  applyTagChipStyle(fly, getTagChipStyleByUid(voterUid));
   fly.style.left = `${source.left}px`;
   fly.style.top = `${source.top}px`;
   fly.style.width = `${source.width}px`;
@@ -3533,6 +3636,7 @@ function renderMyRole(){
 
 function renderMySweets(){
   mySweetsEl.innerHTML = '';
+  applyTagChipStyle(mySweetsEl, getTagChipStyleByUid(state.userId));
   const c = getMySweetsCard();
   if(!c){
     mySweetsEl.classList.add('hidden');
@@ -3686,6 +3790,7 @@ function renderMySweetsVoteStack(){
   const voteStack = document.createElement('div');
   voteStack.className = 'vote-stack';
   voteStack.dataset.targetUid = state.userId;
+  applyTagChipStyle(voteStack, getTagChipStyleByUid(state.userId));
 
   for(let i=0;i<vCount;i++){
     const v = document.createElement('div');
@@ -4103,6 +4208,7 @@ function renderPlayerCircle(players){
       tag.style.top = `${y}%`;
       tag.dataset.seat = String(p.seatIndex);
       tag.dataset.uid = p.id;
+      applyTagChipStyle(tag, p.tagChipStyle);
 
       if(leaderPickCanSelect && leaderPickCandidates.includes(state.userId)){
         tag.classList.add('leader-pick-selectable');
@@ -4180,6 +4286,7 @@ function renderPlayerCircle(players){
             const voteStack = document.createElement('div');
             voteStack.className = 'vote-stack';
             voteStack.dataset.targetUid = state.userId;
+            applyTagChipStyle(voteStack, p.tagChipStyle);
             for(let i=0;i<vCount;i++){
               const v = document.createElement('div');
               v.className = 'vote-mini';
@@ -4217,6 +4324,7 @@ const circle = document.createElement('div');
 circle.className = 'otherplayerscircle';
 circle.style.left = `${x}%`;
 circle.style.top  = `${y}%`;
+applyTagChipStyle(circle, p.tagChipStyle);
 
 // ★ 中心方向（内側）ベクトル：(-cos, -sin)
 const ux = -Math.cos(angle);
@@ -4241,6 +4349,7 @@ tag.className = 'player-tag in-othercircle';
 tag.textContent = p.name;
 tag.dataset.seat = String(p.seatIndex);
 tag.dataset.uid = p.id;
+applyTagChipStyle(tag, p.tagChipStyle);
 const isRightSide = x > 50;
 tag.classList.toggle('right-side', isRightSide);
 
@@ -6491,8 +6600,11 @@ async function renderSeatTabs(){
 
         tab.onclick = async () => {
           await update(roomRef, { maxPlayers: i });
+          const tablesSnap = await get(ref(db, `rooms/${state.roomCode}/tables`));
+          const tables = tablesSnap.val() || {};
+          const tagChipStyle = pickRandomTagChipStyle(tables);
           const tRef = ref(db, `rooms/${state.roomCode}/tables/1`);
-          await set(tRef, { playerId: state.userId, playerName: state.userName });
+          await set(tRef, { playerId: state.userId, playerName: state.userName, tagChipStyle });
 
           state.seatedTable = 1;
           seatPop.classList.add('hidden');
@@ -6519,7 +6631,10 @@ async function renderSeatTabs(){
       tab.onclick = async () => {
         if(tab.classList.contains('disabled')) return;
         const tRef = ref(db, `rooms/${state.roomCode}/tables/${i}`);
-        await set(tRef, { playerId: state.userId, playerName: state.userName });
+        const tablesSnap = await get(ref(db, `rooms/${state.roomCode}/tables`));
+        const tables = tablesSnap.val() || {};
+        const tagChipStyle = pickRandomTagChipStyle(tables);
+        await set(tRef, { playerId: state.userId, playerName: state.userName, tagChipStyle });
         state.seatedTable = i;
         seatPop.classList.add('hidden');
       };
@@ -6564,7 +6679,10 @@ btnKickYes.addEventListener('click', async (e) => {
   const roomData = roomSnap.val() || {};
 
   const tRef = ref(db, `rooms/${state.roomCode}/tables/${seatIndex}`);
-  await set(tRef, { playerId: state.userId, playerName: state.userName || '名無し' });
+  const tablesSnap = await get(ref(db, `rooms/${state.roomCode}/tables`));
+  const tables = tablesSnap.val() || {};
+  const tagChipStyle = pickRandomTagChipStyle(tables);
+  await set(tRef, { playerId: state.userId, playerName: state.userName || '名無し', tagChipStyle });
 
   if (roomData.hostId && pendingSeatPlayerIdToSteal && roomData.hostId === pendingSeatPlayerIdToSteal) {
     await update(roomRef, { hostId: state.userId });
