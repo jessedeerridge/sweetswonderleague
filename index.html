@@ -3464,17 +3464,17 @@ function getVoteChipSizePx(){
   return Number.isFinite(size) ? size : 14;
 }
 function buildVoteStackEl(targetUid){
-  const vCount = getVoteCountFor(targetUid);
-  if(vCount <= 0) return null;
+  const voterIds = getVoteVoterIds(targetUid);
+  if(!voterIds.length) return null;
   const voteStack = document.createElement('div');
   voteStack.className = 'vote-stack';
   voteStack.dataset.targetUid = targetUid;
-  applyTagChipStyle(voteStack, getTagChipStyleByUid(targetUid));
-  for(let i=0;i<vCount;i++){
+  voterIds.forEach((voterUid) => {
     const v = document.createElement('div');
     v.className = 'vote-mini';
+    applyTagChipStyle(v, getTagChipStyleByUid(voterUid));
     voteStack.appendChild(v);
-  }
+  });
   return voteStack;
 }
 function getVoteChipSourceRect(voterUid){
@@ -3784,19 +3784,19 @@ function renderMySweetsVoteStack(){
   if(old) old.remove();
   if(!c) return;
 
-  const vCount = getVoteCountFor(state.userId);
-  if(vCount <= 0) return;
+  const voterIds = getVoteVoterIds(state.userId);
+  if(!voterIds.length) return;
 
   const voteStack = document.createElement('div');
   voteStack.className = 'vote-stack';
   voteStack.dataset.targetUid = state.userId;
-  applyTagChipStyle(voteStack, getTagChipStyleByUid(state.userId));
 
-  for(let i=0;i<vCount;i++){
+  voterIds.forEach((voterUid) => {
     const v = document.createElement('div');
     v.className = 'vote-mini';
+    applyTagChipStyle(v, getTagChipStyleByUid(voterUid));
     voteStack.appendChild(v);
-  }
+  });
   mySweetsEl.appendChild(voteStack);
 }
 
@@ -3804,6 +3804,10 @@ function renderMySweetsVoteStack(){
 function getVoteCountFor(targetUid){
   const obj = state.room?.votes?.[targetUid] || {};
   return Object.keys(obj).length;
+}
+function getVoteVoterIds(targetUid){
+  const obj = state.room?.votes?.[targetUid] || {};
+  return Object.keys(obj);
 }
 
 function roundedStarPath({R=45, r2=20, round=14, k=0.65, points=5}){
@@ -4281,17 +4285,17 @@ function renderPlayerCircle(players){
           }
           selected.appendChild(cardWrap);
 
-         const vCount = getVoteCountFor(state.userId);
-          if(vCount > 0){
+         const voterIds = getVoteVoterIds(state.userId);
+          if(voterIds.length){
             const voteStack = document.createElement('div');
             voteStack.className = 'vote-stack';
             voteStack.dataset.targetUid = state.userId;
-            applyTagChipStyle(voteStack, p.tagChipStyle);
-            for(let i=0;i<vCount;i++){
+            voterIds.forEach((voterUid) => {
               const v = document.createElement('div');
               v.className = 'vote-mini';
+              applyTagChipStyle(v, getTagChipStyleByUid(voterUid));
               voteStack.appendChild(v);
-            }
+            });
             selected.appendChild(voteStack);
          }
           tag.appendChild(selected);
