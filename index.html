@@ -516,6 +516,9 @@ display:none;
     box-sizing:border-box;
     pointer-events:none;
   }
+  .player-tag.right-side .other-role-mini{
+    transform:translate(calc(-50% + 40px), -3px);
+  }
   .player-tag .mini-card{
     position:absolute;left:50%;top:0;width:16px;height:22px;
     border-radius:4px;border:1px solid #bbb;
@@ -2602,21 +2605,21 @@ function buildActionDeck(playerCount){
 }
 function getActionEffectText(cardName){
   const map = {
-    '監禁': '（効果は後で）',
-    '盗聴': '（効果は後で）',
-    '世代交代': '（効果は後で）',
-    '宣伝': '（効果は後で）',
-    '強奪': '（効果は後で）',
-    '偵察': '（効果は後で）',
-    'ひらめき': '（効果は後で）',
-    '仕込み': '（効果は後で）',
-    '交換': '（効果は後で）',
-    '試行錯誤': '（効果は後で）',
-    '激推し': '（効果は後で）',
-    '応援': '（指示：相手に使う／効果は後で）',
-    '脅迫': '（指示：相手に使う／効果は後で）',
-    '賄賂': '（指示：相手に使う／効果は後で）',
-    '無視': '（指示：自分/相手OK／効果は後で）',
+    '監禁': '選んだプレイヤーの前に置かれているスイーツは出品できない。',
+    '盗聴': '選んだプレイヤーの正体カードを見る。',
+    '世代交代': 'リーダーになる。',
+    '宣伝': '選んだプレイヤーのスイーツを公開する。',
+    '強奪': '任意の置かれている投票チップを1つ移動させる。',
+    '偵察': '選んだプレイヤーのアクションカードを見る。',
+    'ひらめき': '除外した山札からスイーツを作る。',
+    '仕込み': 'アクションカードを1枚ひく。',
+    '交換': '選んだプレイヤーとスイーツを交換する。',
+    '試行錯誤': '除外した山札の一番上のカードをレシピに加える。そしてレシピから1枚選んで除外する。',
+    '激推し': '新たな投票チップを得て、投票する。',
+    '応援': 'このカードを渡されたら、次の手番で一番数字が大きいスイーツを作る。',
+    '脅迫': 'このカードを渡されたら、次の手番で一番数字が小さいスイーツを作る。',
+    '賄賂': 'このカードを渡されたら、次の手番で受け取った相手のスイーツに投票する。',
+    '無視': 'このカードを渡られたら／使ったら、他の指示カードを無視する。自分で使ったら、手番が終わる。',
   };
   return map[cardName] ?? '（効果は後で）';
 }
@@ -4130,6 +4133,8 @@ tag.className = 'player-tag in-othercircle';
 tag.textContent = p.name;
 tag.dataset.seat = String(p.seatIndex);
 tag.dataset.uid = p.id;
+const isRightSide = x > 50;
+tag.classList.toggle('right-side', isRightSide);
 
 const leaderPickSelectable = leaderPickCanSelect && leaderPickCandidates.includes(p.id);
   if(leaderPickSelectable){
