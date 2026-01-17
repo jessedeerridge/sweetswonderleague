@@ -878,7 +878,24 @@ border-radius:0px;
     padding:10px 12px;border-bottom:1px solid #eee;
   }
   .help-pop-title{font-weight:800;font-size:14px;}
-  .help-pop-body{padding:12px;overflow:auto;max-height:calc(70vh - 48px);}
+  .help-pop-body{padding:12px 12px 40px;overflow:auto;max-height:calc(70vh - 48px);}
+  .help-divider{border-top:1px solid #eee;margin:8px 0 12px;}
+  .action-grid{
+    display:grid;
+    grid-template-columns:repeat(4, 1fr);
+    gap:8px;
+  }
+  .help-pop .action-grid{padding-bottom:12px;}
+  .help-pop .action-card{
+    width:100%;
+    height:auto;
+    aspect-ratio:2/3;
+    box-shadow:0 4px 12px rgba(0,0,0,.08);
+  }
+  .help-pop .action-card .effect-text{
+    font-size:11px;
+    line-height:1.2;
+  }
   .role-row{
     display:flex;gap:12px;align-items:flex-start;
     padding:10px 0;
@@ -2365,7 +2382,7 @@ function updateRequiredSweetsTag(){
    ========================= */
 function roleToHelp(role){
   if(role === 'usakoma'){
-    return { name:"うさこま", img:"swsweetsurakoma.jpg", text:"（説明は後で）" };
+    return { name:"うさこま", img:"swsweetsurakoma.jpg", text:"手番では、「スイーツを作る」「アクションカード」「投票」「」" };
   }
   if(role === 'uragiri'){
     return { name:"裏切り者", img:"swsweetsuragiri.jpg", text:"（説明は後で）" };
@@ -2378,6 +2395,16 @@ function renderHelpList(){
     { name:"うさこま", img:"swsweetsurakoma.jpg", text:"（説明は後で）" },
     { name:"裏切り者", img:"swsweetsuragiri.jpg", text:"（説明は後で）" },
   ];
+  const actionList = [
+    '監禁','盗聴','世代交代','宣伝',
+    '強奪','偵察','ひらめき','仕込み',
+    '交換','試行錯誤','事故','激推し',
+    '無視','応援','賄賂','脅迫',
+  ].map((name) => ({
+    name,
+    effect: getActionEffectText(name),
+  }));
+
   list.forEach((r) => {
     const row = document.createElement('div');
     row.className = 'role-row';
@@ -2400,7 +2427,32 @@ function renderHelpList(){
     row.appendChild(desc);
     helpBody.appendChild(row);
   });
+  const divider = document.createElement('div');
+  divider.className = 'help-divider';
+  helpBody.appendChild(divider);
+
+  const grid = document.createElement('div');
+  grid.className = 'action-grid';
+  actionList.forEach(({ name, effect }) => {
+    const card = document.createElement('div');
+    card.className = 'action-card help-action-card';
+    const img = document.createElement('img');
+    img.className = 'card-img';
+    img.src = cardNameToImg(name);
+    img.alt = name;
+    card.appendChild(img);
+   const effectFrame = document.createElement('div');
+    effectFrame.className = 'effect-frame';
+    const effectText = document.createElement('div');
+    effectText.className = 'effect-text';
+    effectText.textContent = effect;
+    effectFrame.appendChild(effectText);
+    card.appendChild(effectFrame);
+    grid.appendChild(card);
+  });
+  helpBody.appendChild(grid);
 }
+
 function openHelp(){
   renderHelpList();
   helpBackdrop.classList.remove('hidden');
