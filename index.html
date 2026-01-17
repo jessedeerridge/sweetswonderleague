@@ -5,6 +5,10 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
 <title>テンプレ</title>
 <style>
+  :root{
+    --leaderChipSize: 21.6px;
+    --leaderChipOffset: 22px;
+  }
   html, body{height:100%; overflow:hidden;}
   body{margin:0;font-family:system-ui,-apple-system,Segoe UI,Roboto,sans-serif;background:#fff;color:#111;}
   header{display:flex;justify-content:space-between;align-items:center;padding:10px 12px;border-bottom:1px solid #eee; position:sticky; top:0; z-index:400; background:#fff;}
@@ -350,15 +354,52 @@
 /* ★ リーダーチップ（1.2倍） */
 .leader-chip{
   position:absolute;
-  right:-22px;
+  right:calc(-1 * var(--leaderChipOffset));
   top:50%;
-  width:21.6px;
-  height:21.6px;
+  width:var(--leaderChipSize);
+  height:var(--leaderChipSize);
   transform:translateY(-50%);
   background:url('swleader.png') center/contain no-repeat;
   filter:drop-shadow(0 2px 6px rgba(0,0,0,.35));
   pointer-events:none;
 }
+.leader-chip-fly{
+  position:fixed;
+  z-index:720;
+  pointer-events:none;
+}
+.leader-chip-hidden{
+  opacity:0;
+}
+
+@keyframes leaderPickPulse{
+  0%{ transform:scale(1); }
+  50%{ transform:scale(1.12); }
+  100%{ transform:scale(1); }
+}
+.leader-pick-candidate{
+  animation:leaderPickPulse 1.1s ease-in-out infinite;
+}
+.leader-pick-selectable{
+  cursor:pointer;
+}
+
+.leader-pick-pop{
+  position:fixed;
+  left:50%;
+  bottom:10px;
+  transform:translateX(-50%);
+  background:#fde047;
+  color:#92400e;
+  font-weight:900;
+  padding:10px 16px;
+  border-radius:14px;
+  border:2px solid #f59e0b;
+  box-shadow:0 14px 30px rgba(0,0,0,.25);
+  z-index:230;
+  white-space:nowrap;
+}
+.leader-pick-pop.hidden{display:none;}
 
 
   /* 他プレイヤー：正体カード（裏） */
@@ -1550,6 +1591,7 @@ top:calc(50% - 6.5px);
 
 <!-- ★ 参加者：ホスト人数選択中ポップ -->
 <div id="hostSelectingPop" class="host-selecting-pop hidden">ホストが人数を選択中</div>
+<div id="leaderPickPop" class="leader-pick-pop hidden">最多票の中からリーダーを選んでください。</div>
 
 <!-- 着席ポップ -->
 <div id="seatPop" class="seat-pop hidden">
@@ -1701,6 +1743,9 @@ let sweetsOverrideClearTimer = null;
 let currentGameSessionId = null;
 let eventsSubscribedAt = 0;
 let turnBlockedByShuffle = false;
+let leaderPickApplyTimer = null;
+let leaderPickApplyKey = null;
+let lastLeaderSeat = null;
 /* =========================
    DOM
    ========================= */
@@ -1715,6 +1760,7 @@ const roomInfoLobby = document.getElementById('roomInfoLobby');
 const copyLinkBtn = document.getElementById('copyLinkBtn');
 
 const hostSelectingPop = document.getElementById('hostSelectingPop');
+const leaderPickPop = document.getElementById('leaderPickPop');
 
 const seatPop = document.getElementById('seatPop');
 const seatTabs = document.getElementById('seatTabs');
@@ -2254,6 +2300,7 @@ function subscribeRoles(){
 function subscribeGame(){
   const gameRef = ref(db, `rooms/${state.roomCode}/game`);
   onValue(gameRef, snap => {
+    const prevLeaderSeat = state.turn?.leaderSeat ?? null;
     state.game = snap.val() || {};
     state.turn = state.game.turn || null;
     state.turnEnding = false;
@@ -2274,10 +2321,18 @@ function subscribeGame(){
     if(state.isHost){
       maybeHostStartRoundEndFlow().catch(()=>{});
       maybeHostFireRoundRevealAfterLeaderPick().catch(()=>{});
+      maybeHostApplyLeaderPick();
     }
     // ★ リーダー選択UI更新（同票解決）
     updateRoundPickUI();
+    updateLeaderPickUI();
     updatePassRoundBtn();
+
+    const nextLeaderSeat = state.turn?.leaderSeat ?? null;
+    if(prevLeaderSeat !== null && nextLeaderSeat !== null && prevLeaderSeat !== nextLeaderSeat){
+      requestAnimationFrame(() => animateLeaderChipMove(prevLeaderSeat, nextLeaderSeat));
+    }
+    lastLeaderSeat = nextLeaderSeat;
   });
 }
 function subscribeEvents(){
@@ -2330,6 +2385,21 @@ function getSeatedSeatOrder(){
 }
 function getPlayerBySeat(seatIndex){
   return latestPlayers.find(p => p.seatIndex === seatIndex) || null;
+}
+function getPlayerByUid(uid){
+  return latestPlayers.find(p => p.id === uid) || null;
+}
+function getSeatByUid(uid){
+  const fromPlayers = getPlayerByUid(uid);
+  if(fromPlayers) return fromPlayers.seatIndex;
+  const tables = state.room?.tables;
+  if(tables && typeof tables === 'object'){
+    const entry = Object.entries(tables).find(([, t]) => t && t.playerId === uid);
+    if(entry){
+      return Number(entry[0]);
+    }
+  }
+  return null;
 }
 function getPassedMap(){
   const p = state.game?.passes;
@@ -2596,6 +2666,7 @@ async function hostGameStart(){
     passes: {},               // ★ ラウンドPASS
     roundEnding: false,       // ★ ラウンド終了中フラグ
     roundPick: null,          // ★ 同票解決状態
+    leaderPick: null,         // ★ リーダー移行状態
     roundNo: 1,
     roundChips: {},
     turn: null
@@ -2913,17 +2984,21 @@ async function hostFinalizeReturnSweetsToDeck(revealedCards = []){
   const base = `rooms/${state.roomCode}`;
 
   // 最新を取り直す（stateのズレ対策）
-  const [handsSnap, decksSnap] = await Promise.all([
+  const [handsSnap, decksSnap, votesSnap, tablesSnap, gameSnap] = await Promise.all([
     get(ref(db, `${base}/hands`)),
     get(ref(db, `${base}/decks`)),
+    get(ref(db, `${base}/votes`)),
+    get(ref(db, `${base}/tables`)),
+    get(ref(db, `${base}/game`)),
   ]);
 
-  const gameSnap = await get(ref(db, `${base}/game`));
   const gameNow = gameSnap.val() || {};
 
 
   const hands = handsSnap.val() || {};
   const decks = decksSnap.val() || {};
+  const votes = votesSnap.val() || {};
+  const tables = tablesSnap.val() || {};
   const deckSweets = Array.isArray(decks.sweets) ? decks.sweets : [];
   const excluded   = Array.isArray(decks.sweetsExcluded) ? decks.sweetsExcluded : [];
 
@@ -2960,10 +3035,52 @@ async function hostFinalizeReturnSweetsToDeck(revealedCards = []){
   }
 
   // DB反映（decksは部分更新でOK）
+  const leaderSeatNow = gameNow.turn?.leaderSeat ?? null;
+  const leaderId = leaderSeatNow != null ? (tables?.[leaderSeatNow]?.playerId ?? null) : null;
+  const voteCounts = Object.entries(votes)
+    .map(([uid, voters]) => ({
+      uid,
+      count: (voters && typeof voters === 'object') ? Object.keys(voters).length : 0,
+    }))
+    .filter(entry => entry.count > 0);
+  const maxVotes = voteCounts.length ? Math.max(...voteCounts.map(v => v.count)) : 0;
+  const topVoteUids = voteCounts.filter(v => v.count === maxVotes).map(v => v.uid);
+  const leaderPickStartAt = Date.now();
+  let leaderPickPayload = null;
+  if(topVoteUids.length === 1){
+    leaderPickPayload = {
+      phase: 'auto',
+      decidedId: topVoteUids[0],
+      candidates: topVoteUids,
+      leaderId,
+      leaderSeat: leaderSeatNow,
+      startAt: leaderPickStartAt,
+    };
+  }else if(topVoteUids.length === 2 && leaderId && topVoteUids.includes(leaderId)){
+    const nextLeaderId = topVoteUids.find(uid => uid !== leaderId);
+    leaderPickPayload = {
+      phase: 'auto',
+      decidedId: nextLeaderId || null,
+      candidates: topVoteUids,
+      leaderId,
+      leaderSeat: leaderSeatNow,
+      startAt: leaderPickStartAt,
+    };
+  }else if(topVoteUids.length >= 2){
+    leaderPickPayload = {
+      phase: 'choose',
+      candidates: topVoteUids,
+      leaderId,
+      leaderSeat: leaderSeatNow,
+      startAt: leaderPickStartAt,
+    };
+  }
+
   await update(ref(db, base), {
     'hands': hands,
     'decks/sweets': newDeck,
     'decks/sweetsExcluded': [],   // 除外は空に
+    'game/leaderPick': leaderPickPayload,
     /* ✅ 追加：ここから勝敗判定→roundchip→round+1 */
     ...( (() => {
       const playerCount = Array.isArray(gameNow.seatOrder) ? gameNow.seatOrder.length : (latestPlayers?.length || 0);
@@ -2989,6 +3106,10 @@ async function hostFinalizeReturnSweetsToDeck(revealedCards = []){
     })() )
 
   });
+
+  if(!leaderPickPayload){
+    await set(ref(db, `${base}/votes`), {});
+  }
 }
 
 
@@ -3059,6 +3180,19 @@ function getNewVotes(prev, next){
 function getVoteChipSizePx(){
   const size = parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--voteMiniSize'));
   return Number.isFinite(size) ? size : 14;
+}
+function buildVoteStackEl(targetUid){
+  const vCount = getVoteCountFor(targetUid);
+  if(vCount <= 0) return null;
+  const voteStack = document.createElement('div');
+  voteStack.className = 'vote-stack';
+  voteStack.dataset.targetUid = targetUid;
+  for(let i=0;i<vCount;i++){
+    const v = document.createElement('div');
+    v.className = 'vote-mini';
+    voteStack.appendChild(v);
+  }
+  return voteStack;
 }
 function getVoteChipSourceRect(voterUid){
   const tag = document.querySelector(`.player-tag[data-uid="${voterUid}"]`);
@@ -3748,6 +3882,13 @@ function renderPlayerCircle(players){
     ? roundPick.candidates
     : [];
   const roundPickCanSelect = roundPickActive && roundPick?.leaderId === state.userId;
+  const leaderPick = getLeaderPick();
+  const leaderPickActive = leaderPick?.phase === 'choose';
+  const leaderPickCandidates = leaderPickActive && Array.isArray(leaderPick.candidates)
+    ? leaderPick.candidates
+    : [];
+  const leaderPickCanSelect = leaderPickActive && leaderPick?.leaderId === state.userId;
+  const voteHoldActive = shouldHoldVoteChips();
   const decidedUids = getDecidedSweetsUids();
   const started = !!state.room?.gameStarted;
   if(roundPick?.phase === 'done' && decidedUids.length){
@@ -3773,12 +3914,30 @@ function renderPlayerCircle(players){
       tag.dataset.seat = String(p.seatIndex);
       tag.dataset.uid = p.id;
 
+      if(leaderPickCanSelect && leaderPickCandidates.includes(state.userId)){
+        tag.classList.add('leader-pick-selectable');
+        tag.addEventListener('pointerdown', (e) => {
+          e.stopPropagation();
+          requestLeaderPick(state.userId);
+        });
+        tag.onclick = (e) => {
+          e.stopPropagation();
+          requestLeaderPick(state.userId);
+        };
+      }
+
       playerCircle.appendChild(tag);
 
       if(leaderSeat !== null && leaderSeat === p.seatIndex){
         const chip = document.createElement('div');
         chip.className = 'leader-chip';
         tag.appendChild(chip);
+      }
+      if(voteHoldActive && !decidedUids.includes(state.userId)){
+        const voteStack = buildVoteStackEl(state.userId);
+        if(voteStack){
+          tag.appendChild(voteStack);
+        }
       }
      if(started && decidedUids.includes(state.userId)){
         const sweetsCard = getSweetsCardByUid(state.userId);
@@ -3894,6 +4053,26 @@ tag.textContent = p.name;
 tag.dataset.seat = String(p.seatIndex);
 tag.dataset.uid = p.id;
 
+const leaderPickSelectable = leaderPickCanSelect && leaderPickCandidates.includes(p.id);
+  if(leaderPickSelectable){
+    tag.classList.add('leader-pick-selectable');
+    if(p.id !== state.userId){
+      tag.classList.add('leader-pick-candidate');
+    }
+    tag.addEventListener('pointerdown', (e) => {
+      e.stopPropagation();
+      requestLeaderPick(p.id);
+    });
+    tag.onclick = (e) => {
+      e.stopPropagation();
+      requestLeaderPick(p.id);
+    };
+    circle.onclick = (e) => {
+      e.stopPropagation();
+      requestLeaderPick(p.id);
+    };
+  }
+
 // 追い出しクリックは今まで通り
 const onKick = () => {
   if (!state.roomCode) return;
@@ -3925,7 +4104,8 @@ if(started && roleAssigned){
   const roleMini = document.createElement('div');
   roleMini.className = 'role-mini';
 
-  if(!hasTheirSweets){
+  const showVoteHold = voteHoldActive && getVoteCountFor(p.id) > 0;
+  if(!hasTheirSweets && !showVoteHold){
     // ★ スイーツ獲得前：正体のみ中央
     cardsRow.classList.add('solo');
     cardsRow.appendChild(roleMini);
@@ -3961,24 +4141,16 @@ if(started && roleAssigned){
       });
     }
 
-
-
     const sweetsMini = document.createElement('div');
     sweetsMini.className = 'sweets-mini';
     sweetsMini.classList.toggle('hidden', !hasTheirSweets);
     sweetsWrap.appendChild(sweetsMini);
 
     // 投票チップ（スイーツ右に重ね）
-    const voteStack = document.createElement('div');
-    voteStack.className = 'vote-stack';
-    voteStack.dataset.targetUid = p.id;
-    const vCount = getVoteCountFor(p.id);
-    for(let i=0;i<vCount;i++){
-      const v = document.createElement('div');
-      v.className = 'vote-mini';
-      voteStack.appendChild(v);
+    const voteStack = buildVoteStackEl(p.id);
+    if(voteStack){
+      sweetsWrap.appendChild(voteStack);
     }
-    sweetsWrap.appendChild(voteStack);
 
     // 横並び：正体 → スイーツ
     cardsRow.appendChild(roleMini);
@@ -4234,6 +4406,133 @@ async function maybeHostStartRoundEndFlow(){
    ========================= */
 function getRoundPick(){
   return state.game?.roundPick || null;
+}
+function getLeaderPick(){
+  return state.game?.leaderPick || null;
+}
+function shouldHoldVoteChips(){
+  const lp = getLeaderPick();
+  return !!lp && lp.phase !== 'done';
+}
+function canLeaderPickCandidate(uid){
+  const lp = getLeaderPick();
+  if(!lp || lp.phase !== 'choose') return false;
+  if(lp.leaderId !== state.userId) return false;
+  const candidates = Array.isArray(lp.candidates) ? lp.candidates : [];
+  return candidates.includes(uid);
+}
+function updateLeaderPickUI(){
+  const lp = getLeaderPick();
+  const show = !!lp && lp.phase === 'choose' && lp.leaderId === state.userId;
+  leaderPickPop.classList.toggle('hidden', !show);
+}
+async function requestLeaderPick(uid){
+  if(!state.roomCode) return;
+  if(!canLeaderPickCandidate(uid)) return;
+  const lp = getLeaderPick() || {};
+  await update(ref(db, `rooms/${state.roomCode}/game/leaderPick`), {
+    phase: 'decided',
+    decidedId: uid,
+    candidates: Array.isArray(lp.candidates) ? lp.candidates : [],
+    leaderId: lp.leaderId ?? null,
+    leaderSeat: lp.leaderSeat ?? null,
+    startAt: (typeof lp.startAt === 'number') ? lp.startAt : Date.now(),
+  });
+}
+
+function getLeaderChipSizePx(){
+  const size = parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--leaderChipSize'));
+  return Number.isFinite(size) ? size : 21.6;
+}
+function getLeaderChipOffsetPx(){
+  const offset = parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--leaderChipOffset'));
+  return Number.isFinite(offset) ? offset : 22;
+}
+function getLeaderChipAnchorRect(tagEl){
+  if(!tagEl) return null;
+  const rect = tagEl.getBoundingClientRect();
+  const size = getLeaderChipSizePx();
+  const offset = getLeaderChipOffsetPx();
+  return {
+    left: rect.right + offset - size,
+    top: rect.top + (rect.height - size) / 2,
+    size,
+  };
+}
+function animateLeaderChipMove(prevSeat, nextSeat){
+  const prevTag = document.querySelector(`.player-tag[data-seat="${prevSeat}"]`);
+  const nextTag = document.querySelector(`.player-tag[data-seat="${nextSeat}"]`);
+  if(!prevTag || !nextTag) return;
+  const from = getLeaderChipAnchorRect(prevTag);
+  const to = getLeaderChipAnchorRect(nextTag);
+  if(!from || !to) return;
+
+  const chip = document.createElement('div');
+  chip.className = 'leader-chip leader-chip-fly';
+  chip.style.left = `${from.left}px`;
+  chip.style.top = `${from.top}px`;
+  document.body.appendChild(chip);
+
+  const targetChip = nextTag.querySelector('.leader-chip');
+  if(targetChip) targetChip.classList.add('leader-chip-hidden');
+
+  const dx = to.left - from.left;
+  const dy = to.top - from.top;
+  chip.animate([
+    { transform: 'translate(0px, 0px) scale(1)' },
+    { transform: `translate(${dx}px, ${dy}px) scale(1.4)` },
+    { transform: `translate(${dx}px, ${dy}px) scale(1)` },
+  ], {
+    duration: 700,
+    easing: 'ease-in-out',
+    fill: 'forwards',
+  }).onfinish = () => {
+    chip.remove();
+    if(targetChip) targetChip.classList.remove('leader-chip-hidden');
+  };
+}
+
+function maybeHostApplyLeaderPick(){
+  if(!state.isHost || !state.roomCode) return;
+  const lp = getLeaderPick();
+  if(!lp || lp.phase === 'done'){
+    if(leaderPickApplyTimer){
+      clearTimeout(leaderPickApplyTimer);
+      leaderPickApplyTimer = null;
+    }
+    return;
+  }
+
+  const decidedId = lp.decidedId || lp.nextLeaderId || null;
+  if(!decidedId) return;
+
+  const key = `${lp.phase}:${decidedId}:${lp.startAt ?? ''}`;
+  if(leaderPickApplyKey === key && leaderPickApplyTimer) return;
+
+  if(leaderPickApplyTimer){
+    clearTimeout(leaderPickApplyTimer);
+    leaderPickApplyTimer = null;
+  }
+  leaderPickApplyKey = key;
+
+  const baseDelay = (typeof lp.startAt === 'number') ? lp.startAt : Date.now();
+  const delay = Math.max(0, baseDelay + 1000 - Date.now());
+
+  leaderPickApplyTimer = setTimeout(async () => {
+    leaderPickApplyTimer = null;
+    const seat = getSeatByUid(decidedId);
+    if(seat == null) return;
+
+    await update(ref(db, `rooms/${state.roomCode}/game/turn`), {
+      leaderSeat: seat,
+    });
+    await update(ref(db, `rooms/${state.roomCode}/game/leaderPick`), {
+      phase: 'done',
+      decidedId,
+      appliedAt: Date.now(),
+    });
+    await set(ref(db, `rooms/${state.roomCode}/votes`), {});
+  }, delay);
 }
 function isLeaderMe(){
   const rp = getRoundPick();
