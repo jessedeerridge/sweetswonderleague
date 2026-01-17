@@ -3110,6 +3110,16 @@ function getVoteChipSizePx(){
 function getVoteChipSourceRect(voterUid){
   const tag = document.querySelector(`.player-tag[data-uid="${voterUid}"]`);
   if(!tag) return null;
+  const voteChip = tag.querySelector(`.other-vote-chip[data-voter-uid="${voterUid}"]`);
+  if(voteChip){
+    const rect = voteChip.getBoundingClientRect();
+    return {
+      left: rect.left,
+      top: rect.top,
+      width: rect.width,
+      height: rect.height,
+    };
+  }
   const miniHand = tag.querySelector('.mini-hand');
   const size = getVoteChipSizePx();
   if(miniHand){
