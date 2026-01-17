@@ -2293,9 +2293,8 @@ function subscribeEvents(){
       if(!currentGameSessionId) currentGameSessionId = ev.sessionId;
     }
     if(!expectedSessionId && !currentGameSessionId) return;
-    const isStaleEvent = typeof ev.at === 'number' && eventsSubscribedAt && ev.at < eventsSubscribedAt;
-    if(!ev.sessionId && isStaleEvent) return;
-    if(ev.type === 'miniSweetsShuffleStart' && isStaleEvent) return;
+   const isStaleEvent = typeof ev.at === 'number' && eventsSubscribedAt && ev.at < eventsSubscribedAt;
+    if(isStaleEvent && ['miniSweetsShuffleStart','roundRevealSweets','revealCard','flyBackCard'].includes(ev.type)) return;
     if(ev.type === 'revealCard'){
       showReveal(ev.card);
     }
