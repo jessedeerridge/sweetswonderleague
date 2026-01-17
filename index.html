@@ -463,6 +463,15 @@
     box-shadow:0 10px 24px rgba(0,0,0,.18);
     pointer-events:none;
   }
+    box-shadow:0 10px 24px rgba(0,0,0,.18);
+    pointer-events:none;
+  }
+  .player-tag .other-vote-chip.is-empty{
+    opacity:0;
+  }
+  .player-tag .other-vote-chip.is-flying{
+    opacity:0;
+  }
   .vote-chip-fly{
     position:fixed;
     left:0;
@@ -3108,9 +3117,7 @@ function getVoteChipSizePx(){
   return Number.isFinite(size) ? size : 14;
 }
 function getVoteChipSourceRect(voterUid){
-  const tag = document.querySelector(`.player-tag[data-uid="${voterUid}"]`);
-  if(!tag) return null;
-  const voteChip = tag.querySelector(`.other-vote-chip[data-voter-uid="${voterUid}"]`);
+  const voteChip = document.querySelector(`.other-vote-chip[data-voter-uid="${voterUid}"]`);
   if(voteChip){
     const rect = voteChip.getBoundingClientRect();
     return {
@@ -3120,6 +3127,8 @@ function getVoteChipSourceRect(voterUid){
       height: rect.height,
     };
   }
+  const tag = document.querySelector(`.player-tag[data-uid="${voterUid}"]`);
+  if(!tag) return null;
   const miniHand = tag.querySelector('.mini-hand');
   const size = getVoteChipSizePx();
   if(miniHand){
@@ -3177,9 +3186,19 @@ function finalizeVoteChipArrival(targetUid, stackEl){
 }
 function animateVoteChipFly(voterUid, targetUid){
   if(voterUid === state.userId) return;
+  const sourceChip = document.querySelector(`.other-vote-chip[data-voter-uid="${voterUid}"]`);
+  if(sourceChip){
+    sourceChip.classList.add('is-flying');
+  }
   const source = getVoteChipSourceRect(voterUid);
   const targetInfo = getVoteChipTargetInfo(targetUid);
-  if(!source || !targetInfo) return;
+  if(!source || !targetInfo){
+    if(sourceChip){
+      sourceChip.classList.remove('is-flying');
+
+    }
+    return;
+  }
   const { stack, rect: target } = targetInfo;
 
   const fly = document.createElement('div');
@@ -3192,7 +3211,7 @@ function animateVoteChipFly(voterUid, targetUid){
 
   const dx = target.left - source.left;
   const dy = target.top - source.top;
-  fly.animate([
+ fly.animate([
     { transform: 'translate(0px, 0px) scale(1)' },
     { transform: `translate(${dx}px, ${dy}px) scale(1)` },
   ], {
@@ -3201,6 +3220,9 @@ function animateVoteChipFly(voterUid, targetUid){
     fill: 'forwards',
   }).onfinish = () => {
     fly.remove();
+    if(sourceChip){
+      sourceChip.classList.remove('is-flying');
+    }
     finalizeVoteChipArrival(targetUid, stack);
   };
 }
@@ -4089,15 +4111,16 @@ if (handData && Array.isArray(handData.action) && handData.action.length){
 
   tag.appendChild(miniHand);
 
-  const voteChips = getPlayerVoteChips(p.id);
-  if(voteChips > 0){
-    const voteChip = document.createElement('div');
-    voteChip.className = 'other-vote-chip';
-    voteChip.dataset.voterUid = p.id;
-    tag.appendChild(voteChip);
-  }
 }
-
+  const voteChip = document.createElement('div');
+  voteChip.className = 'other-vote-chip';
+  voteChip.dataset.voterUid = p.id;
+  const voteChips = getPlayerVoteChips(p.id);
+  if(voteChips <= 0){
+    voteChip.classList.add('is-empty');
+  
+}
+  tag.appendChild(voteChip);
 playerCircle.appendChild(circle);
 
 if(leaderSeat !== null && leaderSeat === p.seatIndex){
