@@ -625,29 +625,35 @@ display:none;
     color:#1d4ed8;
     text-shadow:0 2px 6px rgba(255,255,255,.7);
     pointer-events:none;
+    display:none;
   }
 
   .action-card .effect-frame{
-    position:absolute;left:0;right:0;bottom:0;height:50%;
-    background:rgba(255,255,255,.55);
+    position:absolute;
+    left:0;
+    right:0;
+    top:70%;
+    bottom:0px;
+    background:rgb(195,179,237);
     border-top:1px solid rgba(0,0,0,.15);
-    padding:8px 8px 8px;
-    display:flex;align-items:flex-start;justify-content:flex-start;
+border-radius:0px;
+    padding:2px 2px 2px;
+    display:flex;
+    align-items:flex-start;
+    justify-content:flex-start;
     box-sizing:border-box;
     pointer-events:none;
   }
   .action-card .effect-text{
     width:100%;
     font-weight:800;
-    line-height:1.25;
+    line-height:1.2;
     color:#111;
     font-size:13px;
+    word-break:break-word;
+    hyphens:auto;
     overflow:hidden;
-    display:-webkit-box;
-    -webkit-line-clamp:6;
-    -webkit-box-orient:vertical;
   }
-
   .my-turn-free .action-card{ animation:pulseCard 1.05s ease-in-out infinite; }
   .my-turn-free .action-card:hover{ animation:none; transform:scale(1.08); }
 
@@ -2609,17 +2615,17 @@ function getActionEffectText(cardName){
     '盗聴': '選んだプレイヤーの正体カードを見る。',
     '世代交代': 'リーダーになる。',
     '宣伝': '選んだプレイヤーのスイーツを公開する。',
-    '強奪': '任意の置かれている投票チップを1つ移動させる。',
+    '強奪': '置かれている任意の投票チップを1つ移動させる。',
     '偵察': '選んだプレイヤーのアクションカードを見る。',
     'ひらめき': '除外した山札からスイーツを作る。',
     '仕込み': 'アクションカードを1枚ひく。',
     '交換': '選んだプレイヤーとスイーツを交換する。',
-    '試行錯誤': '除外した山札の一番上のカードをレシピに加える。そしてレシピから1枚選んで除外する。',
+    '試行錯誤': '一番上の除外カードをレシピに加える。そしてレシピから1枚選んで除外する。',
     '激推し': '新たな投票チップを得て、投票する。',
-    '応援': 'このカードを渡されたら、次の手番で一番数字が大きいスイーツを作る。',
-    '脅迫': 'このカードを渡されたら、次の手番で一番数字が小さいスイーツを作る。',
-    '賄賂': 'このカードを渡されたら、次の手番で受け取った相手のスイーツに投票する。',
-    '無視': 'このカードを渡られたら／使ったら、他の指示カードを無視する。自分で使ったら、手番が終わる。',
+    '応援': '渡されたら、次の手番で一番数字が大きいスイーツを作る。',
+    '脅迫': '渡されたら、次の手番で一番数字が小さいスイーツを作る。',
+    '賄賂': '渡されたら、次の手番で受け取った相手のスイーツに投票する。',
+    '無視': '渡られたら、他の指示を無視できる。自分で使ったら、手番が終わる。',
   };
   return map[cardName] ?? '（効果は後で）';
 }
@@ -2835,13 +2841,18 @@ function fitEffectText(el){
   const box = el.parentElement;
   if(!box) return;
 
-  let size = 13;
+  const styles = getComputedStyle(box);
+  const paddingTop = parseFloat(styles.paddingTop) || 0;
+  const paddingBottom = parseFloat(styles.paddingBottom) || 0;
+  const availableHeight = box.clientHeight - paddingTop - paddingBottom;
+
+  const maxSize = 13;
+  const minSize = 6;
+  let size = maxSize;
   el.style.fontSize = size + 'px';
 
-  for(let i=0;i<10;i++){
-    if(el.scrollHeight <= box.clientHeight - 2) break;
-    size = size - 1;
-    if(size < 9){ size = 9; break; }
+  while(size > minSize && el.scrollHeight > availableHeight){
+    size -= 1;
     el.style.fontSize = size + 'px';
   }
 }
