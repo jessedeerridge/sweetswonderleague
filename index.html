@@ -85,6 +85,22 @@
     pointer-events:auto;
 border:transparent;
   }
+  .required-sweets-tag{
+    position:absolute;
+    left:50%;
+    top:calc(50% + 25px);
+    transform:translate(-50%,-50%);
+    font-size:12px;
+    font-weight:900;
+    padding:2px 6px;
+    border-radius:999px;
+    background:rgba(255,247,224,.92);
+    border:2px solid rgba(0,0,0,.18);
+    color:#111;
+    line-height:1.1;
+    pointer-events:none;
+    z-index:7;
+  }
   .play-circle::after{
     content:'PLAY';
     position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);
@@ -822,13 +838,13 @@ border-radius:0px;
     z-index:500;
   }
   .reveal-overlay.hidden{display:none;}
-  .reveal-card{
-    width:min(260px, 78vw);
+ .reveal-card{
+    width:min(calc(var(--myCardW) * 4), 78vw);
     aspect-ratio: 2 / 3;
     border-radius:18px;
     border:none;
     box-shadow:none;
- background:transparent;
+    background:transparent;
     overflow:hidden;
     position:relative;
   }
@@ -837,6 +853,33 @@ border-radius:0px;
     position:absolute; left:10px; top:10px;
     font-weight:900; color:#1d4ed8;
     text-shadow:0 2px 10px rgba(255,255,255,.75);
+  }
+  .reveal-card .label.hidden{display:none;}
+  .reveal-card .effect-frame{
+    position:absolute;
+    left:0;
+    right:0;
+    top:70%;
+    bottom:0;
+    background:rgb(195,179,237);
+    border-top:1px solid rgba(0,0,0,.15);
+    padding:6px 8px;
+    display:flex;
+    align-items:flex-start;
+    justify-content:flex-start;
+    box-sizing:border-box;
+    pointer-events:none;
+  }
+  .reveal-card .effect-frame.hidden{display:none;}
+  .reveal-card .effect-text{
+    width:100%;
+    font-weight:800;
+    line-height:1.3;
+    color:#111;
+    font-size:16px;
+    word-break:break-word;
+    hyphens:auto;
+    overflow:hidden;
   }
 
   /* ★ 指示カード移動アニメ用（小さい裏カード） */
@@ -1561,6 +1604,7 @@ display:none;
 
 
       <div id="playCircle" class="play-circle">
+        <div id="requiredSweetsTag" class="required-sweets-tag hidden">🍰0</div>
         <!-- ★ 中央：アクション山札（左）＋スイーツ山札（右） -->
         <div id="centerDecks" class="center-decks hidden" aria-hidden="false">
           <div id="actionDeckUI" class="action-deck hidden" aria-hidden="true">
@@ -1693,8 +1737,12 @@ display:none;
   <div class="reveal-card">
     <img id="revealImg" alt="" />
     <div id="revealLabel" class="label"></div>
+    <div id="revealEffectFrame" class="effect-frame hidden">
+      <div id="revealEffect" class="effect-text"></div>
+    </div>
   </div>
 </div>
+
 
 <!-- ★ スイーツ一覧（ローカル表示） -->
 <div id="sweetsBackdrop" class="sweets-backdrop hidden">
@@ -1811,6 +1859,7 @@ const leaderboardBoardEl = document.getElementById('leaderboardBoard');
 const leaderboardImgEl   = document.getElementById('leaderboardImg');
 
 const centerDecksEl = document.getElementById('centerDecks');
+const requiredSweetsTagEl = document.getElementById('requiredSweetsTag');
 
 /* ✅ 追加：ラウンドチップ（R1/R2/R3） */
 const roundChipsEl = document.getElementById('roundChips');
@@ -1867,6 +1916,8 @@ const roundRevealRow = document.getElementById('roundRevealRow');
 const revealOverlay = document.getElementById('revealOverlay');
 const revealImg = document.getElementById('revealImg');
 const revealLabel = document.getElementById('revealLabel');
+const revealEffectFrame = document.getElementById('revealEffectFrame');
+const revealEffect = document.getElementById('revealEffect');
 
 /* =========================
    ユーティリティ
@@ -2179,6 +2230,29 @@ function updateSweetsDeckUI(){
   sweetsDeckUI.classList.toggle('pulsing', pulsing);
 }
 
+function getRequiredSweetsCount(){
+  const nPlayers = latestPlayers.length;
+  if(nPlayers <= 0) return 0;
+  const baseNeed = requiredPickCountByPlayers(nPlayers);
+  const rp = getRoundPick();
+  const remaining = Number(rp?.need ?? NaN);
+  if(rp?.phase === 'choose' && Number.isFinite(remaining) && remaining > 0){
+    return remaining;
+  }
+  return baseNeed;
+}
+
+function updateRequiredSweetsTag(){
+  if(!requiredSweetsTagEl) return;
+  const started = !!state.room?.gameStarted;
+  const hasPlayers = latestPlayers.length > 0;
+  requiredSweetsTagEl.classList.toggle('hidden', !(started && hasPlayers));
+  if(!(started && hasPlayers)) return;
+  const count = getRequiredSweetsCount();
+  requiredSweetsTagEl.textContent = `🍰${count}`;
+}
+
+
 /* =========================
    ヘルプ（正体カード）
    ========================= */
@@ -2267,6 +2341,7 @@ function subscribeRoom(){
 
     updateActionDeckUI();
     updateSweetsDeckUI();
+    updateRequiredSweetsTag();
     renderHands();
     renderMyVoteChip();
 renderMySweetsVoteStack();
@@ -2797,11 +2872,16 @@ function showReveal(card){
   if(!card) return;
   revealImg.src = card.img || '';
   revealLabel.textContent = card.name || '';
+  const isActionCard = card.kind === 'normal' || card.kind === 'instruction';
+  revealLabel.classList.toggle('hidden', isActionCard || !card.name);
+  const effectText = card.effectText || card.text || '';
+  revealEffect.textContent = effectText;
+  revealEffectFrame.classList.toggle('hidden', !effectText);
   revealOverlay.classList.remove('hidden');
   if(revealTimer) clearTimeout(revealTimer);
   revealTimer = setTimeout(()=>{
     revealOverlay.classList.add('hidden');
-  }, 1000);
+  }, 1800);
 }
 
 
@@ -3974,6 +4054,7 @@ function renderPlayerCircle(players){
 
   // ★ 人数でボード画像を切り替え（席に着いてる人数）
   updateLeaderboardBoardByPlayerCount(players?.length || 0);
+  updateRequiredSweetsTag();
 
   if (!players.length) return;
 
