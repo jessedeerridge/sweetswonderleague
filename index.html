@@ -67,8 +67,8 @@
 /* ★ プレイヤー円配置用（拡大：直径だいたい400前後） */
 .player-circle{
   position:relative;
-  width:min(360px, 92vw);
-  height:min(420px, 92vw);
+  width:min(300px, 92vw);
+  height:min(400px, 92vw);
   margin:20px auto 0;
   border-radius:50%;
   box-sizing:border-box;
@@ -499,10 +499,18 @@ display:none;
 
 
   /* 他プレイヤーのミニカード（ネームタグの下に扇状） */
-  .player-tag .mini-hand{
+.player-tag .mini-hand{
     position:absolute;left:50%;top:100%;
     transform:translate(-50%,3px);
     width:60px;height:30px;pointer-events:none;
+  }
+  .player-tag .other-role-mini{
+    position:absolute;
+    left:50%;
+    top:100%;
+    transform:translate(calc(-50% - 40px), -3px);
+    box-sizing:border-box;
+    pointer-events:none;
   }
   .player-tag .mini-card{
     position:absolute;left:50%;top:0;width:16px;height:22px;
@@ -1335,18 +1343,6 @@ display:none;
 }
 
 
-/* ★ 修正：otherplayerscircle内の横並び用 role-mini を “絶対配置” から解除し、サイズ計算も統一 */
-.other-cards-row .role-mini{
-  position:relative;      /* ← absoluteを殺す */
-  left:auto;
-  top:auto;
-  transform:none;         /* ← translateY(-50%)を殺す */
-  box-sizing:border-box;  /* ← border込みで28x40にする */
-}
-
-/* 念のため：他の場所で role-mini を絶対配置したいなら、そっちはスコープを付ける */
-
-
 /* 下の手番バーだけ消して、右下PASSは残す */
 #turnBar{
   display:none !important;
@@ -1357,18 +1353,6 @@ display:none;
 /* ドロップ判定したいのはスイーツ枠なので、ここも明示しておく */
 .sweets-wrap{ pointer-events:auto; }
 
-/* ★ 他プレイヤー：スイーツ未獲得の間は正体カードだけ中央表示 */
-.other-cards-row.solo{
-  justify-content:center;
-}
-.other-cards-row.solo .role-mini{
-  margin:0;
-}
-/* solo時は投票やスイーツ枠が無い前提だが、念のため */
-.other-cards-row.solo .sweets-wrap,
-.other-cards-row.solo .vote-stack{
-  display:none !important;
-}
 
 /* 自分のスイーツにも投票ミニを重ねるため */
 .my-sweets{ position:relative; }
@@ -4185,23 +4169,17 @@ const handData = state.hands?.[p.id];
 const roleAssigned = !!state.roles?.[p.id];
 
 if(started && roleAssigned){
-  // ★ 内側：スイーツ未獲得なら「正体カードだけ中央」、獲得後は「正体＋スイーツ」
-  const cardsRow = document.createElement('div');
-  cardsRow.className = 'other-cards-row';
+  const roleMini = document.createElement('div');
+  roleMini.className = 'role-mini other-role-mini';
+  tag.appendChild(roleMini);
 
   const hasTheirSweets = !!(handData && Array.isArray(handData.sweets) && handData.sweets.length);
-
-  // 正体（裏）
-  const roleMini = document.createElement('div');
-  roleMini.className = 'role-mini';
-
   const showVoteHold = voteHoldActive && getVoteCountFor(p.id) > 0;
-  if(!hasTheirSweets && !showVoteHold){
-    // ★ スイーツ獲得前：正体のみ中央
-    cardsRow.classList.add('solo');
-    cardsRow.appendChild(roleMini);
-  }else{
-    // ★ スイーツ獲得後：正体＋スイーツ（投票チップも）
+
+  if(hasTheirSweets || showVoteHold){
+    const cardsRow = document.createElement('div');
+    cardsRow.className = 'other-cards-row';
+
     const sweetsWrap = document.createElement('div');
     sweetsWrap.className = 'sweets-wrap';
     sweetsWrap.dataset.sweetsUid = p.id;
@@ -4243,13 +4221,12 @@ if(started && roleAssigned){
       sweetsWrap.appendChild(voteStack);
     }
 
-    // 横並び：正体 → スイーツ
-    cardsRow.appendChild(roleMini);
     cardsRow.appendChild(sweetsWrap);
+    circle.appendChild(cardsRow);
   }
-
-  circle.appendChild(cardsRow);
 }
+
+
 
 
 
