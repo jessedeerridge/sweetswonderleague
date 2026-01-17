@@ -344,8 +344,12 @@ display:none;
     border:1px solid #ddd;font-size:12px;white-space:nowrap;
     display:flex;align-items:center;gap:6px;
   }
-  .player-tag.me{ background:#111;color:#fff;border-color:#111; }
-
+  .player-tag.me{
+    background:#111;
+    color:#fff;
+    border-color:#111;
+    transform:translate(-50%,-50%) translateY(45px);
+  }
   /* ★ 手番の青枠：ネームタグ輪郭の外側 */
   .player-tag.active-turn{
     outline:none;
@@ -550,11 +554,11 @@ display:none;
     opacity:0;
   }
   /* 自分の手札表示（大きめ横並び） */
-  .my-hand-wrapper{margin-top:16px;text-align:center; position:relative;}
+  .my-hand-wrapper{margin-top:40px;text-align:center; position:relative;}
   .my-hand-title{display:none;}
   .my-area{
     display:flex;gap:10px;justify-content:center;align-items:flex-start;
-    margin-top:-20px;
+    margin-top:-6px;
   }
 
   /* ★ 自分の正体カード（自分のアクションカードの左側） */
