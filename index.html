@@ -778,6 +778,33 @@ border-radius:0px;
     pointer-events:none;
   }
 
+  /* ★ アクションカード拡大表示 */
+  .card-zoom-backdrop{
+    position:fixed;
+    inset:0;
+    background:rgba(0,0,0,.55);
+    display:flex;
+    align-items:center;
+    justify-content:center;
+    z-index:520;
+  }
+  .card-zoom-backdrop.hidden{display:none;}
+  .card-zoom-card{
+    padding:12px;
+  }
+  .card-zoom-card .action-card{
+    width:min(240px, 72vw);
+    height:auto;
+    aspect-ratio:2/3;
+    border-radius:16px;
+    box-shadow:0 18px 40px rgba(0,0,0,.35);
+    cursor:default;
+  }
+  .card-zoom-card .action-card .effect-text{
+    font-size:16px;
+    line-height:1.3;
+  }
+
   /* ★ 追い出し確認ダイアログ */
   .dialog-backdrop{
     position:fixed;inset:0;background:rgba(0,0,0,.35);
@@ -1766,6 +1793,11 @@ display:none;
   </div>
 </div>
 
+<!-- ★ アクションカード拡大表示 -->
+<div id="cardZoomBackdrop" class="card-zoom-backdrop hidden" aria-hidden="true">
+  <div id="cardZoomCard" class="card-zoom-card"></div>
+</div>
+
 <!-- 設定ポップ（スタート＋リセット） -->
 <div id="startPop" class="start-pop hidden">
   <div class="start-pop-header">
@@ -1968,6 +2000,10 @@ const helpBtn = document.getElementById('helpBtn');
 const helpBackdrop = document.getElementById('helpBackdrop');
 const btnHelpClose = document.getElementById('btnHelpClose');
 const helpBody = document.getElementById('helpBody');
+
+/* アクションカード拡大表示 */
+const cardZoomBackdrop = document.getElementById('cardZoomBackdrop');
+const cardZoomCard = document.getElementById('cardZoomCard');
 
 /* ターン操作バー */
 const turnBar = document.getElementById('turnBar');
@@ -3700,8 +3736,40 @@ function buildCardEl(cardObj, { extraClass='' } = {}){
   card.appendChild(name);
   card.appendChild(frame);
 
-  requestAnimationFrame(()=> fitEffectText(txt));
+ requestAnimationFrame(()=> fitEffectText(txt));
   return card;
+}
+
+function openCardZoom(cardObj){
+  if(!cardZoomBackdrop || !cardZoomCard) return;
+  cardZoomCard.innerHTML = '';
+  const zoomEl = buildCardEl(cardObj);
+  zoomEl.addEventListener('pointerdown', (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+  });
+  cardZoomCard.appendChild(zoomEl);
+  requestAnimationFrame(() => {
+    const effectText = zoomEl.querySelector('.effect-text');
+    if(effectText){
+      effectText.style.fontSize = '16px';
+      effectText.style.lineHeight = '1.3';
+    }
+  });
+  cardZoomBackdrop.classList.remove('hidden');
+}
+
+function closeCardZoom(){
+  if(!cardZoomBackdrop || !cardZoomCard) return;
+  cardZoomBackdrop.classList.add('hidden');
+  cardZoomCard.innerHTML = '';
+}
+
+if(cardZoomBackdrop){
+  cardZoomBackdrop.addEventListener('pointerdown', (e) => {
+    if(e.target !== cardZoomBackdrop) return;
+    closeCardZoom();
+  });
 }
 
 function renderMyReceived(){
@@ -3710,9 +3778,10 @@ function renderMyReceived(){
   if(!rec) return;
 
   const cardEl = buildCardEl(rec, { extraClass:'pulse-only' });
-  cardEl.addEventListener('pointerdown', (e) => startDragCard(e, rec, cardEl));
+  cardEl.addEventListener('pointerdown', (e) => handleActionCardPointerDown(e, rec, cardEl));
   myReceivedEl.appendChild(cardEl);
 }
+
 
 function renderMyHand(){
   myHandEl.innerHTML = '';
@@ -3723,17 +3792,13 @@ function renderMyHand(){
   const receivedExists = hasReceivedInstruction();
 
   myData.action.forEach(cardObj => {
-    const allowThisCard =
-      !receivedExists || (cardObj.kind === 'instruction' && cardObj.name === '無視');
-
     const cardEl = buildCardEl(cardObj);
     if(receivedExists && cardObj.kind === 'instruction' && cardObj.name === '無視'){
       cardEl.classList.add('can-ignore');
     }
 
     cardEl.addEventListener('pointerdown', (e) => {
-      if(!allowThisCard) return;
-      startDragCard(e, cardObj, cardEl);
+      handleActionCardPointerDown(e, cardObj, cardEl);
     });
 
     myHandEl.appendChild(cardEl);
@@ -5885,6 +5950,7 @@ const drag = {
   lastClientX:null,
   lastClientY:null,
 };
+const CARD_DRAG_THRESHOLD = 6;
 
 function canUseOnPlayCircle(card){
   if(card.kind !== 'instruction') return true;
@@ -5948,6 +6014,57 @@ function getDropTarget(x,y){
   }
 
   return { type:'none' };
+}
+
+function handleActionCardPointerDown(e, cardObj, cardEl){
+  if(e.pointerType === 'mouse' && e.button !== 0) return;
+  e.preventDefault();
+
+  const startX = e.clientX;
+  const startY = e.clientY;
+  let dragStarted = false;
+
+  const cleanup = ({ keepCapture = false } = {}) => {
+    cardEl.removeEventListener('pointermove', onMove);
+    cardEl.removeEventListener('pointerup', onUp);
+    cardEl.removeEventListener('pointercancel', onCancel);
+    if(!keepCapture && cardEl.hasPointerCapture?.(e.pointerId)){
+      cardEl.releasePointerCapture(e.pointerId);
+    }
+  };
+
+  const onMove = (ev) => {
+    const dx = ev.clientX - startX;
+    const dy = ev.clientY - startY;
+    if(Math.hypot(dx, dy) < CARD_DRAG_THRESHOLD) return;
+    if(dragStarted) return;
+    dragStarted = true;
+    if(canStartUseCard(cardObj)){
+      cleanup({ keepCapture:true });
+      startDragCard(ev, cardObj, cardEl);
+      return;
+    }
+    cleanup();
+  };
+
+  const onUp = (ev) => {
+    cleanup();
+    if(dragStarted) return;
+    const dx = ev.clientX - startX;
+    const dy = ev.clientY - startY;
+    if(Math.hypot(dx, dy) <= CARD_DRAG_THRESHOLD){
+      openCardZoom(cardObj);
+    }
+  };
+
+  const onCancel = () => {
+    cleanup();
+  };
+
+  cardEl.setPointerCapture?.(e.pointerId);
+  cardEl.addEventListener('pointermove', onMove);
+  cardEl.addEventListener('pointerup', onUp);
+  cardEl.addEventListener('pointercancel', onCancel);
 }
 
 function startDragCard(e, cardObj, cardEl){
