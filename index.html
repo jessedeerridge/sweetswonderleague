@@ -80,7 +80,7 @@
   /* ★ 中央：プレイサークル（※スイーツ山札クリックのため pointer-events を有効に） */
   .play-circle{
     position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);
-    width:180px;height:180px;border-radius:50%;
+    width:120px;height:120px;border-radius:50%;
     background:transparent;
     pointer-events:auto;
 border:transparent;
@@ -155,6 +155,7 @@ display:none;
     border:1px solid rgba(0,0,0,.18);
     color:#111;
     line-height:1.1;
+  display:none;
   }
 
   /* スイーツ山札（クリック可能） */
@@ -581,8 +582,11 @@ display:none;
     overflow:visible;
     flex:0 0 auto;
   }
-  .my-sweets.hidden{display:none;}
-  .my-sweets img{
+  .my-sweets.collect-hidden{
+    opacity:0;
+    visibility:hidden;
+  }
+  .my-sweets.hidden{display:none;}  .my-sweets img{
     width:100%;
     height:100%;
     object-fit:cover;
@@ -1696,7 +1700,7 @@ display:none;
 <div id="sweetsBackdrop" class="sweets-backdrop hidden">
   <div class="sweets-panel" role="dialog" aria-modal="true" aria-label="スイーツ一覧">
     <div class="sweets-panel-header">
-      <div class="sweets-panel-title">スイーツ（下の獲得エリアにドラッグ）</div>
+      <div class="sweets-panel-title">スイーツ（下にドラッグ）</div>
       <button id="btnSweetsClose" class="btn ghost" style="padding:2px 6px;font-size:12px;">×</button>
     </div>
     <div class="sweets-panel-body">
@@ -2451,14 +2455,16 @@ async function hostGrantTurnAfterMiniShuffle(){
   if(state.game?.turn) return;
   const seats = getSeatedSeatOrder();
   if(!seats.length) return;
-  const randomSeat = seats[Math.floor(Math.random() * seats.length)];
-  const player = getPlayerBySeat(randomSeat);
+  const leaderSeat = seats[Math.floor(Math.random() * seats.length)];
+  const leaderIdx = seats.indexOf(leaderSeat);
+  const nextSeat = seats[(leaderIdx + 1) % seats.length];
+  const player = getPlayerBySeat(nextSeat);
   const turnRef = ref(db, `rooms/${state.roomCode}/game/turn`);
   await set(turnRef, {
-    activeSeat: randomSeat,
+    activeSeat: nextSeat,
     activePlayerId: player?.id ?? null,
-    startSeat: randomSeat,
-    leaderSeat: randomSeat,
+    startSeat: nextSeat,
+    leaderSeat: leaderSeat,
    turnNo: 1,
     updatedAt: serverTimestamp(),
   });
@@ -3453,6 +3459,12 @@ function renderMySweets(){
     updateRoundPickUI();
     lastMySweetsSnapshot = null;
     mySweetsFlyAnimatedFor = null;
+    return;
+  }
+  if(collectedSweetsHidden.has(state.userId)){
+    mySweetsEl.classList.add('hidden');
+    mySweetsEl.innerHTML = '';
+    updateRoundPickUI();
     return;
   }
   const decidedUids = getDecidedSweetsUids();
