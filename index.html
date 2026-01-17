@@ -526,11 +526,10 @@ display:none;
   transform-origin:bottom center;
     box-shadow:0 2px 6px rgba(0,0,0,.15);
   }
-  .player-tag .other-vote-chip{
+  .role-mini .other-vote-chip{
     position:absolute;
-    left:50%;
-    top:100%;
-    transform:translate(-26px,30px);
+    right:-6px;
+    bottom:-6px;
     width:var(--voteMiniSize);
     height:var(--voteMiniSize);
     border-radius:50%;
@@ -3292,6 +3291,16 @@ function buildVoteStackEl(targetUid){
 function getVoteChipSourceRect(voterUid){
   const tag = document.querySelector(`.player-tag[data-uid="${voterUid}"]`);
   if(!tag) return null;
+  const chip = tag.querySelector(`.other-vote-chip[data-voter-uid="${voterUid}"]`);
+  if(chip){
+    const rect = chip.getBoundingClientRect();
+    return {
+      left: rect.left,
+      top: rect.top,
+      width: rect.width,
+      height: rect.height,
+    };
+  }
   const miniHand = tag.querySelector('.mini-hand');
   const size = getVoteChipSizePx();
   if(miniHand){
@@ -4187,11 +4196,14 @@ circle.appendChild(tag);
 // handData は後でミニ手札にも使うので先に取る
 const handData = state.hands?.[p.id];
 const roleAssigned = !!state.roles?.[p.id];
+const voteChips = getPlayerVoteChips(p.id);
+let roleMini = null;
 
 if(started && roleAssigned){
-  const roleMini = document.createElement('div');
+  roleMini = document.createElement('div');
   roleMini.className = 'role-mini other-role-mini';
   tag.appendChild(roleMini);
+
 
   const hasTheirSweets = !!(handData && Array.isArray(handData.sweets) && handData.sweets.length);
   const showVoteHold = voteHoldActive && getVoteCountFor(p.id) > 0;
@@ -4269,13 +4281,16 @@ if (handData && Array.isArray(handData.action) && handData.action.length){
     miniHand.appendChild(c);
   });
 
-  tag.appendChild(miniHand);
+ tag.appendChild(miniHand);
+}
 
-  const voteChips = getPlayerVoteChips(p.id);
-  if(voteChips > 0){
-    const voteChip = document.createElement('div');
-    voteChip.className = 'other-vote-chip';
-    voteChip.dataset.voterUid = p.id;
+if(voteChips > 0){
+  const voteChip = document.createElement('div');
+  voteChip.className = 'other-vote-chip';
+  voteChip.dataset.voterUid = p.id;
+  if(roleMini){
+    roleMini.appendChild(voteChip);
+  }else{
     tag.appendChild(voteChip);
   }
 }
