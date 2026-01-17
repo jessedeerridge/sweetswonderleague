@@ -3019,14 +3019,16 @@ async function hostFinalizeReturnSweetsToDeck(revealedCards = []){
    ★ 投票（チップ表示＆条件）
    ========================= */
 function getMyVoteChips(){
+  if(!state.room?.gameStarted) return 0;
   const myData = state.hands?.[state.userId] || {};
   const v = myData.voteChips;
-  return (typeof v === 'number') ? v : 1;
+  return (typeof v === 'number') ? v : 0;
 }
 function getPlayerVoteChips(uid){
+  if(!state.room?.gameStarted) return 0;
   const data = state.hands?.[uid] || {};
   const v = data.voteChips;
-  return (typeof v === 'number') ? v : 1;
+  return (typeof v === 'number') ? v : 0;
 }
 function getSweetsOwners(){
   return latestPlayers
@@ -4112,15 +4114,17 @@ if (handData && Array.isArray(handData.action) && handData.action.length){
   tag.appendChild(miniHand);
 
 }
-  const voteChip = document.createElement('div');
-  voteChip.className = 'other-vote-chip';
-  voteChip.dataset.voterUid = p.id;
-  const voteChips = getPlayerVoteChips(p.id);
-  if(voteChips <= 0){
-    voteChip.classList.add('is-empty');
-  
-}
-  tag.appendChild(voteChip);
+  if(started && handData && Array.isArray(handData.action) && handData.action.length){
+    const voteChip = document.createElement('div');
+    voteChip.className = 'other-vote-chip';
+    voteChip.dataset.voterUid = p.id;
+    const voteChips = getPlayerVoteChips(p.id);
+    if(voteChips <= 0){
+      voteChip.classList.add('is-empty');
+    }
+    tag.appendChild(voteChip);
+  }
+
 playerCircle.appendChild(circle);
 
 if(leaderSeat !== null && leaderSeat === p.seatIndex){
