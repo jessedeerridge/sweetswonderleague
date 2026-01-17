@@ -3131,21 +3131,13 @@ function getVoteChipSourceRect(voterUid){
   }
   const tag = document.querySelector(`.player-tag[data-uid="${voterUid}"]`);
   if(!tag) return null;
-  const miniHand = tag.querySelector('.mini-hand');
   const size = getVoteChipSizePx();
-  if(miniHand){
-    const rect = miniHand.getBoundingClientRect();
-    return {
-      left: rect.right + 6,
-      top: rect.top + (rect.height - size) / 2,
-      width: size,
-      height: size,
-    };
-  }
   const tagRect = tag.getBoundingClientRect();
+  const offsetX = tagRect.width * 0.5 + 12;
+  const offsetY = tagRect.height + 15;
   return {
-    left: tagRect.right + 6,
-    top: tagRect.top + (tagRect.height - size) / 2,
+    left: tagRect.left + offsetX,
+    top: tagRect.top + offsetY,
     width: size,
     height: size,
   };
@@ -4115,15 +4107,16 @@ if (handData && Array.isArray(handData.action) && handData.action.length){
 
 }
   if(started && handData && Array.isArray(handData.action) && handData.action.length){
-    const voteChip = document.createElement('div');
-    voteChip.className = 'other-vote-chip';
-    voteChip.dataset.voterUid = p.id;
     const voteChips = getPlayerVoteChips(p.id);
-    if(voteChips <= 0){
-      voteChip.classList.add('is-empty');
+    if(voteChips > 0){
+      const voteChip = document.createElement('div');
+      voteChip.className = 'other-vote-chip';
+      voteChip.dataset.voterUid = p.id;
+      tag.appendChild(voteChip);
     }
-    tag.appendChild(voteChip);
   }
+
+
 
 playerCircle.appendChild(circle);
 
