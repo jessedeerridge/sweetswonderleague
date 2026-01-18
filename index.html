@@ -486,7 +486,7 @@ display:none;
   border-radius:14px;
   border:2px solid #f59e0b;
   box-shadow:0 14px 30px rgba(0,0,0,.25);
-  z-index:230;
+  z-index:280;
   white-space:nowrap;
 }
 .leader-pick-pop.hidden{display:none;}
@@ -507,6 +507,58 @@ display:none;
 }
 .action-pop .action-pop-text{
   font-weight:900;
+}
+.scout-reveal-overlay{
+  position:fixed;inset:0;
+  background:rgba(0,0,0,.55);
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  z-index:260;
+}
+.scout-reveal-overlay.hidden{display:none;}
+.scout-reveal-grid{
+  display:flex;
+  flex-wrap:nowrap;
+  gap:12px;
+  max-width:92vw;
+  overflow-x:auto;
+  padding:8px 12px;
+}
+.scout-reveal-grid .action-card{
+  position:relative;
+  inset:auto;
+  transform:none;
+  cursor:default;
+  width:140px;
+  height:210px;
+}
+.scout-reveal-grid .action-card .card-name{
+  font-size:11px;
+}
+.scout-reveal-grid .action-card .effect-text{
+  font-size:10px;
+}
+.mini-hand.scout-selectable{
+  animation:scoutPulse 1.1s ease-in-out infinite;
+}
+@keyframes scoutPulse{
+  0%{ transform:translateX(-50%) scale(1); }
+  50%{ transform:translateX(-50%) scale(1.4); }
+  100%{ transform:translateX(-50%) scale(1); }
+}
+.sweets-wrap.accident-selectable{
+  cursor:pointer;
+}
+.sweets-wrap.accident-selectable .sweets-mini,
+#mySweets.accident-selectable img{
+  animation:accidentPulse 1.1s ease-in-out infinite;
+  transform-origin:center;
+}
+@keyframes accidentPulse{
+  0%{ transform:scale(1); }
+  50%{ transform:scale(1.12); }
+  100%{ transform:scale(1); }
 }
 
 
@@ -1804,6 +1856,16 @@ display:none;
     <button id="actionConfirmNo" class="btn">いいえ</button>
   </div>
 </div>
+<div id="scoutRevealOverlay" class="scout-reveal-overlay hidden">
+  <div id="scoutRevealGrid" class="scout-reveal-grid"></div>
+</div>
+<div id="scoutCloseConfirmPop" class="leader-pick-pop action-pop hidden">
+  <div class="action-pop-text">閉じてもいいですか。</div>
+  <div class="action-pop-actions">
+    <button id="scoutCloseYes" class="btn primary">はい</button>
+    <button id="scoutCloseNo" class="btn">いいえ</button>
+  </div>
+</div>
 
 <!-- 着席ポップ -->
 <div id="seatPop" class="seat-pop hidden">
@@ -1995,6 +2057,11 @@ const actionConfirmPop = document.getElementById('actionConfirmPop');
 const actionConfirmText = document.getElementById('actionConfirmText');
 const actionConfirmYes = document.getElementById('actionConfirmYes');
 const actionConfirmNo = document.getElementById('actionConfirmNo');
+const scoutRevealOverlay = document.getElementById('scoutRevealOverlay');
+const scoutRevealGrid = document.getElementById('scoutRevealGrid');
+const scoutCloseConfirmPop = document.getElementById('scoutCloseConfirmPop');
+const scoutCloseYes = document.getElementById('scoutCloseYes');
+const scoutCloseNo = document.getElementById('scoutCloseNo');
 
 const seatPop = document.getElementById('seatPop');
 const seatTabs = document.getElementById('seatTabs');
@@ -3737,6 +3804,7 @@ function renderMySweets(){
   const c = getMySweetsCard();
   if(!c){
     mySweetsEl.classList.add('hidden');
+    mySweetsEl.classList.remove('accident-selectable');
     updateRoundPickUI();
     lastMySweetsSnapshot = null;
     mySweetsFlyAnimatedFor = null;
@@ -3757,11 +3825,20 @@ function renderMySweets(){
   }
   mySweetsFlyAnimatedFor = null;
   mySweetsEl.classList.remove('hidden');
+  mySweetsEl.classList.remove('accident-selectable');
   const img = document.createElement('img');
   img.src = c.img;
   img.alt = `sweets ${c.value ?? ''}`;
   img.onerror = () => { if(c.fallback) img.src = c.fallback; };
   mySweetsEl.appendChild(img);
+
+  if(actionSelection?.type === 'accident' && actionSelection.phase === 'select'){
+    mySweetsEl.classList.add('accident-selectable');
+    mySweetsEl.addEventListener('pointerdown', (e) => {
+      e.stopPropagation();
+      handleAccidentCandidate(state.userId);
+    }, { once:true });
+  }
 
   // ★ 追加：自分スイーツにも投票ミニを重ねる
   renderMySweetsVoteStack();
@@ -3895,6 +3972,35 @@ function updateActionSelectionUI(){
       if(actionConfirmPop) actionConfirmPop.classList.remove('hidden');
     }
   }
+  if(actionSelection.type === 'scout'){
+    if(actionSelection.phase === 'select'){
+      if(actionExplainPop){
+        actionExplainPop.textContent = '偵察：アクションカードを見たいプレイヤーを選択してください。';
+        actionExplainPop.classList.remove('hidden');
+      }
+    }
+    if(actionSelection.phase === 'confirm'){
+      const target = getPlayerByUid(actionSelection.targetUid);
+      if(actionConfirmText){
+        actionConfirmText.textContent = `「${target?.name ?? 'プレイヤー'}」のアクションカードを見ますか。`;
+      }
+      if(actionConfirmPop) actionConfirmPop.classList.remove('hidden');
+    }
+  }
+  if(actionSelection.type === 'accident'){
+    if(actionSelection.phase === 'select'){
+      if(actionExplainPop){
+        actionExplainPop.textContent = '事故：戻したいスイーツを選択してください。';
+        actionExplainPop.classList.remove('hidden');
+      }
+    }
+    if(actionSelection.phase === 'confirm'){
+      if(actionConfirmText){
+        actionConfirmText.textContent = 'このスイーツを戻しますか。';
+      }
+      if(actionConfirmPop) actionConfirmPop.classList.remove('hidden');
+    }
+  }
 }
 
 function setActionSelection(next){
@@ -3924,9 +4030,55 @@ function beginWiretapSelection(){
   });
 }
 
+function beginScoutSelection(){
+  const candidates = latestPlayers.filter(p => p.id !== state.userId);
+  if(!candidates.length) return Promise.resolve(null);
+  return new Promise(resolve => {
+    setActionSelection({
+      type:'scout',
+      phase:'select',
+      targetUid:null,
+      resolve,
+    });
+  });
+}
+
+function beginAccidentSelection(){
+  const candidates = getSweetsOwners();
+  if(!candidates.length) return Promise.resolve(null);
+  return new Promise(resolve => {
+    setActionSelection({
+      type:'accident',
+      phase:'select',
+      targetUid:null,
+      resolve,
+    });
+  });
+}
+
 function handleWiretapCandidate(uid){
   if(!actionSelection || actionSelection.type !== 'wiretap') return;
   if(actionSelection.phase !== 'select') return;
+  actionSelection.phase = 'confirm';
+  actionSelection.targetUid = uid;
+  updateActionSelectionUI();
+  if(latestPlayers.length) renderPlayerCircle(latestPlayers);
+}
+
+function handleScoutCandidate(uid){
+  if(!actionSelection || actionSelection.type !== 'scout') return;
+  if(actionSelection.phase !== 'select') return;
+  actionSelection.phase = 'confirm';
+  actionSelection.targetUid = uid;
+  updateActionSelectionUI();
+  if(latestPlayers.length) renderPlayerCircle(latestPlayers);
+}
+
+function handleAccidentCandidate(uid){
+  if(!actionSelection || actionSelection.type !== 'accident') return;
+  if(actionSelection.phase !== 'select') return;
+  const card = getSweetsCardByUid(uid);
+  if(!card) return;
   actionSelection.phase = 'confirm';
   actionSelection.targetUid = uid;
   updateActionSelectionUI();
@@ -4003,7 +4155,7 @@ function showWiretapArrow(fromSeat, toSeat){
 
 if(actionConfirmYes){
   actionConfirmYes.addEventListener('click', () => {
-    if(!actionSelection || actionSelection.type !== 'wiretap') return;
+    if(!actionSelection) return;
     if(actionSelection.phase !== 'confirm') return;
     const targetUid = actionSelection.targetUid;
     const resolve = actionSelection.resolve;
@@ -4013,7 +4165,7 @@ if(actionConfirmYes){
 }
 if(actionConfirmNo){
   actionConfirmNo.addEventListener('click', () => {
-    if(!actionSelection || actionSelection.type !== 'wiretap') return;
+    if(!actionSelection) return;
     if(actionSelection.phase !== 'confirm') return;
     actionSelection.phase = 'select';
     actionSelection.targetUid = null;
@@ -4629,6 +4781,10 @@ const leaderPickSelectable = leaderPickCanSelect && leaderPickCandidates.include
     };
   }
 
+const scoutSelectable = actionSelection?.type === 'scout'
+  && actionSelection.phase === 'select'
+  && p.id !== state.userId;
+
 // 追い出しクリックは今まで通り
 const onKick = () => {
   if (!state.roomCode) return;
@@ -4639,8 +4795,17 @@ const onKick = () => {
   kickMessage.textContent = `「${p.name}」を追い出して、この席に着席しますか？`;
   kickDialog.classList.remove('hidden');
 };
-circle.onclick = (e) => { e.stopPropagation(); onKick(); };
-tag.onclick = (e) => { e.stopPropagation(); onKick(); };
+if(scoutSelectable){
+  const onScout = (e) => {
+    e.stopPropagation();
+    handleScoutCandidate(p.id);
+  };
+  circle.onclick = onScout;
+  tag.onclick = onScout;
+}else{
+  circle.onclick = (e) => { e.stopPropagation(); onKick(); };
+  tag.onclick = (e) => { e.stopPropagation(); onKick(); };
+}
 
 if(activeSeat === p.seatIndex) circle.classList.add('active-turn');
 
@@ -4683,9 +4848,12 @@ if(started && roleAssigned){
 
 
   const hasTheirSweets = !!(handData && Array.isArray(handData.sweets) && handData.sweets.length);
-  const showVoteHold = voteHoldActive && getVoteCountFor(p.id) > 0;
+  const voteCount = getVoteCountFor(p.id);
+  const hasVotes = voteCount > 0;
+  const showVoteHold = voteHoldActive && hasVotes;
+  const showSweetsArea = hasTheirSweets || showVoteHold || hasVotes;
 
-  if(hasTheirSweets || showVoteHold){
+  if(showSweetsArea){
     const cardsRow = document.createElement('div');
     cardsRow.className = 'other-cards-row';
 
@@ -4702,6 +4870,16 @@ if(started && roleAssigned){
       sweetsWrap.addEventListener('pointerdown', (e) => {
         e.stopPropagation();
         startRoundPickDrag(e, p.id);
+      });
+    }
+    const accidentSelectable = actionSelection?.type === 'accident'
+      && actionSelection.phase === 'select'
+      && hasTheirSweets;
+    if(accidentSelectable){
+      sweetsWrap.classList.add('accident-selectable');
+      sweetsWrap.addEventListener('pointerdown', (e) => {
+        e.stopPropagation();
+        handleAccidentCandidate(p.id);
       });
     }
     if(decidedUids.includes(p.id)){
@@ -4743,6 +4921,9 @@ if(started && roleAssigned){
 if (handData && Array.isArray(handData.action) && handData.action.length){
   const miniHand = document.createElement('div');
   miniHand.className = 'mini-hand';
+  if(scoutSelectable){
+    miniHand.classList.add('scout-selectable');
+  }
 
   const count = handData.action.length;
   const spread = 70;
@@ -6497,9 +6678,97 @@ async function runActionCardEffect(cardObj){
     await runWiretapEffect(cardObj);
     return;
   }
+  if(cardObj?.name === '偵察'){
+    await runScoutEffect();
+    return;
+  }
+  if(cardObj?.name === '事故'){
+    await runAccidentEffect();
+    return;
+  }
+  if(cardObj?.name === '世代交代'){
+    await runGenerationShiftEffect();
+    return;
+  }
   if(cardObj?.name === '仕込み'){
     await runPreparationEffect(cardObj);
   }
+}
+
+async function runGenerationShiftEffect(){
+  if(!state.roomCode) return;
+  const mySeat = getSeatByUid(state.userId) ?? state.seatedTable ?? null;
+  if(mySeat == null) return;
+  const currentLeaderSeat = state.turn?.leaderSeat ?? null;
+  if(currentLeaderSeat === mySeat) return;
+  const turnRef = ref(db, `rooms/${state.roomCode}/game/turn`);
+  await update(turnRef, { leaderSeat: mySeat });
+}
+
+async function runScoutEffect(){
+  if(!state.room?.gameStarted) return;
+  const targetUid = await beginScoutSelection();
+  if(!targetUid) return;
+
+  const fromSeat = state.turn?.activeSeat ?? state.seatedTable;
+  const toSeat = getSeatByUid(targetUid);
+  if(fromSeat !== null && toSeat !== null){
+    await emitEvent({
+      type:'wiretapArrow',
+      fromSeat,
+      toSeat,
+      fromUid: state.userId,
+    });
+  }
+
+  await showScoutReveal(targetUid);
+}
+
+function getAccidentSweetsElement(uid){
+  if(uid === state.userId){
+    return mySweetsEl?.querySelector('img') ?? null;
+  }
+  const wrapMini = document.querySelector(`.sweets-wrap[data-sweets-uid="${uid}"] .sweets-mini`);
+  if(wrapMini) return wrapMini;
+  const selectedCard = document.querySelector(`.selected-sweets-tag[data-sweets-uid="${uid}"] .selected-sweets-card`);
+  if(selectedCard) return selectedCard;
+  return null;
+}
+
+async function runAccidentEffect(){
+  if(!state.roomCode) return;
+  const targetUid = await beginAccidentSelection();
+  if(!targetUid) return;
+
+  const target = getSweetsDeckTargetRect();
+  const sourceEl = getAccidentSweetsElement(targetUid);
+  const snapshot = sourceEl ? getCollectAnimationSnapshot(sourceEl) : null;
+  if(target && snapshot){
+    await animateOneCardToDeck(snapshot, target, { rotateFrom: snapshot.rotateDeg, rotateTo: 0 });
+  }
+
+  const base = `rooms/${state.roomCode}`;
+  const [handsSnap, deckSnap] = await Promise.all([
+    get(ref(db, `${base}/hands`)),
+    get(ref(db, `${base}/decks/sweets`)),
+  ]);
+
+  const hands = handsSnap.val() || {};
+  const targetHand = hands?.[targetUid] || {};
+  const sweetsArr = Array.isArray(targetHand.sweets) ? targetHand.sweets : [];
+  const card = sweetsArr[0];
+  if(!card) return;
+
+  const deck = deckSnap.val() || [];
+  const nextDeck = Array.isArray(deck) ? [...deck] : [];
+  if(!nextDeck.some(c => c?.id === card.id)){
+    nextDeck.push(card);
+  }
+
+  await Promise.all([
+    update(ref(db, `${base}/hands/${targetUid}`), { sweets: [] }),
+    set(ref(db, `${base}/decks/sweets`), nextDeck),
+  ]);
 }
 
 async function runPreparationEffect(cardObj){
@@ -6554,6 +6823,56 @@ async function runWiretapEffect(cardObj){
       fromUid: state.userId,
     });
   }
+}
+
+async function showScoutReveal(targetUid){
+  if(!scoutRevealOverlay || !scoutRevealGrid) return;
+  scoutRevealGrid.innerHTML = '';
+
+  const showScoutCloseConfirm = () => {
+    if(scoutCloseConfirmPop) scoutCloseConfirmPop.classList.remove('hidden');
+  };
+
+  const cards = Array.isArray(state.hands?.[targetUid]?.action)
+    ? state.hands[targetUid].action
+    : [];
+  if(cards.length){
+    cards.forEach(cardObj => {
+      const cardEl = buildCardEl(cardObj);
+      cardEl.addEventListener('click', showScoutCloseConfirm);
+      scoutRevealGrid.appendChild(cardEl);
+    });
+  }else{
+    const empty = document.createElement('div');
+    empty.textContent = '（アクションカードなし）';
+    scoutRevealGrid.appendChild(empty);
+  }
+
+  if(scoutCloseConfirmPop) scoutCloseConfirmPop.classList.add('hidden');
+  scoutRevealOverlay.classList.remove('hidden');
+
+  return new Promise(resolve => {
+    const closeOverlay = () => {
+      scoutRevealOverlay.classList.add('hidden');
+      if(scoutCloseConfirmPop) scoutCloseConfirmPop.classList.add('hidden');
+      scoutRevealOverlay.removeEventListener('click', onOverlayClick);
+      scoutCloseYes?.removeEventListener('click', onCloseYes);
+      scoutCloseNo?.removeEventListener('click', onCloseNo);
+      resolve();
+    };
+    const onOverlayClick = (e) => {
+      if(e.target !== scoutRevealOverlay) return;
+      showScoutCloseConfirm();
+    };
+    const onCloseYes = () => closeOverlay();
+    const onCloseNo = () => {
+      if(scoutCloseConfirmPop) scoutCloseConfirmPop.classList.add('hidden');
+    };
+
+    scoutRevealOverlay.addEventListener('click', onOverlayClick);
+    scoutCloseYes?.addEventListener('click', onCloseYes);
+    scoutCloseNo?.addEventListener('click', onCloseNo);
+  });
 }
 
 /* =========================
