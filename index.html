@@ -777,7 +777,9 @@ display:none;
     flex:0 0 auto;
     display:flex;align-items:flex-start;justify-content:center;gap:8px;flex-wrap:wrap;
   }
-
+  .my-received-slot .action-card{
+    cursor:default;
+  }
   .my-hand{
     display:flex;justify-content:center;gap:10px;flex-wrap:wrap;
     min-height:130px;
@@ -795,6 +797,12 @@ display:none;
     transform-origin:center;
   }
   .action-card:active{cursor:grabbing;}
+  .action-card.locked{
+    animation:none !important;
+    cursor:not-allowed;
+    filter:grayscale(.25);
+    opacity:.72;
+  }
   .action-card img.card-img{
     position:absolute;inset:0;width:100%;height:100%;object-fit:cover;
     display:block;
@@ -3913,8 +3921,11 @@ function renderMyReceived(){
   const activeIds = new Set(getActiveInstructionCards().map(card => card.id));
   recCards.forEach(rec => {
     const pulse = activeIds.has(rec.id) && rec.name !== '賄賂';
+    const shouldLock =
+      ((rec.name === '応援' || rec.name === '脅迫') && hasSweets()) ||
+      (rec.name === '賄賂' && getMyVoteChips() <= 0);
     const cardEl = buildCardEl(rec, { extraClass: pulse ? 'pulse-only' : '' });
-    cardEl.addEventListener('pointerdown', (e) => startDragCard(e, rec, cardEl));
+    if(shouldLock) cardEl.classList.add('locked');
     myReceivedEl.appendChild(cardEl);
   });
 }
@@ -6401,11 +6412,14 @@ const drag = {
 
 function canUseOnPlayCircle(card){
   if(card.kind !== 'instruction') return true;
+  if(card.name === '無視' && hasReceivedInstruction()) return true;
   if(INSTRUCTION_NEED_TARGET.has(card.name)) return false;
   return true;
 }
+
 function canUseOnOtherPlayer(card){
   if(card.kind !== 'instruction') return false;
+  if(card.name === '無視' && hasReceivedInstruction()) return false;
   return true;
 }
 function canStartUseCard(cardObj){
@@ -6414,16 +6428,13 @@ function canStartUseCard(cardObj){
   if(isActionSelectionActive()) return false;
   const turnBlocked = isInstructionTurnBlocked();
   const receivedIds = new Set(getMyReceivedCards().map(card => card.id));
-  if(receivedIds.has(cardObj.id)){
-    const activeIds = new Set(getActiveInstructionCards().map(card => card.id));
-    if(cardObj.name === '賄賂') return false;
-    return activeIds.has(cardObj.id);
-  }
+  if(receivedIds.has(cardObj.id)) return false;
   if(!turnBlocked) return true;
 
   const isIgnore = (cardObj.kind === 'instruction' && cardObj.name === '無視');
   return isIgnore;
 }
+
 
 let hoverOtherCircle = null;
 function clearOtherCircleHint(){
@@ -6536,6 +6547,7 @@ async function onDragEnd(e){
 
   if(drop.type === 'otherCircle'){
     if(cardObj.kind !== 'instruction'){ snapBack(); return; }
+    if(!canUseOnOtherPlayer(cardObj)){ snapBack(); return; }
     await giveInstructionToPlayer(cardObj, drop.seat, drop.uid);
     cleanupDrag();
     return;
