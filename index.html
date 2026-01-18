@@ -302,11 +302,12 @@ display:none;
   }
   @keyframes advertisePulse {
     0%{transform:scale(1);}
-    50%{transform:scale(1.4);}
+    50%{transform:scale(1.5);}
     100%{transform:scale(1);}
   }
   .advertise-pulse{
-    animation:advertisePulse 2.0s ease-in-out;
+    animation:advertisePulse 2.8s ease-in-out;
+    transform-origin:center;
   }
   .my-sweets.advertise-selectable,
   .sweets-wrap.advertise-selectable .sweets-mini{
@@ -2154,8 +2155,10 @@ let turnBlockedByShuffle = false;
 let leaderPickApplyTimer = null;
 let leaderPickApplyKey = null;
 let lastLeaderSeat = null;
+let lastRoundNo = null;
 let actionSelection = null;
-const ADVERTISE_PULSE_DURATION_MS = 850;
+let mySweetsSelectHandlersBound = false;
+const ADVERTISE_PULSE_DURATION_MS = 1400;
 const advertisedPulseUids = new Set();
 const advertisedStarReadyUids = new Set();
 const advertisedStarHiddenUids = new Set();
@@ -2371,6 +2374,7 @@ function resetLocalGameEffects(){
   stopRoundEndFx();
   resetRoundRevealState();
   resetCollectedSweetsHiddenCache();
+  centerMoveOffsetByKey.clear();
   clearAdvertiseLocalState();
 
   miniShuffleToken += 1;
@@ -2774,6 +2778,7 @@ function subscribeGame(){
     state.game = snap.val() || {};
     state.turn = state.game.turn || null;
     state.turnEnding = false;
+    const nextRoundNo = (typeof state.game?.roundNo === 'number') ? state.game.roundNo : null;
     const nextSessionId = state.game?.sessionId || null;
     const sessionChanged = nextSessionId !== currentGameSessionId;
     if(sessionChanged){
@@ -2782,6 +2787,10 @@ function subscribeGame(){
     } else {
       resetCollectedSweetsHiddenCache();
     }
+    if(lastRoundNo !== null && nextRoundNo !== null && lastRoundNo !== nextRoundNo){
+      clearAdvertiseLocalState();
+    }
+    lastRoundNo = nextRoundNo;
     syncPassTurnState();
     updateTurnUI();
     if (latestPlayers.length) renderPlayerCircle(latestPlayers);
@@ -3721,6 +3730,7 @@ async function hostFinalizeReturnSweetsToDeck(revealedCards = []){
     'decks/sweetsExcluded': [],   // 除外は空に
     'game/leaderPick': leaderPickPayload,
     'game/actionDealKey': null,
+    'game/advertisedSweets': {},
     /* ✅ 追加：ここから勝敗判定→roundchip→round+1 */
     ...( (() => {
       const playerCount = Array.isArray(gameNow.seatOrder) ? gameNow.seatOrder.length : (latestPlayers?.length || 0);
@@ -4002,9 +4012,27 @@ function renderMyRole(){
 }
 
 function renderMySweets(){
+  if(!mySweetsSelectHandlersBound){
+    mySweetsSelectHandlersBound = true;
+    const handleSelect = (e) => {
+      if(!actionSelection) return;
+      if(actionSelection.type === 'exchange' && actionSelection.phase === 'select'){
+        e.stopPropagation();
+        handleExchangeCandidate(state.userId);
+        return;
+      }
+      if(actionSelection.type === 'advertise' && actionSelection.phase === 'select'){
+        e.stopPropagation();
+        handleAdvertiseCandidate(state.userId);
+      }
+    };
+    mySweetsEl.addEventListener('pointerdown', handleSelect);
+    mySweetsEl.addEventListener('click', handleSelect);
+  }
+
   mySweetsEl.innerHTML = '';
   applyTagChipStyle(mySweetsEl, getTagChipStyleByUid(state.userId));
-  mySweetsEl.onpointerdown = null;
+  mySweetsEl.style.cursor = '';
   mySweetsEl.classList.remove('swap-selectable','swap-selected','advertise-selectable','advertise-pulse');
   const c = getMySweetsCard();
   if(!c){
@@ -4035,7 +4063,9 @@ function renderMySweets(){
   img.src = c.img;
   img.alt = `sweets ${c.value ?? ''}`;
   img.onerror = () => { if(c.fallback) img.src = c.fallback; };
+  img.style.pointerEvents = 'none';
   mySweetsEl.appendChild(img);
+
 
   const exchangeSelection = actionSelection?.type === 'exchange'
     ? actionSelection
@@ -4049,10 +4079,7 @@ function renderMySweets(){
         && exchangeSelection.selectedUids.includes(state.userId)
     );
     if(isSelectable){
-      mySweetsEl.onpointerdown = (e) => {
-        e.stopPropagation();
-        handleExchangeCandidate(state.userId);
-      };
+      mySweetsEl.style.cursor = 'pointer';
     }
   }
 
@@ -4063,12 +4090,10 @@ function renderMySweets(){
     const isSelectable = advertiseSelection.phase === 'select';
     mySweetsEl.classList.toggle('advertise-selectable', isSelectable);
     if(isSelectable){
-      mySweetsEl.onpointerdown = (e) => {
-        e.stopPropagation();
-        handleAdvertiseCandidate(state.userId);
-      };
+      mySweetsEl.style.cursor = 'pointer';
     }
   }
+
 
   const advertised = isAdvertised(state.userId);
   if(advertised && shouldPulseAdvertise(state.userId)){
@@ -4442,11 +4467,11 @@ function handleAdvertiseCandidate(uid){
   if(!actionSelection || actionSelection.type !== 'advertise') return;
   if(actionSelection.phase !== 'select') return;
   if(!getSweetsCardByUid(uid)) return;
-  actionSelection.phase = 'confirm';
-  actionSelection.targetUid = uid;
-  updateActionSelectionUI();
-  if(latestPlayers.length) renderPlayerCircle(latestPlayers);
-  renderMySweets();
+  setActionSelection({
+    ...actionSelection,
+    phase: 'confirm',
+    targetUid: uid,
+  });
 }
 
 function triggerWiretapZoom(uid){
@@ -4797,6 +4822,7 @@ const DECIDED_CENTER_DELAY_MS = DECIDED_MOVE_DURATION_MS + 1800;
 const DECIDED_CENTER_MOVE_DURATION_MS = 650;
 const decidedCenterMoveAnimated = new Map();
 const decidedCenterMoveTimers = new Map();
+const centerMoveOffsetByKey = new Map();
 let centerMoveBatchTimerId = null;
 let centerMoveBatchKey = null;
 let decidedRoundKey = null;
@@ -4870,11 +4896,16 @@ function parseRotationDegrees(value){
   return Number.isFinite(num) ? num : 0;
 }
 
-function applyCenterMoveToCard(cardEl, hostEl, rotDeg, startedAt){
-  if(!cardEl || !playerCircle) return;
+function getCenterMoveOffsetKey(uid, slot){
+  if(!uid || !slot) return null;
+  return `${uid}:${slot}`;
+}
+
+function computeCenterMoveOffset(cardEl, rotDeg){
+  if(!cardEl || !playerCircle) return null;
   const circleRect = playerCircle.getBoundingClientRect();
   const cardRect = cardEl.getBoundingClientRect();
-  if(!circleRect.width || !circleRect.height || !cardRect.width || !cardRect.height) return;
+  if(!circleRect.width || !circleRect.height || !cardRect.width || !cardRect.height) return null;
 
   const circleCenter = {
     x: circleRect.left + circleRect.width / 2,
@@ -4894,9 +4925,22 @@ function applyCenterMoveToCard(cardEl, hostEl, rotDeg, startedAt){
     moveX = localMoveX;
     moveY = localMoveY;
   }
+  return { x: moveX, y: moveY };
+}
 
-  cardEl.style.setProperty('--centerMoveX', `${moveX}px`);
-  cardEl.style.setProperty('--centerMoveY', `${moveY}px`);
+function applyCenterMoveToCard(cardEl, hostEl, rotDeg, startedAt, offsetKey){
+  if(!cardEl || !playerCircle) return;
+  let offset = null;
+  if(offsetKey && centerMoveOffsetByKey.has(offsetKey)){
+    offset = centerMoveOffsetByKey.get(offsetKey);
+  }else{
+    offset = computeCenterMoveOffset(cardEl, rotDeg);
+    if(!offset) return;
+    if(offsetKey) centerMoveOffsetByKey.set(offsetKey, offset);
+  }
+
+  cardEl.style.setProperty('--centerMoveX', `${offset.x}px`);
+  cardEl.style.setProperty('--centerMoveY', `${offset.y}px`);
   cardEl.classList.add('center-move');
   if(hostEl){
     hostEl.classList.add('center-move-host');
@@ -4914,7 +4958,8 @@ function applyCenterMoveForUid(uid){
   const tagEl = document.querySelector(`.selected-sweets-tag[data-sweets-uid="${uid}"]`);
   if(tagEl){
     const cardEl = tagEl.querySelector('.selected-sweets-card');
-    applyCenterMoveToCard(cardEl, tagEl, 0, startedAt);
+    const offsetKey = getCenterMoveOffsetKey(uid, 'tag');
+    applyCenterMoveToCard(cardEl, tagEl, 0, startedAt, offsetKey);
   }
 
   const wrapEl = document.querySelector(`.sweets-wrap[data-sweets-uid="${uid}"]`);
@@ -4924,7 +4969,8 @@ function applyCenterMoveForUid(uid){
     const rotDeg = circle
       ? parseRotationDegrees(getComputedStyle(circle).getPropertyValue('--rotDeg').trim())
       : 0;
-    applyCenterMoveToCard(cardEl, wrapEl, rotDeg, startedAt);
+    const offsetKey = getCenterMoveOffsetKey(uid, 'wrap');
+    applyCenterMoveToCard(cardEl, wrapEl, rotDeg, startedAt, offsetKey);
   }
   scheduleAdvertiseStarHide(uid);
 }
@@ -6295,6 +6341,7 @@ function resetCollectedSweetsHiddenCache(){
     collectedSweetsHidden.clear();
     decidedSweetsAnimated.clear();
     decidedCenterMoveAnimated.clear();
+    centerMoveOffsetByKey.clear();
     decidedCenterMoveTimers.forEach((timerId) => clearTimeout(timerId));
     decidedCenterMoveTimers.clear();
     if(centerMoveBatchTimerId){
