@@ -630,10 +630,50 @@ display:none;
   animation:scoutPulse 1.05s ease-in-out infinite;
   transform-origin:center;
 }
+  .player-tag .other-role-mini.imprison-selectable{
+  pointer-events:auto;
+  cursor:pointer;
+  animation:pulseRoleMiniImprison 1.05s ease-in-out infinite;
+  transform-origin:center;
+}
 @keyframes pulseRoleMini{
   0%{ transform:translate(var(--roleMiniX), var(--roleMiniY)) scale(1); }
   50%{ transform:translate(var(--roleMiniX), var(--roleMiniY)) scale(1.4); }
   100%{ transform:translate(var(--roleMiniX), var(--roleMiniY)) scale(1); }
+}
+@keyframes pulseRoleMiniImprison{
+  0%{ transform:translate(var(--roleMiniX), var(--roleMiniY)) scale(1); }
+  50%{ transform:translate(var(--roleMiniX), var(--roleMiniY)) scale(1.5); }
+  100%{ transform:translate(var(--roleMiniX), var(--roleMiniY)) scale(1); }
+}
+.my-role.imprison-selectable{
+  cursor:pointer;
+  animation:pulseRoleImprison 1.05s ease-in-out infinite;
+  transform-origin:center;
+}
+@keyframes pulseRoleImprison{
+  0%{ transform:scale(1); }
+  50%{ transform:scale(1.5); }
+  100%{ transform:scale(1); }
+}
+.imprisoned-badge{
+  position:absolute;
+  left:-6px;
+  bottom:-6px;
+  width:30px;
+  height:42px;
+  border-radius:6px;
+  border:1px solid rgba(0,0,0,.18);
+  box-shadow:0 6px 12px rgba(0,0,0,.25);
+  overflow:hidden;
+  z-index:3;
+  background:#fff;
+}
+.imprisoned-badge img{
+  width:100%;
+  height:100%;
+  object-fit:cover;
+  display:block;
 }
 .action-deal-card{
   position:fixed;
@@ -809,6 +849,7 @@ display:none;
     box-shadow:0 10px 24px rgba(0,0,0,.18);
     background:#fff;
     overflow:hidden;
+    position:relative;
     flex:0 0 auto;
   }
   .my-role img{width:100%;height:100%;object-fit:cover;display:block;}
@@ -1519,6 +1560,13 @@ left:-260px;
   animation:none;
   transform:scale(1.12);
 }
+body.imprison-active .sweets-wrap.roundpick-candidate{
+  animation:none;
+}
+body.imprison-active .sweets-wrap.roundpick-selectable:hover{
+  animation:none;
+  transform:none;
+}
 .sweets-wrap.swap-selectable{
   animation:pulseCard 1.05s ease-in-out infinite;
   cursor:pointer;
@@ -1600,6 +1648,13 @@ left:-260px;
 .my-sweets.roundpick-selectable:hover{
   animation:none;
   transform:scale(1.12);
+}
+body.imprison-active .my-sweets.roundpick-candidate{
+  animation:none;
+}
+body.imprison-active .my-sweets.roundpick-selectable:hover{
+  animation:none;
+  transform:none;
 }
 .my-sweets.roundpick-selectable:hover ~ .vote-chip,
 .my-sweets.roundpick-selectable:active ~ .vote-chip{
@@ -2847,6 +2902,7 @@ function subscribeGame(){
     lastRoundNo = nextRoundNo;
     syncPassTurnState();
     updateTurnUI();
+    renderMyRole();
     if (latestPlayers.length) renderPlayerCircle(latestPlayers);
     renderRoundChipsFromGame();
     syncAdvertiseEffects();
@@ -3173,7 +3229,7 @@ function buildActionDeck(playerCount){
 }
 function getActionEffectText(cardName){
   const map = {
-    '監禁': '選んだプレイヤーの前に置かれているスイーツは出品できない。',
+    '監禁': '選んだプレイヤーへの投票はこのラウンド中、数値上0として扱う。',
     '盗聴': '選んだプレイヤーの正体カードを見る。',
     '世代交代': 'リーダーになる。',
     '宣伝': '選んだプレイヤーのスイーツを公開する。',
@@ -3320,6 +3376,7 @@ async function hostGameStart(){
     roundPick: null,          // ★ 同票解決状態
     leaderPick: null,         // ★ リーダー移行状態
     actionDealKey: null,      // ★ リーダー配布の重複防止
+    imprisoned: null,
     advertisedSweets: {},
     roundNo: 1,
     roundChips: {},
@@ -3754,10 +3811,16 @@ async function hostFinalizeReturnSweetsToDeck(revealedCards = []){
   // DB反映（decksは部分更新でOK）
   const leaderSeatNow = gameNow.turn?.leaderSeat ?? null;
   const leaderId = leaderSeatNow != null ? (tables?.[leaderSeatNow]?.playerId ?? null) : null;
+  const imprisonedUid = gameNow.imprisoned?.uid ?? null;
   const voteCounts = Object.entries(votes)
     .map(([uid, voters]) => ({
       uid,
-      count: (voters && typeof voters === 'object') ? Object.keys(voters).length : 0,
+      count: (imprisonedUid && imprisonedUid === uid)
+        ? 0
+        : Object.values(voters || {}).reduce((sum, count) => {
+          if(typeof count !== 'number') return sum + 1;
+          return sum + count;
+        }, 0),
     }))
     .filter(entry => entry.count > 0);
   const maxVotes = voteCounts.length ? Math.max(...voteCounts.map(v => v.count)) : 0;
@@ -3799,6 +3862,7 @@ async function hostFinalizeReturnSweetsToDeck(revealedCards = []){
     'decks/sweetsExcluded': [],   // 除外は空に
     'game/leaderPick': leaderPickPayload,
     'game/actionDealKey': null,
+    'game/imprisoned': null,
     'game/advertisedSweets': {},
     /* ✅ 追加：ここから勝敗判定→roundchip→round+1 */
     ...( (() => {
@@ -4124,10 +4188,36 @@ function renderMyRole(){
   const info = roleToHelp(myRole);
   myRoleEl.classList.remove('hidden');
   myRoleEl.innerHTML = '';
+  myRoleEl.classList.remove('imprison-selectable');
+  myRoleEl.onclick = null;
+  myRoleEl.onpointerdown = null;
   const img = document.createElement('img');
   img.src = info.img;
   img.alt = info.name;
   myRoleEl.appendChild(img);
+
+  const imprisonedUid = getImprisonedUid();
+  if(imprisonedUid && imprisonedUid === state.userId){
+    const badge = document.createElement('div');
+    badge.className = 'imprisoned-badge';
+    const badgeImg = document.createElement('img');
+    badgeImg.src = '監禁.jpg';
+    badgeImg.alt = '監禁';
+    badge.appendChild(badgeImg);
+    myRoleEl.appendChild(badge);
+  }
+
+  const imprisonSelectable = actionSelection?.type === 'imprison'
+    && actionSelection.phase === 'select';
+  if(imprisonSelectable){
+    const onImprison = (e) => {
+      e.stopPropagation();
+      handleImprisonCandidate(state.userId);
+    };
+    myRoleEl.classList.add('imprison-selectable');
+    myRoleEl.onpointerdown = onImprison;
+    myRoleEl.onclick = onImprison;
+  }
 }
 
 function renderMySweets(){
@@ -4420,6 +4510,21 @@ function updateActionSelectionUI(){
   if(actionExplainPop) actionExplainPop.classList.add('hidden');
   if(actionConfirmPop) actionConfirmPop.classList.add('hidden');
   if(!actionSelection) return;
+  if(actionSelection.type === 'imprison'){
+    if(actionSelection.phase === 'select'){
+      if(actionExplainPop){
+        actionExplainPop.textContent = '監禁：出品を禁止したいプレイヤーを選択してください。';
+        actionExplainPop.classList.remove('hidden');
+      }
+    }
+    if(actionSelection.phase === 'confirm'){
+      const target = getPlayerByUid(actionSelection.targetUid);
+      if(actionConfirmText){
+        actionConfirmText.textContent = `「${target?.name ?? 'プレイヤー'}」の出品を禁止しますか。`;
+      }
+      if(actionConfirmPop) actionConfirmPop.classList.remove('hidden');
+    }
+  }
   if(actionSelection.type === 'wiretap'){
     if(actionSelection.phase === 'select'){
       if(actionExplainPop){
@@ -4514,6 +4619,7 @@ function setActionSelection(next){
   actionSelection = next;
   updateActionSelectionUI();
   applyMyTurnClasses();
+  renderMyRole();
   renderMySweets();
   updateSweetsDeckUI();
   renderMyVoteChip();
@@ -4531,6 +4637,19 @@ function beginWiretapSelection(){
   return new Promise(resolve => {
     setActionSelection({
       type:'wiretap',
+      phase:'select',
+      targetUid:null,
+      resolve,
+    });
+  });
+}
+
+function beginImprisonSelection(){
+  const candidates = latestPlayers;
+  if(!candidates.length) return Promise.resolve(null);
+  return new Promise(resolve => {
+    setActionSelection({
+      type:'imprison',
       phase:'select',
       targetUid:null,
       resolve,
@@ -4606,6 +4725,16 @@ function handleWiretapCandidate(uid){
   actionSelection.targetUid = uid;
   updateActionSelectionUI();
   if(latestPlayers.length) renderPlayerCircle(latestPlayers);
+}
+
+function handleImprisonCandidate(uid){
+  if(!actionSelection || actionSelection.type !== 'imprison') return;
+  if(actionSelection.phase !== 'select') return;
+  actionSelection.phase = 'confirm';
+  actionSelection.targetUid = uid;
+  updateActionSelectionUI();
+  if(latestPlayers.length) renderPlayerCircle(latestPlayers);
+  renderMyRole();
 }
 
 function handleScoutCandidate(uid){
@@ -4805,6 +4934,18 @@ function renderMySweetsVoteStack(){
 
 function getVoteCountFor(targetUid){
   const obj = state.room?.votes?.[targetUid] || {};
+  return Object.values(obj).reduce((sum, count) => {
+    if(typeof count !== 'number') return sum + 1;
+    return sum + count;
+  }, 0);
+}
+function getImprisonedUid(){
+  return state.game?.imprisoned?.uid ?? null;
+}
+function getEffectiveVoteCountFor(targetUid, votesObj = state.room?.votes){
+  const imprisonedUid = getImprisonedUid();
+  if(imprisonedUid && imprisonedUid === targetUid) return 0;
+  const obj = votesObj?.[targetUid] || {};
   return Object.values(obj).reduce((sum, count) => {
     if(typeof count !== 'number') return sum + 1;
     return sum + count;
@@ -5535,6 +5676,7 @@ function renderPlayerCircle(players){
   // ★ 人数でボード画像を切り替え（席に着いてる人数）
   updateLeaderboardBoardByPlayerCount(players?.length || 0);
   updateRequiredSweetsTag();
+  document.body.classList.toggle('imprison-active', !!getImprisonedUid());
 
   if (!players.length) return;
 
@@ -5827,6 +5969,28 @@ if(started && roleAssigned){
       e.stopPropagation();
       handleWiretapCandidate(p.id);
     };
+  }
+  if(actionSelection?.type === 'imprison' && actionSelection.phase === 'select'){
+    roleMini.classList.add('imprison-selectable');
+    roleMini.addEventListener('pointerdown', (e) => {
+      e.stopPropagation();
+      handleImprisonCandidate(p.id);
+    });
+    roleMini.onclick = (e) => {
+      e.stopPropagation();
+      handleImprisonCandidate(p.id);
+    };
+  }
+
+  const imprisonedUid = getImprisonedUid();
+  if(imprisonedUid && imprisonedUid === p.id){
+    const badge = document.createElement('div');
+    badge.className = 'imprisoned-badge';
+    const badgeImg = document.createElement('img');
+    badgeImg.src = '監禁.jpg';
+    badgeImg.alt = '監禁';
+    badge.appendChild(badgeImg);
+    roleMini.appendChild(badge);
   }
   tag.appendChild(roleMini);
 
@@ -6122,7 +6286,7 @@ function getSweetsVoteStats(){
   const owners = getSweetsOwners();
   return owners.map(uid => ({
     uid,
-    votes: getVoteCountFor(uid),
+    votes: getEffectiveVoteCountFor(uid),
     card: getSweetsCardByUid(uid),
   })).filter(x => !!x.card);
 }
@@ -7756,6 +7920,10 @@ async function runActionCardEffect(cardObj){
     await runWiretapEffect(cardObj);
     return true;
   }
+  if(cardObj?.name === '監禁'){
+    await runImprisonEffect();
+    return true;
+  }
   if(cardObj?.name === '偵察'){
     await runScoutEffect();
     return true;
@@ -8105,6 +8273,19 @@ async function runWiretapEffect(cardObj){
       fromUid: state.userId,
     });
   }
+}
+
+async function runImprisonEffect(){
+  if(!state.room?.gameStarted) return;
+  const targetUid = await beginImprisonSelection();
+  if(!targetUid || !state.roomCode) return;
+  const imprisonRef = ref(db, `rooms/${state.roomCode}/game/imprisoned`);
+  await set(imprisonRef, {
+    uid: targetUid,
+    byUid: state.userId,
+    startedAt: Date.now(),
+    roundNo: state.game?.roundNo ?? 1,
+  });
 }
 
 async function showScoutReveal(targetUid){
