@@ -300,6 +300,55 @@ display:none;
     50%{transform:scale(1.12);}
     100%{transform:scale(1);}
   }
+  @keyframes advertisePulse {
+    0%{transform:scale(1);}
+    50%{transform:scale(1.4);}
+    100%{transform:scale(1);}
+  }
+  .advertise-pulse{
+    animation:advertisePulse .85s ease-in-out;
+  }
+  .my-sweets.advertise-selectable,
+  .sweets-wrap.advertise-selectable .sweets-mini{
+    animation:pulseCard 1.05s ease-in-out infinite;
+  }
+  .advertise-number-tag{
+    position:absolute;
+    left:-8px;
+    top:-12px;
+    width:34px;
+    height:34px;
+    display:grid;
+    place-items:center;
+    font-weight:900;
+    font-size:13px;
+    line-height:1;
+    color:#111;
+    text-shadow:0 1px 0 rgba(255,255,255,.6);
+    pointer-events:none;
+  }
+  .advertise-number-tag .sweets-number-star{
+    position:absolute;
+    inset:0;
+    width:100%;
+    height:100%;
+    z-index:0;
+    pointer-events:none;
+  }
+  .advertise-number-tag .sweets-number-text{
+    position:relative;
+    z-index:1;
+    transform:translateZ(0) translateY(-1px);
+  }
+  .advertise-eye{
+    position:absolute;
+    left:50%;
+    top:50%;
+    transform:translate(-50%,-50%);
+    font-size:20px;
+    pointer-events:none;
+    z-index:2;
+  }
   .sweets-move-card{
     position:fixed;
     left:0;
@@ -630,6 +679,18 @@ display:none;
   border:1px solid rgba(0,0,0,.18);
   background:url('swsweetsura.jpg') center/cover no-repeat;
   box-shadow:0 6px 16px rgba(0,0,0,.18);
+  position:relative;
+  overflow:visible;
+}
+.sweets-mini img{
+  width:100%;
+  height:100%;
+  object-fit:cover;
+  display:block;
+  border-radius:inherit;
+}
+.sweets-mini.advertise-revealed{
+  background:none;
 }
 .sweets-mini.hidden{display:none;}
 
@@ -758,6 +819,7 @@ display:none;
     box-shadow:0 10px 24px rgba(0,0,0,.18);
     background:#fff;
     overflow:visible;
+    position:relative;
     flex:0 0 auto;
   }
   .my-sweets.collect-hidden{
@@ -1441,12 +1503,15 @@ border-radius:0px;
   .sweets-wrap.swap-hidden,
   .sweets-wrap.swap-hidden .sweets-mini,
   .sweets-wrap.swap-hidden .vote-stack,
+  .sweets-wrap.swap-hidden .advertise-number-tag,
   .my-sweets.swap-hidden,
   .my-sweets.swap-hidden img,
+  .my-sweets.swap-hidden .advertise-number-tag,
   .selected-sweets-tag.swap-hidden,
   .selected-sweets-tag.swap-hidden .selected-sweets-card,
   .selected-sweets-tag.swap-hidden .sweets-number-tag,
-  .selected-sweets-tag.swap-hidden .sweets-number-star{
+  .selected-sweets-tag.swap-hidden .sweets-number-star,
+  .selected-sweets-tag.swap-hidden .advertise-number-tag{
     visibility:hidden;
     opacity:0;
   }
@@ -1564,6 +1629,9 @@ border-radius:0px;
   opacity:0;
 }
 .selected-sweets-tag.collect-hidden .sweets-number-tag{
+  opacity:0;
+}
+.selected-sweets-tag.collect-hidden .advertise-number-tag{
   opacity:0;
 }
 .selected-sweets-card{
@@ -2089,6 +2157,13 @@ let leaderPickApplyTimer = null;
 let leaderPickApplyKey = null;
 let lastLeaderSeat = null;
 let actionSelection = null;
+const ADVERTISE_PULSE_DURATION_MS = 850;
+const advertisedPulseUids = new Set();
+const advertisedStarReadyUids = new Set();
+const advertisedStarHiddenUids = new Set();
+const advertisedPulseTimers = new Map();
+const advertisedStarHideTimers = new Map();
+const advertisedKeyByUid = new Map();
 const revealedRoleUids = new Set();
 let pendingWiretapZoomUid = null;
 /* =========================
@@ -2298,6 +2373,7 @@ function resetLocalGameEffects(){
   stopRoundEndFx();
   resetRoundRevealState();
   resetCollectedSweetsHiddenCache();
+  clearAdvertiseLocalState();
 
   miniShuffleToken += 1;
   miniShuffleRunning = false;
@@ -2712,6 +2788,7 @@ function subscribeGame(){
     updateTurnUI();
     if (latestPlayers.length) renderPlayerCircle(latestPlayers);
     renderRoundChipsFromGame();
+    syncAdvertiseEffects();
 
     // ★ ホスト：全員PASSになったらラウンド終了処理へ
     if(state.isHost){
@@ -3167,6 +3244,7 @@ async function hostGameStart(){
     roundPick: null,          // ★ 同票解決状態
     leaderPick: null,         // ★ リーダー移行状態
     actionDealKey: null,      // ★ リーダー配布の重複防止
+    advertisedSweets: {},
     roundNo: 1,
     roundChips: {},
     turn: null
@@ -3929,7 +4007,7 @@ function renderMySweets(){
   mySweetsEl.innerHTML = '';
   applyTagChipStyle(mySweetsEl, getTagChipStyleByUid(state.userId));
   mySweetsEl.onpointerdown = null;
-  mySweetsEl.classList.remove('swap-selectable','swap-selected');
+  mySweetsEl.classList.remove('swap-selectable','swap-selected','advertise-selectable','advertise-pulse');
   const c = getMySweetsCard();
   if(!c){
     mySweetsEl.classList.add('hidden');
@@ -3978,6 +4056,32 @@ function renderMySweets(){
         handleExchangeCandidate(state.userId);
       };
     }
+  }
+
+  const advertiseSelection = actionSelection?.type === 'advertise'
+    ? actionSelection
+    : null;
+  if(advertiseSelection){
+    const isSelectable = advertiseSelection.phase === 'select';
+    mySweetsEl.classList.toggle('advertise-selectable', isSelectable);
+    if(isSelectable){
+      mySweetsEl.onpointerdown = (e) => {
+        e.stopPropagation();
+        handleAdvertiseCandidate(state.userId);
+      };
+    }
+  }
+
+  const advertised = isAdvertised(state.userId);
+  if(advertised && shouldPulseAdvertise(state.userId)){
+    mySweetsEl.classList.add('advertise-pulse');
+  }
+  if(advertised && shouldShowAdvertiseStar(state.userId)){
+    const tag = buildAdvertiseNumberTag(c.value);
+    if(tag) mySweetsEl.appendChild(tag);
+  }
+  if(advertised){
+    appendAdvertiseEye(mySweetsEl);
   }
 
   // ★ 追加：自分スイーツにも投票ミニを重ねる
@@ -4208,6 +4312,21 @@ function updateActionSelectionUI(){
       if(actionConfirmPop) actionConfirmPop.classList.remove('hidden');
     }
   }
+  if(actionSelection.type === 'advertise'){
+    if(actionSelection.phase === 'select'){
+      if(actionExplainPop){
+        actionExplainPop.textContent = '宣伝：公開したいスイーツを選択してください。';
+        actionExplainPop.classList.remove('hidden');
+      }
+    }
+    if(actionSelection.phase === 'confirm'){
+      const target = getPlayerByUid(actionSelection.targetUid);
+      if(actionConfirmText){
+        actionConfirmText.textContent = `「${target?.name ?? 'プレイヤー'}」のスイーツを公開しますか。`;
+      }
+      if(actionConfirmPop) actionConfirmPop.classList.remove('hidden');
+    }
+  }
 }
 
 function setActionSelection(next){
@@ -4263,6 +4382,18 @@ function beginExchangeSelection(){
     });
   });
 }
+function beginAdvertiseSelection(){
+  const candidates = getSweetsOwners();
+  if(candidates.length < 1) return Promise.resolve(null);
+  return new Promise(resolve => {
+    setActionSelection({
+      type:'advertise',
+      phase:'select',
+      targetUid:null,
+      resolve,
+    });
+  });
+}
 
 function handleWiretapCandidate(uid){
   if(!actionSelection || actionSelection.type !== 'wiretap') return;
@@ -4308,6 +4439,16 @@ function handleExchangeCandidate(uid){
     selectedUids: nextSelected,
     phase: nextPhase,
   });
+}
+function handleAdvertiseCandidate(uid){
+  if(!actionSelection || actionSelection.type !== 'advertise') return;
+  if(actionSelection.phase !== 'select') return;
+  if(!getSweetsCardByUid(uid)) return;
+  actionSelection.phase = 'confirm';
+  actionSelection.targetUid = uid;
+  updateActionSelectionUI();
+  if(latestPlayers.length) renderPlayerCircle(latestPlayers);
+  renderMySweets();
 }
 
 function triggerWiretapZoom(uid){
@@ -4413,6 +4554,7 @@ if(actionConfirmNo){
     actionSelection.targetUid = null;
     updateActionSelectionUI();
     if(latestPlayers.length) renderPlayerCircle(latestPlayers);
+    renderMySweets();
   });
 }
 
@@ -4517,6 +4659,139 @@ function createRoundedStarSvg(){
 
   svg.appendChild(path);
   return svg;
+}
+function buildAdvertiseNumberTag(value){
+  if(typeof value === 'undefined') return null;
+  const tag = document.createElement('div');
+  tag.className = 'advertise-number-tag';
+  const star = createRoundedStarSvg();
+  const valueText = document.createElement('span');
+  valueText.className = 'sweets-number-text';
+  valueText.textContent = String(value);
+  tag.appendChild(star);
+  tag.appendChild(valueText);
+  return tag;
+}
+function appendAdvertiseEye(targetEl){
+  if(!targetEl) return;
+  const eye = document.createElement('div');
+  eye.className = 'advertise-eye';
+  eye.textContent = '👀';
+  targetEl.appendChild(eye);
+}
+function getAdvertisedSweetsMap(){
+  const advertised = state.game?.advertisedSweets;
+  return (advertised && typeof advertised === 'object') ? advertised : {};
+}
+function getAdvertisedEntry(uid){
+  if(!uid) return null;
+  const advertised = getAdvertisedSweetsMap();
+  return advertised?.[uid] ?? null;
+}
+function isAdvertised(uid){
+  return !!getAdvertisedEntry(uid);
+}
+function shouldPulseAdvertise(uid){
+  return advertisedPulseUids.has(uid);
+}
+function shouldShowAdvertiseStar(uid){
+  if(!isAdvertised(uid)) return false;
+  if(advertisedStarHiddenUids.has(uid)) return false;
+  return advertisedStarReadyUids.has(uid);
+}
+function clearAdvertiseStateForUid(uid){
+  advertisedPulseUids.delete(uid);
+  advertisedStarReadyUids.delete(uid);
+  advertisedStarHiddenUids.delete(uid);
+  advertisedKeyByUid.delete(uid);
+  const pulseTimer = advertisedPulseTimers.get(uid);
+  if(pulseTimer){
+    clearTimeout(pulseTimer);
+    advertisedPulseTimers.delete(uid);
+  }
+  const hideTimer = advertisedStarHideTimers.get(uid);
+  if(hideTimer){
+    clearTimeout(hideTimer);
+    advertisedStarHideTimers.delete(uid);
+  }
+}
+function clearAdvertiseLocalState(){
+  [...advertisedKeyByUid.keys()].forEach(uid => clearAdvertiseStateForUid(uid));
+  advertisedPulseUids.clear();
+  advertisedStarReadyUids.clear();
+  advertisedStarHiddenUids.clear();
+  advertisedPulseTimers.clear();
+  advertisedStarHideTimers.clear();
+  advertisedKeyByUid.clear();
+}
+function startAdvertisePulse(uid, revealedAt){
+  advertisedStarHiddenUids.delete(uid);
+  advertisedStarReadyUids.delete(uid);
+  const pulseTimer = advertisedPulseTimers.get(uid);
+  if(pulseTimer){
+    clearTimeout(pulseTimer);
+    advertisedPulseTimers.delete(uid);
+  }
+  const nowTime = Date.now();
+  const remaining = (typeof revealedAt === 'number')
+    ? Math.max(0, ADVERTISE_PULSE_DURATION_MS - (nowTime - revealedAt))
+    : ADVERTISE_PULSE_DURATION_MS;
+  if(remaining <= 0){
+    advertisedPulseUids.delete(uid);
+    advertisedStarReadyUids.add(uid);
+    return;
+  }
+  advertisedPulseUids.add(uid);
+  const timer = setTimeout(() => {
+    advertisedPulseUids.delete(uid);
+    advertisedStarReadyUids.add(uid);
+    advertisedPulseTimers.delete(uid);
+    renderHands();
+  }, remaining);
+  advertisedPulseTimers.set(uid, timer);
+}
+function syncAdvertiseEffects(){
+  const advertised = getAdvertisedSweetsMap();
+  const activeUids = new Set(Object.keys(advertised));
+  let shouldRender = false;
+
+  [...advertisedKeyByUid.keys()].forEach(uid => {
+    if(!activeUids.has(uid)){
+      clearAdvertiseStateForUid(uid);
+      shouldRender = true;
+    }
+  });
+
+  activeUids.forEach(uid => {
+    const entry = advertised?.[uid] || {};
+    const revealedAt = (typeof entry.revealedAt === 'number') ? entry.revealedAt : null;
+    const key = `${uid}:${revealedAt ?? ''}`;
+    if(advertisedKeyByUid.get(uid) !== key){
+      advertisedKeyByUid.set(uid, key);
+      startAdvertisePulse(uid, revealedAt);
+      shouldRender = true;
+      return;
+    }
+    if(!advertisedStarReadyUids.has(uid) && typeof revealedAt === 'number'){
+      if(Date.now() - revealedAt >= ADVERTISE_PULSE_DURATION_MS){
+        advertisedStarReadyUids.add(uid);
+        shouldRender = true;
+      }
+    }
+  });
+
+  if(shouldRender) renderHands();
+}
+function scheduleAdvertiseStarHide(uid){
+  if(!isAdvertised(uid)) return;
+  if(advertisedStarHiddenUids.has(uid)) return;
+  if(advertisedStarHideTimers.has(uid)) return;
+  const timer = setTimeout(() => {
+    advertisedStarHiddenUids.add(uid);
+    advertisedStarHideTimers.delete(uid);
+    renderHands();
+  }, DECIDED_CENTER_MOVE_DURATION_MS + 20);
+  advertisedStarHideTimers.set(uid, timer);
 }
 const decidedSweetsAnimated = new Map();
 const DECIDED_MOVE_DURATION_MS = 650;
@@ -4653,6 +4928,7 @@ function applyCenterMoveForUid(uid){
       : 0;
     applyCenterMoveToCard(cardEl, wrapEl, rotDeg, startedAt);
   }
+  scheduleAdvertiseStarHide(uid);
 }
 
 function getLatestDecidedAt(uids){
@@ -5089,9 +5365,10 @@ function renderPlayerCircle(players){
           tag.appendChild(voteStack);
         }
       }
-     if(started && decidedUids.includes(state.userId)){
+      if(started && decidedUids.includes(state.userId)){
         const sweetsCard = getSweetsCardByUid(state.userId);
         if(sweetsCard){
+          const advertised = isAdvertised(state.userId);
           const isCollectHidden = collectedSweetsHidden.has(state.userId);
           const selected = document.createElement('div');
           selected.className = 'selected-sweets-tag';
@@ -5120,12 +5397,13 @@ function renderPlayerCircle(players){
           const cardWrap = document.createElement('div');
           cardWrap.className = 'selected-sweets-card';
           const img = document.createElement('img');
-          img.src = SWEETS_BACK_IMG;
+          img.src = advertised ? sweetsCard.img : SWEETS_BACK_IMG;
           img.alt = `sweets ${sweetsCard.value ?? ''}`;
           img.onerror = () => { if(sweetsCard.fallback) img.src = sweetsCard.fallback; };
           cardWrap.appendChild(img);
 
-         if(typeof sweetsCard.value !== 'undefined'){
+         const showValueTag = !advertised || shouldShowAdvertiseStar(state.userId);
+          if(typeof sweetsCard.value !== 'undefined' && showValueTag){
             const valueTag = document.createElement('div');
             valueTag.className = 'sweets-number-tag';
             const star = createRoundedStarSvg();
@@ -5135,6 +5413,12 @@ function renderPlayerCircle(players){
             valueTag.appendChild(star);
             valueTag.appendChild(valueText);
             cardWrap.appendChild(valueTag);
+          }
+          if(advertised && shouldPulseAdvertise(state.userId)){
+            cardWrap.classList.add('advertise-pulse');
+          }
+          if(advertised){
+            appendAdvertiseEye(cardWrap);
           }
           selected.appendChild(cardWrap);
 
@@ -5298,6 +5582,7 @@ if(started && roleAssigned){
 
   const hasTheirSweets = !!(handData && Array.isArray(handData.sweets) && handData.sweets.length);
   const showVoteHold = voteHoldActive && getVoteCountFor(p.id) > 0;
+  const sweetsCard = getSweetsCardByUid(p.id);
 
   if(hasTheirSweets || showVoteHold){
     const cardsRow = document.createElement('div');
@@ -5325,6 +5610,21 @@ if(started && roleAssigned){
         };
         sweetsWrap.addEventListener('pointerdown', onExchange);
         sweetsWrap.onclick = onExchange;
+      }
+    }
+    const advertiseSelection = actionSelection?.type === 'advertise'
+      ? actionSelection
+      : null;
+    const advertiseSelectable = advertiseSelection?.phase === 'select';
+    if(advertiseSelection && hasTheirSweets){
+      sweetsWrap.classList.toggle('advertise-selectable', advertiseSelectable);
+      if(advertiseSelectable){
+        const onAdvertise = (e) => {
+          e.stopPropagation();
+          handleAdvertiseCandidate(p.id);
+        };
+        sweetsWrap.addEventListener('pointerdown', onAdvertise);
+        sweetsWrap.onclick = onAdvertise;
       }
     }
     if(collectedSweetsHidden.has(p.id)){
@@ -5356,6 +5656,22 @@ if(started && roleAssigned){
     const sweetsMini = document.createElement('div');
     sweetsMini.className = 'sweets-mini';
     sweetsMini.classList.toggle('hidden', !hasTheirSweets);
+    const advertised = isAdvertised(p.id);
+    if(advertised && sweetsCard){
+      sweetsMini.classList.add('advertise-revealed');
+      if(shouldPulseAdvertise(p.id)){
+        sweetsMini.classList.add('advertise-pulse');
+      }
+      const img = document.createElement('img');
+      img.src = sweetsCard.img;
+      img.alt = `sweets ${sweetsCard.value ?? ''}`;
+      img.onerror = () => { if(sweetsCard.fallback) img.src = sweetsCard.fallback; };
+      sweetsMini.appendChild(img);
+      if(shouldShowAdvertiseStar(p.id)){
+        const tag = buildAdvertiseNumberTag(sweetsCard.value);
+        if(tag) sweetsMini.appendChild(tag);
+      }
+    }
     sweetsWrap.appendChild(sweetsMini);
 
     // 投票チップ（スイーツ右に重ね）
@@ -7181,6 +7497,10 @@ async function runActionCardEffect(cardObj){
     await runPreparationEffect(cardObj);
     return;
   }
+  if(cardObj?.name === '宣伝'){
+    await runAdvertiseEffect();
+    return;
+  }
   if(cardObj?.name === '交換'){
     await runExchangeEffect();
   }
@@ -7247,6 +7567,15 @@ async function runPreparationEffect(cardObj){
   });
 }
 
+async function runAdvertiseEffect(){
+  if(!state.room?.gameStarted) return;
+  const candidates = getSweetsOwners();
+  if(!candidates.length) return;
+  const targetUid = await beginAdvertiseSelection();
+  if(!targetUid) return;
+  await revealAdvertisedSweets(targetUid);
+}
+
 async function runExchangeEffect(){
   if(!state.room?.gameStarted) return;
   const candidates = getSweetsOwners();
@@ -7256,6 +7585,15 @@ async function runExchangeEffect(){
   const [firstUid, secondUid] = selection;
   if(!firstUid || !secondUid || firstUid === secondUid) return;
   await swapSweetsBetweenUids(firstUid, secondUid);
+}
+
+async function revealAdvertisedSweets(uid){
+  if(!state.roomCode || !uid) return;
+  const refPath = ref(db, `rooms/${state.roomCode}/game/advertisedSweets/${uid}`);
+  await set(refPath, {
+    revealedAt: Date.now(),
+    byUid: state.userId,
+  });
 }
 
 async function swapSweetsBetweenUids(firstUid, secondUid){
