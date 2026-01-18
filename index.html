@@ -1276,6 +1276,37 @@ border-radius:0px;
 top:96px;
 left:-260px;
 }
+.vote-chip.bonus{
+  margin-left:4px;
+}
+.bonus-vote-active .action-card{
+  pointer-events:none;
+  animation:none !important;
+}
+.bonus-vote-active .action-card:hover{
+  transform:none !important;
+}
+.bonus-vote-active .my-sweets,
+.bonus-vote-active .sweets-deck,
+.bonus-vote-active .sweets-deck-wrap,
+.bonus-vote-active .sweets-pick-card,
+.bonus-vote-active .vote-chip:not(.bonus){
+  pointer-events:none;
+}
+.bonus-vote-active .sweets-deck{
+  animation:none !important;
+  transform:none !important;
+}
+.bonus-vote-active .sweets-deck.pulsing:hover{
+  animation:none !important;
+  transform:none !important;
+}
+.bonus-vote-active .vote-chip:not(.bonus){
+  animation:none !important;
+}
+.bonus-vote-active .my-turn-free .action-card{
+  animation:none !important;
+}
 /* ✅ 投票チップ専用：鼓動を弱める */
 @keyframes pulseVoteChip {
   0%   { transform: scale(1); }
@@ -1944,6 +1975,7 @@ display:none;
 
         <!-- ★ 投票チップ（全所有カードより右） -->
         <div id="myVoteChip" class="vote-chip hidden" aria-label="投票チップ"></div>
+        <div id="myBonusVoteChip" class="vote-chip bonus hidden" aria-label="激推し投票チップ"></div>
       </div>
     </div>
   </div>
@@ -2199,6 +2231,7 @@ const myReceivedEl = document.getElementById('myReceived');
 const mySweetsEl = document.getElementById('mySweets');
 const myAreaEl = document.getElementById('myArea');
 const myVoteChipEl = document.getElementById('myVoteChip');
+const myBonusVoteChipEl = document.getElementById('myBonusVoteChip');
 const leaderboardBoardEl = document.getElementById('leaderboardBoard');
 const leaderboardImgEl   = document.getElementById('leaderboardImg');
 
@@ -3015,6 +3048,7 @@ async function endTurn(reason){
   state.turnEnding = true;
   updatePassRoundBtn();
 
+  await clearBonusVoteChipsForTurn();
   await discardReceivedInstructionsForTurn();
 
   const nextSeat = getNextOccupiedSeatSkippingPassed(state.turn.activeSeat);
@@ -3029,6 +3063,16 @@ async function endTurn(reason){
     updatedAt: serverTimestamp(),
     turnNo: (state.turn.turnNo || 1) + 1,
   });
+}
+
+async function clearBonusVoteChipsForTurn(){
+  if(!state.roomCode) return;
+  const myRef = ref(db, `rooms/${state.roomCode}/hands/${state.userId}`);
+  const snap = await get(myRef);
+  const myData = snap.val() || {};
+  const bonusChips = (typeof myData.bonusVoteChips === 'number') ? myData.bonusVoteChips : 0;
+  if(bonusChips <= 0) return;
+  await update(myRef, { bonusVoteChips: 0 });
 }
 
 /* =========================
@@ -3108,7 +3152,7 @@ function getActionEffectText(cardName){
     '仕込み': 'アクションカードを1枚ひく。',
     '交換': '選んだプレイヤーとスイーツを交換する。',
     '試行錯誤': '一番上の除外カードをレシピに加える。そしてレシピから1枚選んで除外する。',
-    '激推し': '新たな投票チップを得て、投票する。',
+    '激推し': '投票チップを新しく獲得する。このターン中は新しいチップだけが鼓動し、他プレイヤーのスイーツに投票したら手番終了。',
     '事故': '選んだプレイヤーのスイーツをレシピに戻す。',
     '応援': '渡されたら、次の手番で一番数字が大きいスイーツを作る。',
     '脅迫': '渡されたら、次の手番で一番数字が小さいスイーツを作る。',
@@ -3208,6 +3252,7 @@ async function hostGameStart(){
       sweets: [],
       received: [],
       voteChips: 1,
+      bonusVoteChips: 0,
     };
   });
 
@@ -3391,7 +3436,7 @@ function getActiveInstructionCards(){
   if(hasReceivedIgnoreCard(cards)) return [];
   const active = [];
   const sweetsMissing = !hasSweets();
-  const canBribe = getMyVoteChips() > 0;
+  const canBribe = getMyTotalVoteChips() > 0;
   cards.forEach(card => {
     if(card?.name === '応援' || card?.name === '脅迫'){
       if(sweetsMissing) active.push(card);
@@ -3764,10 +3809,29 @@ function getMyVoteChips(){
   const v = myData.voteChips;
   return (typeof v === 'number') ? v : 1;
 }
+function getMyBonusVoteChips(){
+  const myData = state.hands?.[state.userId] || {};
+  const v = myData.bonusVoteChips;
+  return (typeof v === 'number') ? v : 0;
+}
 function getPlayerVoteChips(uid){
   const data = state.hands?.[uid] || {};
   const v = data.voteChips;
   return (typeof v === 'number') ? v : 1;
+}
+function getPlayerBonusVoteChips(uid){
+  const data = state.hands?.[uid] || {};
+  const v = data.bonusVoteChips;
+  return (typeof v === 'number') ? v : 0;
+}
+function getPlayerTotalVoteChips(uid){
+  return getPlayerVoteChips(uid) + getPlayerBonusVoteChips(uid);
+}
+function getMyTotalVoteChips(){
+  return getPlayerTotalVoteChips(state.userId);
+}
+function hasBonusVoteChips(uid = state.userId){
+  return getPlayerBonusVoteChips(uid) > 0;
 }
 function getSweetsOwners(){
   return latestPlayers
@@ -3777,33 +3841,54 @@ function getSweetsOwners(){
     })
     .map(p => p.id);
 }
-function canVoteNow(){
+function canVoteNow(options = {}){
+  const { useBonus = false } = options;
   if(!state.room?.gameStarted) return false;
   if(!isMyTurn()) return false;
   if(isActionSelectionActive()) return false;
-  if(getMyVoteChips() <= 0) return false;
+  const bonusChips = getMyBonusVoteChips();
+  const normalChips = getMyVoteChips();
+  if(useBonus){
+    if(bonusChips <= 0) return false;
+  }else{
+    if(bonusChips > 0) return false;
+    if(normalChips <= 0) return false;
+  }
   const activeInstructions = getActiveInstructionCards();
   const bribeTargetUid = getActiveBribeTargetUid();
   if(activeInstructions.length && !bribeTargetUid) return false;
   if(bribeTargetUid){
+    if(bribeTargetUid === state.userId) return false;
     const targetData = state.hands?.[bribeTargetUid];
     const hasTargetSweets = !!(targetData && Array.isArray(targetData.sweets) && targetData.sweets.length);
     return hasTargetSweets;
   }
-  return getSweetsOwners().length >= 1;
+  const owners = getSweetsOwners();
+  if(useBonus){
+    return owners.some(uid => uid !== state.userId);
+  }
+  return owners.length >= 1;
 }
 function renderMyVoteChip(){
   const started = !!state.room?.gameStarted;
   applyTagChipStyle(myVoteChipEl, getTagChipStyleByUid(state.userId));
+  applyTagChipStyle(myBonusVoteChipEl, getTagChipStyleByUid(state.userId));
   if(!started){
     myVoteChipEl.classList.add('hidden');
     myVoteChipEl.classList.remove('pulsing');
+    myBonusVoteChipEl.classList.add('hidden');
+    myBonusVoteChipEl.classList.remove('pulsing');
+    document.body.classList.remove('bonus-vote-active');
     return;
   }
 
   const chips = getMyVoteChips();
- myVoteChipEl.classList.toggle('hidden', chips <= 0);
-  myVoteChipEl.classList.toggle('pulsing', canVoteNow());
+  const bonusChips = getMyBonusVoteChips();
+  document.body.classList.toggle('bonus-vote-active', bonusChips > 0);
+  myVoteChipEl.classList.toggle('hidden', chips <= 0);
+  myVoteChipEl.classList.toggle('pulsing', bonusChips <= 0 && canVoteNow({ useBonus: false }));
+  myBonusVoteChipEl.classList.toggle('hidden', bonusChips <= 0);
+  myBonusVoteChipEl.classList.toggle('pulsing', bonusChips > 0 && canVoteNow({ useBonus: true }));
 }
 
 let lastVoteSnapshot = null;
@@ -3812,7 +3897,12 @@ function getVoteSnapshot(votesObj){
   const votes = votesObj && typeof votesObj === 'object' ? votesObj : {};
   Object.entries(votes).forEach(([targetUid, voters]) => {
     if(!voters || typeof voters !== 'object') return;
-    snapshot.set(targetUid, new Set(Object.keys(voters)));
+    const voterMap = new Map();
+    Object.entries(voters).forEach(([voterUid, count]) => {
+      const total = (typeof count === 'number') ? count : 1;
+      voterMap.set(voterUid, total);
+    });
+    snapshot.set(targetUid, voterMap);
   });
   return snapshot;
 }
@@ -3820,10 +3910,15 @@ function getNewVotes(prev, next){
   const diffs = [];
   if(!prev) return diffs;
   next.forEach((voters, targetUid) => {
-    voters.forEach(voterUid => {
-      const prevSet = prev.get(targetUid);
-      if(!prevSet || !prevSet.has(voterUid)){
-        diffs.push({ voterUid, targetUid });
+    voters.forEach((count, voterUid) => {
+      const prevMap = prev.get(targetUid);
+      const prevCount = prevMap?.get(voterUid) ?? 0;
+      const nextCount = (typeof count === 'number') ? count : 1;
+      const diff = nextCount - prevCount;
+      if(diff > 0){
+        for(let i = 0; i < diff; i++){
+          diffs.push({ voterUid, targetUid });
+        }
       }
     });
   });
@@ -3946,7 +4041,7 @@ function scheduleVoteChipAnimations(){
    - まだ自分がPASSしていない
    ========================= */
 function myDoneSweetsAndVote(){
-  return hasSweets() && (getMyVoteChips() <= 0);
+  return hasSweets() && (getMyTotalVoteChips() <= 0);
 }
 function syncPassTurnState(){
   const turnNo = state.turn?.turnNo ?? null;
@@ -4203,7 +4298,7 @@ function renderMyReceived(){
     const pulse = activeIds.has(rec.id) && rec.name !== '賄賂';
     const shouldLock =
       ((rec.name === '応援' || rec.name === '脅迫') && hasSweets()) ||
-      (rec.name === '賄賂' && getMyVoteChips() <= 0);
+      (rec.name === '賄賂' && getMyTotalVoteChips() <= 0);
     const cardEl = buildCardEl(rec, { extraClass: pulse ? 'pulse-only' : '' });
     if(shouldLock) cardEl.classList.add('locked');
     attachActionCardGesture(cardEl, rec);
@@ -4606,11 +4701,21 @@ function renderMySweetsVoteStack(){
 
 function getVoteCountFor(targetUid){
   const obj = state.room?.votes?.[targetUid] || {};
-  return Object.keys(obj).length;
+  return Object.values(obj).reduce((sum, count) => {
+    if(typeof count !== 'number') return sum + 1;
+    return sum + count;
+  }, 0);
 }
 function getVoteVoterIds(targetUid){
   const obj = state.room?.votes?.[targetUid] || {};
-  return Object.keys(obj);
+  const ids = [];
+  Object.entries(obj).forEach(([voterUid, count]) => {
+    const total = (typeof count === 'number') ? count : 1;
+    for(let i = 0; i < total; i++){
+      ids.push(voterUid);
+    }
+  });
+  return ids;
 }
 
 function roundedStarPath({R=45, r2=20, round=14, k=0.65, points=5}){
@@ -5582,7 +5687,7 @@ circle.appendChild(tag);
 // handData は後でミニ手札にも使うので先に取る
 const handData = state.hands?.[p.id];
 const roleAssigned = !!state.roles?.[p.id];
-const voteChips = getPlayerVoteChips(p.id);
+const voteChips = getPlayerTotalVoteChips(p.id);
 let roleMini = null;
 
 if(started && roleAssigned){
@@ -5825,7 +5930,7 @@ function updateTurnUI(){
   turnBar.classList.toggle('hidden', !show);
 
   const mine = isMyTurn();
-  btnPass.disabled = !mine;
+  btnPass.disabled = !mine || getMyBonusVoteChips() > 0;
 
   btnDrawSweets.disabled = true;
   btnVote.disabled = true;
@@ -6300,6 +6405,7 @@ function maybeHostApplyLeaderPick(){
     Object.keys(hands).forEach(uid => {
       if(!hands[uid] || typeof hands[uid] !== 'object') hands[uid] = {};
       hands[uid].voteChips = 1;
+      hands[uid].bonusVoteChips = 0;
     });
     await Promise.all([
       set(ref(db, `rooms/${state.roomCode}/votes`), {}),
@@ -7252,6 +7358,7 @@ function canStartUseCard(cardObj){
   if(!isMyTurn()) return false;
   if(getRoundPick()?.phase === 'choose') return false;
   if(isActionSelectionActive()) return false;
+  if(getMyBonusVoteChips() > 0) return false;
   const turnBlocked = isInstructionTurnBlocked();
   const receivedIds = new Set(getMyReceivedCards().map(card => card.id));
   if(receivedIds.has(cardObj.id)) return false;
@@ -7507,8 +7614,10 @@ async function playCardToCircle(cardObj){
     return;
   }
 
-  await runActionCardEffect(cardObj);
-  await endTurn('playAction');
+  const shouldEndTurn = await runActionCardEffect(cardObj);
+  if(shouldEndTurn){
+    await endTurn('playAction');
+  }
   updateActionDeckUI();
   updateSweetsDeckUI();
   renderMyVoteChip();
@@ -7518,27 +7627,33 @@ async function playCardToCircle(cardObj){
 async function runActionCardEffect(cardObj){
   if(cardObj?.name === '盗聴'){
     await runWiretapEffect(cardObj);
-    return;
+    return true;
   }
   if(cardObj?.name === '偵察'){
     await runScoutEffect();
-    return;
+    return true;
   }
   if(cardObj?.name === '世代交代'){
     await runGenerationShiftEffect();
-    return;
+    return true;
   }
   if(cardObj?.name === '仕込み'){
     await runPreparationEffect(cardObj);
-    return;
+    return true;
   }
   if(cardObj?.name === '宣伝'){
     await runAdvertiseEffect();
-    return;
+    return true;
   }
   if(cardObj?.name === '交換'){
     await runExchangeEffect();
+    return true;
   }
+  if(cardObj?.name === '激推し'){
+    await runGekioshiEffect();
+    return false;
+  }
+  return true;
 }
 
 async function runGenerationShiftEffect(){
@@ -7620,6 +7735,17 @@ async function runExchangeEffect(){
   const [firstUid, secondUid] = selection;
   if(!firstUid || !secondUid || firstUid === secondUid) return;
   await swapSweetsBetweenUids(firstUid, secondUid);
+}
+
+async function runGekioshiEffect(){
+  if(!state.roomCode) return;
+  const myRef = ref(db, `rooms/${state.roomCode}/hands/${state.userId}`);
+  const mySnap = await get(myRef);
+  const myData = mySnap.val() || {};
+  const bonusChips = (typeof myData.bonusVoteChips === 'number') ? myData.bonusVoteChips : 0;
+  await update(myRef, { bonusVoteChips: bonusChips + 1 });
+  renderMyVoteChip();
+  updatePassRoundBtn();
 }
 
 async function revealAdvertisedSweets(uid){
@@ -7781,6 +7907,7 @@ function canOpenSweetsPicker(){
   if(!state.room?.gameStarted) return false;
   if(!isMyTurn()) return false;
   if(isActionSelectionActive()) return false;
+  if(getMyBonusVoteChips() > 0) return false;
   if(hasSweets()) return false;
   const instructionNames = getActiveInstructionNames();
   if(instructionNames.size > 0 && !instructionNames.has('応援') && !instructionNames.has('脅迫')) return false;
@@ -8007,23 +8134,27 @@ const voteDrag = {
   lastClientY:null,
   sourceEl:null,
   showAllHints:false,
+  useBonus:false,
 };
 let hoverSwarea = null;
 
-function isVoteTargetAllowed(uid){
+function isVoteTargetAllowed(uid, options = {}){
+  const { useBonus = getMyBonusVoteChips() > 0 } = options;
   const bribeTargetUid = getActiveBribeTargetUid();
   if(bribeTargetUid && uid !== bribeTargetUid) return false;
+  if(useBonus && uid === state.userId) return false;
   return true;
 }
 
-function setAllSweetsWrapHints(active){
+function setAllSweetsWrapHints(active, options = {}){
+  const { useBonus = false } = options;
   document.querySelectorAll('.sweets-wrap').forEach((wrap) => {
     wrap.classList.remove('hint-ok', 'hint-ng');
     if(!active) return;
     const circle = wrap.closest('.otherplayerscircle');
     const tag = circle?.querySelector('.player-tag');
     const uid = tag?.dataset?.uid || null;
-    if(!uid || !isVoteTargetAllowed(uid)) return;
+    if(!uid || !isVoteTargetAllowed(uid, { useBonus })) return;
     const ok = !wrap.classList.contains('empty');
     wrap.classList.add(ok ? 'hint-ok' : 'hint-ng');
   });
@@ -8037,9 +8168,9 @@ function clearSwareaHint(){
 function updateSwareaHint(x,y){
   if(voteDrag.showAllHints) return;
   clearSwareaHint();
-  const drop = getVoteDropTarget(x,y);
+  const drop = getVoteDropTarget(x,y, { useBonus: voteDrag.useBonus });
   if(drop.type !== 'swwrap') return;
-  if(!isVoteTargetAllowed(drop.uid)) return;
+  if(!isVoteTargetAllowed(drop.uid, { useBonus: voteDrag.useBonus })) return;
   const el = document.elementFromPoint(x,y);
   const area = el?.closest?.('.sweets-wrap');
   if(!area) return;
@@ -8047,7 +8178,8 @@ function updateSwareaHint(x,y){
   area.classList.add(ok ? 'hint-ok' : 'hint-ng');
   hoverSwarea = area;
 }
-function getVoteDropTarget(x,y){
+function getVoteDropTarget(x,y, options = {}){
+  const { useBonus = false } = options;
   const el = document.elementFromPoint(x,y);
   const wrap = el?.closest?.('.sweets-wrap');   // ★変更
   if(!wrap) return { type:'none' };
@@ -8057,7 +8189,7 @@ function getVoteDropTarget(x,y){
   const tag = circle?.querySelector('.player-tag');
   const uid = tag?.dataset?.uid || null;
   if(!uid) return { type:'none' };
-  if(!isVoteTargetAllowed(uid)) return { type:'swwrap', uid, ok:false };
+  if(!isVoteTargetAllowed(uid, { useBonus })) return { type:'swwrap', uid, ok:false };
 
   const handData = state.hands?.[uid];
   const hasTheirSweets = !!(handData && Array.isArray(handData.sweets) && handData.sweets.length);
@@ -8065,22 +8197,24 @@ function getVoteDropTarget(x,y){
   return { type:'swwrap', uid, ok: hasTheirSweets };
 }
 
-function startDragVoteChip(e){
-  if(!canVoteNow()) return;
+function startDragVoteChip(e, options = {}){
+  const { useBonus = false, sourceEl = myVoteChipEl } = options;
+  if(!canVoteNow({ useBonus })) return;
   e.preventDefault();
 
-  const r = myVoteChipEl.getBoundingClientRect();
+  const r = sourceEl.getBoundingClientRect();
   voteDrag.active = true;
-  voteDrag.sourceEl = myVoteChipEl;
+  voteDrag.sourceEl = sourceEl;
   voteDrag.offsetX = e.clientX - r.left;
   voteDrag.offsetY = e.clientY - r.top;
   voteDrag.lastClientX = e.clientX;
   voteDrag.lastClientY = e.clientY;
+  voteDrag.useBonus = useBonus;
 
   voteDrag.showAllHints = true;
-  setAllSweetsWrapHints(true);
+  setAllSweetsWrapHints(true, { useBonus });
 
-  const ghost = myVoteChipEl.cloneNode(true);
+  const ghost = sourceEl.cloneNode(true);
   ghost.classList.remove('hidden');
   ghost.classList.add('vote-dragging');
   ghost.style.visibility = 'visible';
@@ -8112,11 +8246,11 @@ function onVoteDragMove(e){
 async function onVoteDragEnd(e){
   if(!voteDrag.active) return;
 
-  const drop = getVoteDropTarget(e.clientX, e.clientY);
+  const drop = getVoteDropTarget(e.clientX, e.clientY, { useBonus: voteDrag.useBonus });
   clearSwareaHint();
 
   if(drop.type === 'swwrap' && drop.ok){   // ★変更
-    await castVote(drop.uid);
+    await castVote(drop.uid, { useBonus: voteDrag.useBonus });
   }
 
   cleanupVoteDrag();
@@ -8142,6 +8276,7 @@ if(voteDrag.sourceEl){
   voteDrag.lastClientX = null;
   voteDrag.lastClientY = null;
   voteDrag.sourceEl = null;
+  voteDrag.useBonus = false;
 }
 
 function syncFloatingDragPositions(){
@@ -8172,21 +8307,35 @@ function syncFloatingDragPositions(){
 mainEl.addEventListener('scroll', syncFloatingDragPositions, { passive: true });
 window.addEventListener('resize', syncFloatingDragPositions);
 
-async function castVote(targetUid){
+async function castVote(targetUid, options = {}){
   if(!state.roomCode) return;
-  if(!canVoteNow()) return;
+  const { useBonus = false } = options;
+  if(!canVoteNow({ useBonus })) return;
 
   const myRef = ref(db, `rooms/${state.roomCode}/hands/${state.userId}`);
   const mySnap = await get(myRef);
   const myData = mySnap.val() || {};
   const chips = (typeof myData.voteChips === 'number') ? myData.voteChips : 1;
-  if(chips <= 0) return;
+  const bonusChips = (typeof myData.bonusVoteChips === 'number') ? myData.bonusVoteChips : 0;
+  if(useBonus){
+    if(bonusChips <= 0) return;
+  }else{
+    if(bonusChips > 0) return;
+    if(chips <= 0) return;
+  }
 
   // 1) 自分のチップ消費（手元から消える）
-  await update(myRef, { voteChips: chips - 1 });
+  if(useBonus){
+    await update(myRef, { bonusVoteChips: bonusChips - 1 });
+  }else{
+    await update(myRef, { voteChips: chips - 1 });
+  }
 
   // 2) 投票記録（ターゲットの右側に表示される）
-  await set(ref(db, `rooms/${state.roomCode}/votes/${targetUid}/${state.userId}`), true);
+  const targetRef = ref(db, `rooms/${state.roomCode}/votes/${targetUid}/${state.userId}`);
+  const targetSnap = await get(targetRef);
+  const currentCount = (typeof targetSnap.val() === 'number') ? targetSnap.val() : (targetSnap.exists() ? 1 : 0);
+  await set(targetRef, currentCount + 1);
 
   // 3) これは1投票（手番終了）
   await endTurn('vote');
@@ -8196,7 +8345,12 @@ async function castVote(targetUid){
 }
 
 /* ★ 投票チップ：pointerdown */
-myVoteChipEl.addEventListener('pointerdown', startDragVoteChip);
+myVoteChipEl.addEventListener('pointerdown', (e) => {
+  startDragVoteChip(e, { useBonus: false, sourceEl: myVoteChipEl });
+});
+myBonusVoteChipEl.addEventListener('pointerdown', (e) => {
+  startDragVoteChip(e, { useBonus: true, sourceEl: myBonusVoteChipEl });
+});
 
 /* =========================
    Seat UI（既存）
