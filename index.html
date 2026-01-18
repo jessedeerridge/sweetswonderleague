@@ -6704,12 +6704,17 @@ async function showScoutReveal(targetUid){
   if(!scoutRevealOverlay || !scoutRevealGrid) return;
   scoutRevealGrid.innerHTML = '';
 
+  const showScoutCloseConfirm = () => {
+    if(scoutCloseConfirmPop) scoutCloseConfirmPop.classList.remove('hidden');
+  };
+
   const cards = Array.isArray(state.hands?.[targetUid]?.action)
     ? state.hands[targetUid].action
     : [];
   if(cards.length){
     cards.forEach(cardObj => {
       const cardEl = buildCardEl(cardObj);
+      cardEl.addEventListener('click', showScoutCloseConfirm);
       scoutRevealGrid.appendChild(cardEl);
     });
   }else{
@@ -6732,7 +6737,7 @@ async function showScoutReveal(targetUid){
     };
     const onOverlayClick = (e) => {
       if(e.target !== scoutRevealOverlay) return;
-      if(scoutCloseConfirmPop) scoutCloseConfirmPop.classList.remove('hidden');
+      showScoutCloseConfirm();
     };
     const onCloseYes = () => closeOverlay();
     const onCloseNo = () => {
