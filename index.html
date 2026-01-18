@@ -300,18 +300,9 @@ display:none;
     50%{transform:scale(1.12);}
     100%{transform:scale(1);}
   }
-  @keyframes advertisePulse {
-    0%{transform:scale(1);}
-    50%{transform:scale(1.5);}
-    100%{transform:scale(1);}
-  }
-  .advertise-pulse{
-    animation:advertisePulse 2.8s ease-in-out;
-    transform-origin:center;
-  }
   .my-sweets.advertise-selectable,
   .sweets-wrap.advertise-selectable .sweets-mini{
-    animation:pulseCard 1.05s ease-in-out infinite;
+    animation:pulseSweetsDeck 1.05s ease-in-out infinite;
   }
   .advertise-number-tag{
     position:absolute;
@@ -343,8 +334,8 @@ display:none;
   }
   .advertise-eye{
     position:absolute;
-    left:50%;
-    top:50%;
+    left:76%;
+    top:-15%;
     transform:translate(-50%,-50%);
     font-size:20px;
     pointer-events:none;
@@ -595,7 +586,7 @@ display:none;
 }
 @keyframes scoutPulse{
   0%{ transform:translateX(-50%) scale(1); }
-  50%{ transform:translateX(-50%) scale(1.4); }
+  50%{ transform:translateX(-50%) scale(1.6); }
   100%{ transform:translateX(-50%) scale(1); }
 }
 
@@ -628,7 +619,7 @@ display:none;
   .player-tag .other-role-mini.wiretap-selectable{
   pointer-events:auto;
   cursor:pointer;
-  animation:pulseRoleMini 1.05s ease-in-out infinite;
+  animation:scoutPulse 1.05s ease-in-out infinite;
   transform-origin:center;
 }
 @keyframes pulseRoleMini{
@@ -845,7 +836,7 @@ display:none;
     cursor:default;
   }
   .my-hand{
-    display:flex;justify-content:center;gap:10px;flex-wrap:wrap;
+    display:flex;justify-content:center;gap:10px;flex-wrap:nowrap;
     min-height:130px;
   }
 
@@ -1282,6 +1273,8 @@ border-radius:0px;
   touch-action:none;
   position:relative;
   transition:transform .2s ease;
+top:96px;
+left:-260px;
 }
 /* ✅ 投票チップ専用：鼓動を弱める */
 @keyframes pulseVoteChip {
@@ -3045,7 +3038,7 @@ const ACTION_COUNTS_BASE = [
   { name:'監禁', count:1, kind:'normal' },
   { name:'盗聴', count:1, kind:'normal' },
   { name:'世代交代', count:1, kind:'normal' },
-  { name:'宣伝', count:100, kind:'normal' },
+  { name:'宣伝', count:1, kind:'normal' },
 
   { name:'強奪', count:2, kind:'normal' },
   { name:'偵察', count:1, kind:'normal' },
@@ -4033,7 +4026,7 @@ function renderMySweets(){
   mySweetsEl.innerHTML = '';
   applyTagChipStyle(mySweetsEl, getTagChipStyleByUid(state.userId));
   mySweetsEl.style.cursor = '';
-  mySweetsEl.classList.remove('swap-selectable','swap-selected','advertise-selectable','advertise-pulse');
+  mySweetsEl.classList.remove('swap-selectable','swap-selected','advertise-selectable');
   const c = getMySweetsCard();
   if(!c){
     mySweetsEl.classList.add('hidden');
@@ -4097,7 +4090,6 @@ function renderMySweets(){
 
   const advertised = isAdvertised(state.userId);
   if(advertised && shouldPulseAdvertise(state.userId)){
-    mySweetsEl.classList.add('advertise-pulse');
   }
   if(advertised && shouldShowAdvertiseStar(state.userId)){
     const tag = buildAdvertiseNumberTag(c.value);
@@ -5459,7 +5451,6 @@ function renderPlayerCircle(players){
             cardWrap.appendChild(valueTag);
           }
           if(advertised && shouldPulseAdvertise(state.userId)){
-            cardWrap.classList.add('advertise-pulse');
           }
           if(advertised){
             appendAdvertiseEye(cardWrap);
@@ -5704,7 +5695,6 @@ if(started && roleAssigned){
     if(advertised && sweetsCard){
       sweetsMini.classList.add('advertise-revealed');
       if(shouldPulseAdvertise(p.id)){
-        sweetsMini.classList.add('advertise-pulse');
       }
       const img = document.createElement('img');
       img.src = sweetsCard.img;
