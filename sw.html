@@ -2651,6 +2651,9 @@ function subscribeEvents(){
       if(state.userId !== fromUid){
         showWiretapArrow(fromUid, toUid);
       }
+      if(state.userId === fromUid){
+        triggerWiretapTargetZoom(toUid);
+      }
       if(state.userId === toUid){
         animateMyRoleWiretap();
       }
@@ -6370,6 +6373,17 @@ function revealWiretapRole(uid){
   wiretapRevealedUids.add(uid);
   renderPlayerCircle(latestPlayers);
 
+  triggerWiretapTargetZoom(uid);
+}
+function getPlayerTagRectByUid(uid){
+  const tag = document.querySelector(`.player-tag[data-uid="${uid}"]`);
+  if(!tag) return null;
+  const rect = tag.getBoundingClientRect();
+  if(!rect.width || !rect.height) return null;
+  return rect;
+}
+function triggerWiretapTargetZoom(uid){
+  if(!uid) return;
   requestAnimationFrame(() => {
     const roleMini = getRoleMiniElByUid(uid);
     if(!roleMini) return;
@@ -6378,13 +6392,6 @@ function revealWiretapRole(uid){
       roleMini.classList.remove('wiretap-reveal-zoom');
     }, 1300);
   });
-}
-function getPlayerTagRectByUid(uid){
-  const tag = document.querySelector(`.player-tag[data-uid="${uid}"]`);
-  if(!tag) return null;
-  const rect = tag.getBoundingClientRect();
-  if(!rect.width || !rect.height) return null;
-  return rect;
 }
 function showWiretapArrow(fromUid, toUid){
   const fromRect = getPlayerTagRectByUid(fromUid);
