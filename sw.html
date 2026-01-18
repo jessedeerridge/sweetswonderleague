@@ -529,11 +529,36 @@ display:none;
   transform:none !important;
 }
 
+.wiretap-arrow{
+  position:fixed;
+  inset:0;
+  pointer-events:none;
+  z-index:720;
+}
+.wiretap-arrow svg{
+  width:100%;
+  height:100%;
+}
+.wiretap-arrow line{
+  stroke:#111827;
+  stroke-width:2;
+  stroke-dasharray:6 6;
+}
+.wiretap-arrow .eye{
+  position:absolute;
+  transform:translate(-50%,-50%);
+  font-size:20px;
+  filter:drop-shadow(0 4px 10px rgba(0,0,0,.25));
+}
+
 .wiretap-selecting .other-role-mini{
   animation:wiretapPulse 1.05s ease-in-out infinite;
 }
 .role-mini.wiretap-reveal-zoom{
   animation:wiretapRevealZoom 1.3s ease-in-out;
+}
+.my-role.wiretap-zoom{
+  animation:wiretapRoleZoom 1.3s ease-in-out;
 }
 @keyframes wiretapPulse{
   0%{ transform:var(--roleMiniTransform) scale(1); }
@@ -544,6 +569,11 @@ display:none;
   0%{ transform:var(--roleMiniTransform) scale(1); }
   50%{ transform:var(--roleMiniTransform) scale(1.3); }
   100%{ transform:var(--roleMiniTransform) scale(1); }
+}
+@keyframes wiretapRoleZoom{
+  0%{ transform:scale(1); }
+  50%{ transform:scale(1.3); }
+  100%{ transform:scale(1); }
 }
 
 
@@ -706,6 +736,7 @@ display:none;
     background:#fff;
     overflow:hidden;
     flex:0 0 auto;
+    transform-origin:center;
   }
   .my-role img{width:100%;height:100%;object-fit:cover;display:block;}
 
@@ -2612,6 +2643,17 @@ function subscribeEvents(){
     if(ev.type === 'dealActionCard'){
       const delayMs = (typeof ev.delayMs === 'number') ? ev.delayMs : 0;
       animateActionDealCard(ev.toSeat, delayMs);
+    }
+    if(ev.type === 'wiretapSignal'){
+      const fromUid = ev.fromUid || null;
+      const toUid = ev.toUid || null;
+      if(!fromUid || !toUid) return;
+      if(state.userId !== fromUid){
+        showWiretapArrow(fromUid, toUid);
+      }
+      if(state.userId === toUid){
+        animateMyRoleWiretap();
+      }
     }
 
     // ★ ラウンド終了演出（全員）
@@ -6337,6 +6379,58 @@ function revealWiretapRole(uid){
     }, 1300);
   });
 }
+function getPlayerTagRectByUid(uid){
+  const tag = document.querySelector(`.player-tag[data-uid="${uid}"]`);
+  if(!tag) return null;
+  const rect = tag.getBoundingClientRect();
+  if(!rect.width || !rect.height) return null;
+  return rect;
+}
+function showWiretapArrow(fromUid, toUid){
+  const fromRect = getPlayerTagRectByUid(fromUid);
+  const toRect = getPlayerTagRectByUid(toUid);
+  if(!fromRect || !toRect) return;
+
+  const fromX = fromRect.left + fromRect.width / 2;
+  const fromY = fromRect.top + fromRect.height / 2;
+  const toX = toRect.left + toRect.width / 2;
+  const toY = toRect.top + toRect.height / 2;
+
+  const arrow = document.createElement('div');
+  arrow.className = 'wiretap-arrow';
+
+  const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+  svg.setAttribute('viewBox', `0 0 ${window.innerWidth} ${window.innerHeight}`);
+  const line = document.createElementNS('http://www.w3.org/2000/svg', 'line');
+  line.setAttribute('x1', String(fromX));
+  line.setAttribute('y1', String(fromY));
+  line.setAttribute('x2', String(toX));
+  line.setAttribute('y2', String(toY));
+  svg.appendChild(line);
+
+  const eye = document.createElement('div');
+  eye.className = 'eye';
+  eye.textContent = '👀';
+  const midX = (fromX + toX) / 2;
+  const midY = (fromY + toY) / 2;
+  eye.style.left = `${midX}px`;
+  eye.style.top = `${midY}px`;
+
+  arrow.appendChild(svg);
+  arrow.appendChild(eye);
+  document.body.appendChild(arrow);
+
+  setTimeout(() => {
+    arrow.remove();
+  }, 1300);
+}
+function animateMyRoleWiretap(){
+  if(!myRoleEl || myRoleEl.classList.contains('hidden')) return;
+  myRoleEl.classList.add('wiretap-zoom');
+  setTimeout(() => {
+    myRoleEl.classList.remove('wiretap-zoom');
+  }, 1300);
+}
 async function drawActionCardForSelf(){
   if(!state.roomCode) return;
   const base = `rooms/${state.roomCode}`;
@@ -6377,6 +6471,7 @@ async function runActionCardEffect(cardObj){
   if(cardObj.name === '盗聴'){
     const targetUid = await startWiretapSelection();
     if(targetUid){
+      await emitEvent({ type: 'wiretapSignal', fromUid: state.userId, toUid: targetUid });
       revealWiretapRole(targetUid);
     }
     return;
