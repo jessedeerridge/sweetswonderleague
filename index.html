@@ -1082,7 +1082,7 @@ border-radius:0px;
     overflow:hidden;
     z-index:540;
     pointer-events:none;
-    transform-origin:top left;
+    transform-origin:center center;
   }
   .sweets-fly-card img{
     width:100%;
@@ -4786,54 +4786,93 @@ function animateMySweetsToTag(targetEl, card){
 
 const SWAP_MOVE_DURATION_MS = 650;
 
-function getSwapSweetsRect(uid){
+function getSwapRotationDeg(el){
+  if(!el) return 0;
+  const rowEl = el.closest('.other-cards-row');
+  if(!rowEl) return 0;
+  const rotValue = getComputedStyle(rowEl).getPropertyValue('--rotDeg').trim();
+  const rotDeg = parseFloat(rotValue);
+  return Number.isFinite(rotDeg) ? rotDeg : 0;
+}
+
+function getSwapBorderRadius(el){
+  if(!el) return '12px';
+  const radius = getComputedStyle(el).borderRadius;
+  return radius && radius !== '0px' ? radius : '12px';
+}
+
+function getSwapSweetsTarget(uid){
   const candidates = [];
   if(uid === state.userId && mySweetsEl){
     candidates.push(mySweetsEl);
   }
-  const wrapEl = document.querySelector(`.sweets-wrap[data-sweets-uid="${uid}"]`);
-  if(wrapEl) candidates.push(wrapEl);
-  const decidedEl = document.querySelector(`.selected-sweets-tag[data-sweets-uid="${uid}"]`);
+  const miniEl = document.querySelector(`.sweets-wrap[data-sweets-uid="${uid}"] .sweets-mini`);
+  if(miniEl) candidates.push(miniEl);
+  const decidedEl = document.querySelector(`.selected-sweets-tag[data-sweets-uid="${uid}"] .selected-sweets-card`);
   if(decidedEl) candidates.push(decidedEl);
 
   for(const el of candidates){
     if(!el || el.classList.contains('hidden')) continue;
     const rect = el.getBoundingClientRect();
-    if(rect && rect.width && rect.height) return rect;
+    const width = el.offsetWidth || rect.width;
+    const height = el.offsetHeight || rect.height;
+    if(rect && width && height){
+      const wrapEl = el.classList.contains('sweets-mini') ? el.closest('.sweets-wrap') : null;
+      return {
+        el,
+        wrapEl,
+        rect,
+        width,
+        height,
+        rotationDeg: getSwapRotationDeg(el),
+        borderRadius: getSwapBorderRadius(el),
+      };
+    }
   }
   return null;
 }
 
 
 
-function createSwapFlyCard(card, rect){
-  if(!rect || !card) return null;
+function createSwapFlyCard(rect, size, borderRadius){
+  if(!rect || !size) return null;
   const fly = document.createElement('div');
   fly.className = 'sweets-fly-card';
-  fly.style.left = `${rect.left}px`;
-  fly.style.top = `${rect.top}px`;
-  fly.style.width = `${rect.width}px`;
-  fly.style.height = `${rect.height}px`;
+  fly.style.left = `${rect.left + (rect.width - size.width) / 2}px`;
+  fly.style.top = `${rect.top + (rect.height - size.height) / 2}px`;
+  fly.style.width = `${size.width}px`;
+  fly.style.height = `${size.height}px`;
+  if(borderRadius){
+    fly.style.borderRadius = borderRadius;
+  }
 
   const img = document.createElement('img');
-  img.src = card.img || card.fallback || SWEETS_BACK_IMG;
-  img.alt = `sweets ${card.value ?? ''}`;
-  img.onerror = () => { if(card.fallback) img.src = card.fallback; };
+  img.src = SWEETS_BACK_IMG;
+  img.alt = 'sweets back';
+  img.onerror = () => { img.src = SWEETS_BACK_IMG; };
   fly.appendChild(img);
 
   document.body.appendChild(fly);
   return fly;
 }
 
-function animateSwapFly(fly, fromRect, toRect){
+function animateSwapFly(fly, fromRect, toRect, options = {}){
   if(!fly || !fromRect || !toRect) return;
+  const {
+    scaleToTarget = false,
+    fromRotationDeg = 0,
+    toRotationDeg = 0,
+  } = options;
   const dx = toRect.left - fromRect.left;
   const dy = toRect.top - fromRect.top;
-  const scaleX = toRect.width / fromRect.width;
-  const scaleY = toRect.height / fromRect.height;
+  const scaleX = scaleToTarget ? (toRect.width / fromRect.width) : 1;
+  const scaleY = scaleToTarget ? (toRect.height / fromRect.height) : 1;
+  const rotateMid = fromRotationDeg + (toRotationDeg - fromRotationDeg) * 0.5 + (dx >= 0 ? 8 : -8);
+
   fly.animate([
-    { transform:'translate(0px, 0px) scale(1, 1)' },
-    { transform:`translate(${dx}px, ${dy}px) scale(${scaleX}, ${scaleY})` },
+    { transform:`translate(0px, 0px) rotate(${fromRotationDeg}deg) scale(1, 1)` },
+    { transform:`translate(${dx * 0.5}px, ${dy * 0.5}px) rotate(${rotateMid}deg) scale(${(1 + scaleX) / 2}, ${(1 + scaleY) / 2})` },
+    { transform:`translate(${dx}px, ${dy}px) rotate(${toRotationDeg}deg) scale(${scaleX}, ${scaleY})` },
   ], {
     duration: SWAP_MOVE_DURATION_MS,
     easing: 'ease-in-out',
@@ -4843,14 +4882,73 @@ function animateSwapFly(fly, fromRect, toRect){
 
 function animateSweetsSwap({ fromUid, toUid, fromCard, toCard }){
   if(!fromUid || !toUid) return;
-  const fromRect = getSwapSweetsRect(fromUid);
-  const toRect = getSwapSweetsRect(toUid);
-  if(!fromRect || !toRect) return;
+  const fromTarget = getSwapSweetsTarget(fromUid);
+  const toTarget = getSwapSweetsTarget(toUid);
+  if(!fromTarget || !toTarget) return;
 
-  const flyFrom = createSwapFlyCard(fromCard, fromRect);
-  const flyTo = createSwapFlyCard(toCard, toRect);
-  animateSwapFly(flyFrom, fromRect, toRect);
-  animateSwapFly(flyTo, toRect, fromRect);
+  const shouldScale = (fromUid === state.userId || toUid === state.userId)
+    && (Math.abs(fromTarget.width - toTarget.width) > 0.5
+      || Math.abs(fromTarget.height - toTarget.height) > 0.5);
+  const hiddenEls = [];
+  const collectHiddenEls = (uid) => {
+    document.querySelectorAll(`[data-sweets-uid="${uid}"]`).forEach((el) => {
+      hiddenEls.push(el);
+    });
+  };
+  collectHiddenEls(fromUid);
+  collectHiddenEls(toUid);
+  hiddenEls.push(fromTarget.el, fromTarget.wrapEl, toTarget.el, toTarget.wrapEl);
+  const uniqHiddenEls = Array.from(new Set(hiddenEls.filter(Boolean)));
+  uniqHiddenEls.forEach((el) => {
+    if(el.dataset.swapHidden) return;
+    el.dataset.swapHidden = '1';
+    el.style.visibility = 'hidden';
+  });
+  const flyFrom = createSwapFlyCard(fromTarget.rect, {
+    width: fromTarget.width,
+    height: fromTarget.height,
+  }, fromTarget.borderRadius);
+  const flyTo = createSwapFlyCard(toTarget.rect, {
+    width: toTarget.width,
+    height: toTarget.height,
+  }, toTarget.borderRadius);
+  animateSwapFly(flyFrom, {
+    left: fromTarget.rect.left + (fromTarget.rect.width - fromTarget.width) / 2,
+    top: fromTarget.rect.top + (fromTarget.rect.height - fromTarget.height) / 2,
+    width: fromTarget.width,
+    height: fromTarget.height,
+  }, {
+    left: toTarget.rect.left + (toTarget.rect.width - toTarget.width) / 2,
+    top: toTarget.rect.top + (toTarget.rect.height - toTarget.height) / 2,
+    width: toTarget.width,
+    height: toTarget.height,
+  }, {
+    scaleToTarget: shouldScale,
+    fromRotationDeg: fromTarget.rotationDeg,
+    toRotationDeg: toTarget.rotationDeg,
+  });
+  animateSwapFly(flyTo, {
+    left: toTarget.rect.left + (toTarget.rect.width - toTarget.width) / 2,
+    top: toTarget.rect.top + (toTarget.rect.height - toTarget.height) / 2,
+    width: toTarget.width,
+    height: toTarget.height,
+  }, {
+    left: fromTarget.rect.left + (fromTarget.rect.width - fromTarget.width) / 2,
+    top: fromTarget.rect.top + (fromTarget.rect.height - fromTarget.height) / 2,
+    width: fromTarget.width,
+    height: fromTarget.height,
+  }, {
+    scaleToTarget: shouldScale,
+    fromRotationDeg: toTarget.rotationDeg,
+    toRotationDeg: fromTarget.rotationDeg,
+  });
+  window.setTimeout(() => {
+    uniqHiddenEls.forEach((el) => {
+      if(!el || el.dataset.swapHidden !== '1') return;
+      el.style.visibility = '';
+      delete el.dataset.swapHidden;
+    });
+  }, SWAP_MOVE_DURATION_MS);
 }
 
 
