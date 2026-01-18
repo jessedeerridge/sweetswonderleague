@@ -299,6 +299,11 @@ display:none;
     50%{transform:scale(1.12);}
     100%{transform:scale(1);}
   }
+  @keyframes eavesdropPulse {
+    0%{transform:translateY(-50%) scale(1);}
+    50%{transform:translateY(-50%) scale(1.12);}
+    100%{transform:translateY(-50%) scale(1);}
+  }
   .sweets-move-card{
     position:fixed;
     left:0;
@@ -474,7 +479,8 @@ display:none;
   cursor:pointer;
 }
 
-.leader-pick-pop{
+.leader-pick-pop,
+.action-pop{
   position:fixed;
   left:50%;
   bottom:10px;
@@ -489,7 +495,24 @@ display:none;
   z-index:230;
   white-space:nowrap;
 }
-.leader-pick-pop.hidden{display:none;}
+.leader-pick-pop.hidden,
+.action-pop.hidden{display:none;}
+.action-pop{
+  white-space:normal;
+  min-width:240px;
+}
+.action-pop .action-pop-text{
+  font-weight:900;
+}
+.action-pop-actions{
+  display:flex;
+  justify-content:flex-end;
+  gap:8px;
+  margin-top:6px;
+}
+.action-pop-actions .btn{
+  padding:4px 10px;
+}
 
 
   /* 他プレイヤー：正体カード（裏） */
@@ -505,6 +528,44 @@ display:none;
   background:url('swroleura.jpg') center/cover no-repeat;
   box-shadow:0 6px 16px rgba(0,0,0,.18);
   pointer-events:none;
+}
+.role-mini.eavesdrop-target{
+  animation:eavesdropPulse 1.05s ease-in-out infinite;
+  cursor:pointer;
+  pointer-events:auto;
+}
+.role-mini.eavesdrop-revealed{
+  background-size:cover;
+  background-position:center;
+}
+.role-peek-card{
+  position:fixed;
+  background-size:cover;
+  background-position:center;
+  border:1px solid rgba(0,0,0,.18);
+  border-radius:7px;
+  box-shadow:0 14px 30px rgba(0,0,0,.3);
+  pointer-events:none;
+  z-index:860;
+  transform-origin:center;
+}
+.eavesdrop-arrow{
+  position:fixed;
+  inset:0;
+  pointer-events:none;
+  z-index:850;
+}
+.eavesdrop-arrow svg{
+  width:100%;
+  height:100%;
+}
+.eavesdrop-eye{
+  position:fixed;
+  transform:translate(-50%,-50%);
+  font-size:18px;
+  z-index:851;
+  pointer-events:none;
+  text-shadow:0 2px 4px rgba(0,0,0,.35);
 }
 
 .action-deal-card{
@@ -743,6 +804,9 @@ border-radius:0px;
     cursor:not-allowed;
     filter:grayscale(.25);
     opacity:.72;
+  }
+  .my-turn-action-blocked .action-card{
+    animation:none !important;
   }
 
   /* ★ 指示カードスロット内のカードだけ鼓動させる */
@@ -1729,6 +1793,14 @@ display:none;
 <!-- ★ 参加者：ホスト人数選択中ポップ -->
 <div id="hostSelectingPop" class="host-selecting-pop hidden">ホストが人数を選択中</div>
 <div id="leaderPickPop" class="leader-pick-pop hidden">最多票の中からリーダーを選んでください。</div>
+<div id="actionInfoPop" class="action-pop hidden" role="status" aria-live="polite"></div>
+<div id="actionConfirmPop" class="action-pop hidden" role="dialog" aria-modal="true">
+  <div id="actionConfirmText" class="action-pop-text"></div>
+  <div class="action-pop-actions">
+    <button class="btn ghost" id="actionConfirmNo">いいえ</button>
+    <button class="btn primary" id="actionConfirmYes">はい</button>
+  </div>
+</div>
 
 <!-- 着席ポップ -->
 <div id="seatPop" class="seat-pop hidden">
@@ -1897,6 +1969,10 @@ let turnBlockedByShuffle = false;
 let leaderPickApplyTimer = null;
 let leaderPickApplyKey = null;
 let lastLeaderSeat = null;
+const actionSelectionState = { active: false, type: null };
+let eavesdropSelectionResolver = null;
+let eavesdropConfirmResolver = null;
+const eavesdropRevealedRoles = new Map();
 /* =========================
    DOM
    ========================= */
@@ -1912,6 +1988,11 @@ const copyLinkBtn = document.getElementById('copyLinkBtn');
 
 const hostSelectingPop = document.getElementById('hostSelectingPop');
 const leaderPickPop = document.getElementById('leaderPickPop');
+const actionInfoPop = document.getElementById('actionInfoPop');
+const actionConfirmPop = document.getElementById('actionConfirmPop');
+const actionConfirmText = document.getElementById('actionConfirmText');
+const actionConfirmNo = document.getElementById('actionConfirmNo');
+const actionConfirmYes = document.getElementById('actionConfirmYes');
 
 const seatPop = document.getElementById('seatPop');
 const seatTabs = document.getElementById('seatTabs');
@@ -2109,6 +2190,16 @@ function resetLocalGameEffects(){
 
   document.querySelectorAll('.sweets-shuffle-stage, .sweets-move-card, .collect-card')
     .forEach(el => el.remove());
+  document.querySelectorAll('.eavesdrop-arrow, .role-peek-card')
+    .forEach(el => el.remove());
+
+  eavesdropRevealedRoles.clear();
+  eavesdropSelectionResolver = null;
+  eavesdropConfirmResolver = null;
+  actionSelectionState.active = false;
+  actionSelectionState.type = null;
+  hideActionInfo();
+  closeActionConfirm();
 
   roundRevealRow.innerHTML = '';
   roundRevealOverlay.classList.add('hidden');
@@ -2297,7 +2388,7 @@ function updateSweetsDeckUI(){
   updateDeckStackUI(sweetsExcludedDeckUI, excludedCount);
 
 
-  const pulsing = isMyTurn() && !hasSweets() && !hasReceivedInstruction();
+  const pulsing = isMyTurn() && !hasSweets() && !hasReceivedInstruction() && !isActionSelectionActive();
   sweetsDeckUI.classList.toggle('pulsing', pulsing);
 }
 
@@ -2539,6 +2630,11 @@ function subscribeEvents(){
     if(ev.type === 'dealActionCard'){
       const delayMs = (typeof ev.delayMs === 'number') ? ev.delayMs : 0;
       animateActionDealCard(ev.toSeat, delayMs);
+    }
+    if(ev.type === 'eavesdropArrow'){
+      if(state.userId !== ev.fromUid){
+        showEavesdropArrow(ev.fromUid, ev.toUid, ev.durationMs);
+      }
     }
 
     // ★ ラウンド終了演出（全員）
@@ -3020,6 +3116,72 @@ function animateFlyBackCard(fromSeat, toSeat){
 }
 
 /* =========================
+   盗聴：点線矢印（他プレイヤー表示）
+   ========================= */
+function showEavesdropArrow(fromUid, toUid, durationMs = 1500){
+  const fromEl = document.querySelector(`.player-tag[data-uid="${fromUid}"]`);
+  const toEl = document.querySelector(`.player-tag[data-uid="${toUid}"]`);
+  if(!fromEl || !toEl) return;
+
+  const fr = fromEl.getBoundingClientRect();
+  const tr = toEl.getBoundingClientRect();
+  const startX = fr.left + fr.width / 2;
+  const startY = fr.top + fr.height / 2;
+  const endX = tr.left + tr.width / 2;
+  const endY = tr.top + tr.height / 2;
+
+  const wrapper = document.createElement('div');
+  wrapper.className = 'eavesdrop-arrow';
+
+  const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+  svg.setAttribute('viewBox', `0 0 ${window.innerWidth} ${window.innerHeight}`);
+  svg.setAttribute('preserveAspectRatio', 'none');
+
+  const defs = document.createElementNS('http://www.w3.org/2000/svg', 'defs');
+  const marker = document.createElementNS('http://www.w3.org/2000/svg', 'marker');
+  const markerId = `eavesdrop-arrow-${crypto.randomUUID()}`;
+  marker.setAttribute('id', markerId);
+  marker.setAttribute('viewBox', '0 0 10 10');
+  marker.setAttribute('refX', '9');
+  marker.setAttribute('refY', '5');
+  marker.setAttribute('markerWidth', '6');
+  marker.setAttribute('markerHeight', '6');
+  marker.setAttribute('orient', 'auto');
+
+  const arrow = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+  arrow.setAttribute('d', 'M 0 0 L 10 5 L 0 10 z');
+  arrow.setAttribute('fill', 'rgba(17,17,17,0.85)');
+  marker.appendChild(arrow);
+  defs.appendChild(marker);
+  svg.appendChild(defs);
+
+  const line = document.createElementNS('http://www.w3.org/2000/svg', 'line');
+  line.setAttribute('x1', `${startX}`);
+  line.setAttribute('y1', `${startY}`);
+  line.setAttribute('x2', `${endX}`);
+  line.setAttribute('y2', `${endY}`);
+  line.setAttribute('stroke', 'rgba(17,17,17,0.85)');
+  line.setAttribute('stroke-width', '2');
+  line.setAttribute('stroke-dasharray', '6 6');
+  line.setAttribute('marker-end', `url(#${markerId})`);
+  svg.appendChild(line);
+
+  const eye = document.createElement('div');
+  eye.className = 'eavesdrop-eye';
+  eye.textContent = '👀';
+  eye.style.left = `${(startX + endX) / 2}px`;
+  eye.style.top = `${(startY + endY) / 2}px`;
+
+  wrapper.appendChild(svg);
+  wrapper.appendChild(eye);
+  document.body.appendChild(wrapper);
+
+  setTimeout(() => {
+    wrapper.remove();
+  }, durationMs);
+}
+
+/* =========================
    文字を枠内に収める
    ========================= */
 function fitEffectText(el){
@@ -3418,6 +3580,7 @@ function getSweetsOwners(){
 function canVoteNow(){
   if(!state.room?.gameStarted) return false;
   if(!isMyTurn()) return false;
+  if(isActionSelectionActive()) return false;
   if(hasReceivedInstruction()) return false;
   if(getMyVoteChips() <= 0) return false;
   return getSweetsOwners().length >= 1;
@@ -3747,10 +3910,15 @@ function applyMyTurnClasses(){
   const mine = isMyTurn();
   const receivedExists = hasReceivedInstruction();
   const roundPickActive = getRoundPick()?.phase === 'choose';
+  const actionSelecting = isActionSelectionActive();
 
-  wrap.classList.remove('my-turn-free','my-turn-blocked');
+  wrap.classList.remove('my-turn-free','my-turn-blocked','my-turn-action-blocked');
   if(!mine || roundPickActive) return;
 
+  if(actionSelecting){
+    wrap.classList.add('my-turn-action-blocked');
+    return;
+  }
   if(receivedExists){
     wrap.classList.add('my-turn-blocked');
   }else{
@@ -4404,6 +4572,27 @@ if(started && roleAssigned){
   roleMini = document.createElement('div');
   roleMini.className = 'role-mini other-role-mini';
   tag.appendChild(roleMini);
+  const revealedRole = eavesdropRevealedRoles.get(p.id);
+  if(revealedRole){
+    const info = roleToHelp(revealedRole);
+    roleMini.classList.add('eavesdrop-revealed');
+    roleMini.style.backgroundImage = `url('${info.img}')`;
+  }else{
+    roleMini.classList.remove('eavesdrop-revealed');
+    roleMini.style.backgroundImage = '';
+  }
+  const eavesdropSelecting = isActionSelectionActive() && actionSelectionState.type === 'eavesdrop';
+  if(eavesdropSelecting && p.id !== state.userId){
+    roleMini.classList.add('eavesdrop-target');
+    roleMini.addEventListener('pointerdown', (e) => {
+      e.stopPropagation();
+      requestEavesdropTarget(p.id);
+    });
+    roleMini.onclick = (e) => {
+      e.stopPropagation();
+      requestEavesdropTarget(p.id);
+    };
+  }
 
 
   const hasTheirSweets = !!(handData && Array.isArray(handData.sweets) && handData.sweets.length);
@@ -5874,6 +6063,63 @@ async function animateRoundEndReveal(cards, selectedUids){
 }
 
 /* =========================
+   ★ アクション選択中（操作ブロック）
+   ========================= */
+function isActionSelectionActive(){
+  return actionSelectionState.active;
+}
+function setActionSelectionActive(active, type = null){
+  actionSelectionState.active = active;
+  actionSelectionState.type = active ? type : null;
+  applyMyTurnClasses();
+  updateSweetsDeckUI();
+  renderMyVoteChip();
+  updatePassRoundBtn();
+  if(latestPlayers.length){
+    renderPlayerCircle(latestPlayers);
+  }
+}
+function showActionInfo(text){
+  if(!actionInfoPop) return;
+  actionInfoPop.textContent = text;
+  actionInfoPop.classList.remove('hidden');
+}
+function hideActionInfo(){
+  if(!actionInfoPop) return;
+  actionInfoPop.textContent = '';
+  actionInfoPop.classList.add('hidden');
+}
+function openActionConfirm(text){
+  if(!actionConfirmPop || !actionConfirmText) return Promise.resolve(false);
+  actionConfirmText.textContent = text;
+  actionConfirmPop.classList.remove('hidden');
+  return new Promise(resolve => {
+    eavesdropConfirmResolver = resolve;
+  });
+}
+function closeActionConfirm(){
+  if(!actionConfirmPop) return;
+  actionConfirmPop.classList.add('hidden');
+  if(actionConfirmText) actionConfirmText.textContent = '';
+}
+actionConfirmYes?.addEventListener('click', () => {
+  if(eavesdropConfirmResolver){
+    const resolver = eavesdropConfirmResolver;
+    eavesdropConfirmResolver = null;
+    resolver(true);
+  }
+  closeActionConfirm();
+});
+actionConfirmNo?.addEventListener('click', () => {
+  if(eavesdropConfirmResolver){
+    const resolver = eavesdropConfirmResolver;
+    eavesdropConfirmResolver = null;
+    resolver(false);
+  }
+  closeActionConfirm();
+});
+
+/* =========================
    ドラッグ＆ドロップ（アクションカード）
    ========================= */
 const drag = {
@@ -5897,6 +6143,7 @@ function canUseOnOtherPlayer(card){
 }
 function canStartUseCard(cardObj){
   if(!isMyTurn()) return false;
+  if(isActionSelectionActive()) return false;
   if(getRoundPick()?.phase === 'choose') return false;
   const receivedExists = hasReceivedInstruction();
   if(!receivedExists) return true;
@@ -6140,7 +6387,92 @@ async function playCardToCircle(cardObj){
 }
 
 async function runActionCardEffect(cardObj){
-  return;
+  if(!cardObj) return;
+  if(cardObj.name === '盗聴'){
+    await runEavesdropEffect(cardObj);
+  }
+}
+
+function requestEavesdropTarget(uid){
+  if(!uid) return;
+  if(!isActionSelectionActive() || actionSelectionState.type !== 'eavesdrop') return;
+  if(!eavesdropSelectionResolver) return;
+  const resolver = eavesdropSelectionResolver;
+  eavesdropSelectionResolver = null;
+  resolver(uid);
+}
+
+async function runEavesdropEffect(){
+  if(!state.roomCode) return;
+  setActionSelectionActive(true, 'eavesdrop');
+  showActionInfo('盗聴：正体カードを選んでください。');
+
+  try{
+    while(true){
+      const targetUid = await new Promise(resolve => {
+        eavesdropSelectionResolver = resolve;
+      });
+      if(!targetUid) continue;
+      if(targetUid === state.userId) continue;
+      const player = getPlayerByUid(targetUid);
+      const playerName = player?.name ?? 'プレイヤー';
+      const confirmed = await openActionConfirm(`「${playerName}」の正体を見ますか。`);
+      if(!confirmed){
+        continue;
+      }
+      await revealEavesdropRole(targetUid);
+      break;
+    }
+  } finally {
+    eavesdropSelectionResolver = null;
+    eavesdropConfirmResolver = null;
+    hideActionInfo();
+    closeActionConfirm();
+    setActionSelectionActive(false);
+  }
+}
+
+async function revealEavesdropRole(targetUid){
+  if(!targetUid) return;
+  const role = state.roles?.[targetUid];
+  if(role){
+    eavesdropRevealedRoles.set(targetUid, role);
+  }
+  renderPlayerCircle(latestPlayers);
+  showEavesdropRoleZoom(targetUid);
+  await emitEvent({ type:'eavesdropArrow', fromUid: state.userId, toUid: targetUid, durationMs: 1500 });
+}
+
+function showEavesdropRoleZoom(targetUid){
+  const tag = document.querySelector(`.player-tag[data-uid="${targetUid}"]`);
+  const roleMini = tag?.querySelector('.role-mini');
+  if(!roleMini) return;
+  const rect = roleMini.getBoundingClientRect();
+  if(!rect.width || !rect.height) return;
+  const role = state.roles?.[targetUid];
+  const info = roleToHelp(role);
+  if(!info?.img) return;
+
+  const card = document.createElement('div');
+  card.className = 'role-peek-card';
+  card.style.left = `${rect.left}px`;
+  card.style.top = `${rect.top}px`;
+  card.style.width = `${rect.width}px`;
+  card.style.height = `${rect.height}px`;
+  card.style.backgroundImage = `url('${info.img}')`;
+  document.body.appendChild(card);
+
+  const anim = card.animate([
+    { transform: 'scale(1)', opacity: 1 },
+    { transform: 'scale(1.6)', opacity: 1, offset: 0.55 },
+    { transform: 'scale(1)', opacity: 0.92 },
+  ], {
+    duration: 1500,
+    easing: 'ease-in-out',
+    fill: 'forwards',
+  });
+  anim.onfinish = () => card.remove();
+  anim.oncancel = () => card.remove();
 }
 
 /* =========================
@@ -6188,6 +6520,7 @@ let sweetsPanelLocked = false;
 function canOpenSweetsPicker(){
   if(!state.room?.gameStarted) return false;
   if(!isMyTurn()) return false;
+  if(isActionSelectionActive()) return false;
   if(hasReceivedInstruction()) return false;
   if(hasSweets()) return false;
   const deck = state.room?.decks?.sweets;
