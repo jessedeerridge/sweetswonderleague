@@ -473,6 +473,9 @@ display:none;
 .leader-pick-selectable{
   cursor:pointer;
 }
+.action-target-selectable{
+  cursor:pointer;
+}
 
 .leader-pick-pop{
   position:fixed;
@@ -491,13 +494,66 @@ display:none;
 }
 .leader-pick-pop.hidden{display:none;}
 
+.action-pop{
+  display:flex;
+  flex-direction:column;
+  align-items:center;
+  gap:8px;
+  white-space:normal;
+  text-align:center;
+}
+.action-pop-actions{
+  display:flex;
+  gap:8px;
+  flex-wrap:wrap;
+  justify-content:center;
+}
+
+.action-selection-active .action-card{
+  animation:none !important;
+  cursor:not-allowed;
+  pointer-events:none;
+}
+.action-selection-active .vote-chip{
+  pointer-events:none;
+}
+.action-selection-active .vote-chip.pulsing{
+  animation:none !important;
+  transform:none !important;
+}
+.action-selection-active .sweets-deck{
+  pointer-events:none;
+}
+.action-selection-active .sweets-deck.pulsing{
+  animation:none !important;
+  transform:none !important;
+}
+
+.wiretap-selecting .other-role-mini{
+  animation:wiretapPulse 1.05s ease-in-out infinite;
+}
+.role-mini.wiretap-reveal-zoom{
+  animation:wiretapRevealZoom 1.3s ease-in-out;
+}
+@keyframes wiretapPulse{
+  0%{ transform:var(--roleMiniTransform) scale(1); }
+  50%{ transform:var(--roleMiniTransform) scale(1.12); }
+  100%{ transform:var(--roleMiniTransform) scale(1); }
+}
+@keyframes wiretapRevealZoom{
+  0%{ transform:var(--roleMiniTransform) scale(1); }
+  50%{ transform:var(--roleMiniTransform) scale(1.3); }
+  100%{ transform:var(--roleMiniTransform) scale(1); }
+}
+
 
   /* 他プレイヤー：正体カード（裏） */
 /* 他プレイヤー：正体カード（裏） */
 .role-mini{
   position:absolute;
   left:-34px; top:50%;
-  transform:translateY(-50%);
+  --roleMiniTransform: translateY(-50%);
+  transform:var(--roleMiniTransform);
   width:var(--deckCardW);
   height:var(--deckCardH);
   border-radius:var(--deckCardR);
@@ -590,12 +646,14 @@ display:none;
     position:absolute;
     left:50%;
     top:100%;
-    transform:translate(calc(-50% - 40px), -3px);
+    --roleMiniTransform: translate(calc(-50% - 40px), -3px);
+    transform:var(--roleMiniTransform);
     box-sizing:border-box;
     pointer-events:none;
   }
   .player-tag.right-side .other-role-mini{
-    transform:translate(calc(-50% + 40px), -3px);
+    --roleMiniTransform: translate(calc(-50% + 40px), -3px);
+    transform:var(--roleMiniTransform);
   }
   .player-tag .mini-card{
     position:absolute;left:50%;top:0;width:16px;height:22px;
@@ -1729,6 +1787,14 @@ display:none;
 <!-- ★ 参加者：ホスト人数選択中ポップ -->
 <div id="hostSelectingPop" class="host-selecting-pop hidden">ホストが人数を選択中</div>
 <div id="leaderPickPop" class="leader-pick-pop hidden">最多票の中からリーダーを選んでください。</div>
+<div id="actionPop" class="leader-pick-pop action-pop hidden">アクションカードの対象を選んでください。</div>
+<div id="actionConfirmPop" class="leader-pick-pop action-pop hidden" role="dialog" aria-modal="true">
+  <div id="actionConfirmText">正体を見ますか？</div>
+  <div class="action-pop-actions">
+    <button id="actionConfirmYes" class="btn primary">はい</button>
+    <button id="actionConfirmNo" class="btn ghost">いいえ</button>
+  </div>
+</div>
 
 <!-- 着席ポップ -->
 <div id="seatPop" class="seat-pop hidden">
@@ -1897,6 +1963,8 @@ let turnBlockedByShuffle = false;
 let leaderPickApplyTimer = null;
 let leaderPickApplyKey = null;
 let lastLeaderSeat = null;
+let actionSelection = null;
+const wiretapRevealedUids = new Set();
 /* =========================
    DOM
    ========================= */
@@ -1912,6 +1980,11 @@ const copyLinkBtn = document.getElementById('copyLinkBtn');
 
 const hostSelectingPop = document.getElementById('hostSelectingPop');
 const leaderPickPop = document.getElementById('leaderPickPop');
+const actionPop = document.getElementById('actionPop');
+const actionConfirmPop = document.getElementById('actionConfirmPop');
+const actionConfirmText = document.getElementById('actionConfirmText');
+const actionConfirmYes = document.getElementById('actionConfirmYes');
+const actionConfirmNo = document.getElementById('actionConfirmNo');
 
 const seatPop = document.getElementById('seatPop');
 const seatTabs = document.getElementById('seatTabs');
@@ -2297,7 +2370,7 @@ function updateSweetsDeckUI(){
   updateDeckStackUI(sweetsExcludedDeckUI, excludedCount);
 
 
-  const pulsing = isMyTurn() && !hasSweets() && !hasReceivedInstruction();
+  const pulsing = isMyTurn() && !hasSweets() && !hasReceivedInstruction() && !isActionSelectionActive();
   sweetsDeckUI.classList.toggle('pulsing', pulsing);
 }
 
@@ -2623,6 +2696,43 @@ function isPassedPlayerId(uid){
 }
 function isTurnBlocked(){
   return !!turnBlockedByShuffle;
+}
+function isActionSelectionActive(){
+  return !!actionSelection;
+}
+function isWiretapSelecting(){
+  return actionSelection?.type === 'wiretap' && actionSelection?.phase === 'select';
+}
+function clearActionSelection(){
+  actionSelection = null;
+  updateActionSelectionUI();
+}
+function updateActionSelectionUI(){
+  const active = isActionSelectionActive();
+  document.body.classList.toggle('action-selection-active', active);
+  document.body.classList.toggle('wiretap-selecting', isWiretapSelecting());
+
+  const isWiretap = actionSelection?.type === 'wiretap';
+  const isSelect = isWiretap && actionSelection?.phase === 'select';
+  const isConfirm = isWiretap && actionSelection?.phase === 'confirm';
+
+  actionPop.classList.toggle('hidden', !isSelect);
+  actionConfirmPop.classList.toggle('hidden', !isConfirm);
+
+  if(isSelect){
+    actionPop.textContent = '正体を見るプレイヤーを選んでください。';
+  }
+  if(isConfirm){
+    const name = actionSelection?.targetName || 'プレイヤー';
+    actionConfirmText.textContent = `「${name}」の正体を見ますか？`;
+  }
+
+  if(latestPlayers.length){
+    renderPlayerCircle(latestPlayers);
+  }
+  applyMyTurnClasses();
+  updateSweetsDeckUI();
+  renderMyVoteChip();
 }
 
 async function hostGrantTurnAfterMiniShuffle(){
@@ -3418,6 +3528,7 @@ function getSweetsOwners(){
 function canVoteNow(){
   if(!state.room?.gameStarted) return false;
   if(!isMyTurn()) return false;
+  if(isActionSelectionActive()) return false;
   if(hasReceivedInstruction()) return false;
   if(getMyVoteChips() <= 0) return false;
   return getSweetsOwners().length >= 1;
@@ -3747,9 +3858,10 @@ function applyMyTurnClasses(){
   const mine = isMyTurn();
   const receivedExists = hasReceivedInstruction();
   const roundPickActive = getRoundPick()?.phase === 'choose';
+  const actionSelecting = isActionSelectionActive();
 
   wrap.classList.remove('my-turn-free','my-turn-blocked');
-  if(!mine || roundPickActive) return;
+  if(!mine || roundPickActive || actionSelecting) return;
 
   if(receivedExists){
     wrap.classList.add('my-turn-blocked');
@@ -4191,6 +4303,7 @@ function renderPlayerCircle(players){
   const leaderPickCanSelect = leaderPickActive && leaderPick?.leaderId === state.userId;
   const voteHoldActive = shouldHoldVoteChips();
   const decidedUids = getDecidedSweetsUids();
+  const wiretapSelecting = isWiretapSelecting() && isMyTurn();
   const started = !!state.room?.gameStarted;
   if(roundPick?.phase === 'done' && decidedUids.length){
     ensureDecidedRoundStart(decidedUids);
@@ -4357,7 +4470,19 @@ applyTagChipStyle(tag, p.tagChipStyle);
 const isRightSide = x > 50;
 tag.classList.toggle('right-side', isRightSide);
 
-const leaderPickSelectable = leaderPickCanSelect && leaderPickCandidates.includes(p.id);
+const wiretapSelectable = wiretapSelecting && p.id !== state.userId;
+if(wiretapSelectable){
+  tag.classList.add('action-target-selectable');
+  circle.classList.add('action-target-selectable');
+  const onSelect = (e) => {
+    e.stopPropagation();
+    handleWiretapTargetSelect(p.id);
+  };
+  tag.onclick = onSelect;
+  circle.onclick = onSelect;
+}
+
+const leaderPickSelectable = !wiretapSelectable && leaderPickCanSelect && leaderPickCandidates.includes(p.id);
   if(leaderPickSelectable){
     tag.classList.add('leader-pick-selectable');
     if(p.id !== state.userId){
@@ -4378,17 +4503,20 @@ const leaderPickSelectable = leaderPickCanSelect && leaderPickCandidates.include
   }
 
 // 追い出しクリックは今まで通り
-const onKick = () => {
-  if (!state.roomCode) return;
-  if (state.seatedTable !== null) return;
+if(!wiretapSelectable && !leaderPickSelectable){
+  const onKick = () => {
+    if (!state.roomCode) return;
+    if (state.seatedTable !== null) return;
+    if(isActionSelectionActive()) return;
 
-  pendingSeatIndexToSteal = p.seatIndex;
-  pendingSeatPlayerIdToSteal = p.id;
-  kickMessage.textContent = `「${p.name}」を追い出して、この席に着席しますか？`;
-  kickDialog.classList.remove('hidden');
-};
-circle.onclick = (e) => { e.stopPropagation(); onKick(); };
-tag.onclick = (e) => { e.stopPropagation(); onKick(); };
+    pendingSeatIndexToSteal = p.seatIndex;
+    pendingSeatPlayerIdToSteal = p.id;
+    kickMessage.textContent = `「${p.name}」を追い出して、この席に着席しますか？`;
+    kickDialog.classList.remove('hidden');
+  };
+  circle.onclick = (e) => { e.stopPropagation(); onKick(); };
+  tag.onclick = (e) => { e.stopPropagation(); onKick(); };
+}
 
 if(activeSeat === p.seatIndex) circle.classList.add('active-turn');
 
@@ -4404,6 +4532,12 @@ if(started && roleAssigned){
   roleMini = document.createElement('div');
   roleMini.className = 'role-mini other-role-mini';
   tag.appendChild(roleMini);
+  if(wiretapRevealedUids.has(p.id)){
+    const info = roleToHelp(state.roles?.[p.id]);
+    if(info?.img){
+      roleMini.style.backgroundImage = `url('${info.img}')`;
+    }
+  }
 
 
   const hasTheirSweets = !!(handData && Array.isArray(handData.sweets) && handData.sweets.length);
@@ -4548,6 +4682,9 @@ function updateTurnUI(){
   turnBar.classList.toggle('hidden', !show);
 
   const mine = isMyTurn();
+  if(actionSelection && !mine){
+    clearActionSelection();
+  }
   btnPass.disabled = !mine;
 
   btnDrawSweets.disabled = true;
@@ -5898,6 +6035,7 @@ function canUseOnOtherPlayer(card){
 function canStartUseCard(cardObj){
   if(!isMyTurn()) return false;
   if(getRoundPick()?.phase === 'choose') return false;
+  if(isActionSelectionActive()) return false;
   const receivedExists = hasReceivedInstruction();
   if(!receivedExists) return true;
   const isReceived = (getMyReceivedCard()?.id === cardObj.id);
@@ -6139,8 +6277,114 @@ async function playCardToCircle(cardObj){
   updatePassRoundBtn();
 }
 
+function startWiretapSelection(){
+  if(!isMyTurn()) return Promise.resolve(null);
+  const candidates = latestPlayers.filter(p => p.id !== state.userId);
+  if(!candidates.length) return Promise.resolve(null);
+
+  return new Promise(resolve => {
+    actionSelection = {
+      type: 'wiretap',
+      phase: 'select',
+      targetUid: null,
+      targetName: '',
+      resolve,
+    };
+    updateActionSelectionUI();
+  });
+}
+function handleWiretapTargetSelect(uid){
+  if(!actionSelection || actionSelection.type !== 'wiretap' || actionSelection.phase !== 'select') return;
+  const player = getPlayerByUid(uid);
+  if(!player || player.id === state.userId) return;
+  actionSelection.phase = 'confirm';
+  actionSelection.targetUid = player.id;
+  actionSelection.targetName = player.name || '名無し';
+  updateActionSelectionUI();
+}
+function resolveWiretapSelection(accepted){
+  if(!actionSelection || actionSelection.type !== 'wiretap') return;
+  if(!accepted){
+    actionSelection.phase = 'select';
+    actionSelection.targetUid = null;
+    actionSelection.targetName = '';
+    updateActionSelectionUI();
+    return;
+  }
+
+  const targetUid = actionSelection.targetUid || null;
+  const resolve = actionSelection.resolve;
+  clearActionSelection();
+  if(resolve) resolve(targetUid);
+}
+function getRoleMiniElByUid(uid){
+  const tag = document.querySelector(`.player-tag[data-uid="${uid}"]`);
+  return tag?.querySelector('.role-mini') || null;
+}
+function revealWiretapRole(uid){
+  if(!uid) return;
+  const role = state.roles?.[uid];
+  if(!role) return;
+  wiretapRevealedUids.add(uid);
+  renderPlayerCircle(latestPlayers);
+
+  requestAnimationFrame(() => {
+    const roleMini = getRoleMiniElByUid(uid);
+    if(!roleMini) return;
+    roleMini.classList.add('wiretap-reveal-zoom');
+    setTimeout(() => {
+      roleMini.classList.remove('wiretap-reveal-zoom');
+    }, 1300);
+  });
+}
+async function drawActionCardForSelf(){
+  if(!state.roomCode) return;
+  const base = `rooms/${state.roomCode}`;
+  const [deckSnap, mySnap] = await Promise.all([
+    get(ref(db, `${base}/decks/action`)),
+    get(ref(db, `${base}/hands/${state.userId}`)),
+  ]);
+  const deck = Array.isArray(deckSnap.val()) ? [...deckSnap.val()] : [];
+  if(!deck.length) return;
+  const myData = mySnap.val() || {};
+  const action = Array.isArray(myData.action) ? [...myData.action] : [];
+  const card = deck.shift();
+  if(!card) return;
+  action.push(card);
+
+  await Promise.all([
+    set(ref(db, `${base}/decks/action`), deck),
+    update(ref(db, `${base}/hands/${state.userId}`), { action }),
+  ]);
+
+  const mySeat = state.turn?.activeSeat ?? state.seatedTable;
+  if(mySeat != null){
+    await emitEvent({ type: 'dealActionCard', toSeat: mySeat });
+  }
+  updateActionDeckUI();
+}
+
+actionConfirmYes.addEventListener('click', () => {
+  resolveWiretapSelection(true);
+});
+actionConfirmNo.addEventListener('click', () => {
+  resolveWiretapSelection(false);
+});
+
 async function runActionCardEffect(cardObj){
-  return;
+  if(!cardObj) return;
+
+  if(cardObj.name === '盗聴'){
+    const targetUid = await startWiretapSelection();
+    if(targetUid){
+      revealWiretapRole(targetUid);
+    }
+    return;
+  }
+
+  if(cardObj.name === '仕込み'){
+    await drawActionCardForSelf();
+  }
 }
 
 /* =========================
@@ -6188,6 +6432,7 @@ let sweetsPanelLocked = false;
 function canOpenSweetsPicker(){
   if(!state.room?.gameStarted) return false;
   if(!isMyTurn()) return false;
+  if(isActionSelectionActive()) return false;
   if(hasReceivedInstruction()) return false;
   if(hasSweets()) return false;
   const deck = state.room?.decks?.sweets;
