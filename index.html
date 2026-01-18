@@ -332,11 +332,6 @@ display:none;
   50%  { transform: scale(1.4); } /* ← 強さ（例：1.06〜1.14） */
   100% { transform: scale(1); }
 }
-@keyframes accidentPulse {
-  0%   { transform: scale(1); }
-  50%  { transform: scale(1.18); }
-  100% { transform: scale(1); }
-}
   .sweets-deck.pulsing{ animation:pulseSweetsDeck 1.05s ease-in-out infinite; }
   .sweets-deck.pulsing:hover{ animation:none; transform:scale(1.14); }
 
@@ -757,25 +752,13 @@ display:none;
   .my-role img{width:100%;height:100%;object-fit:cover;display:block;}
 
   /* ★★ 自分のスイーツ（正体カードの左／同サイズ） */
-.my-sweets{
-  width:78px;height:118px;border-radius:12px;border:1px solid #ddd;
-  box-shadow:0 10px 24px rgba(0,0,0,.18);
-  background:#fff;
-  overflow:visible;
-  flex:0 0 auto;
-}
-.my-sweets.vote-only{
-  border-style:dashed;
-  background:rgba(255,255,255,.2);
-}
-.my-sweets.accident-selectable{
-  cursor:pointer;
-  animation:accidentPulse 1.05s ease-in-out infinite;
-}
-.my-sweets.accident-selectable:hover{
-  animation:none;
-  transform:scale(1.06);
-}
+  .my-sweets{
+    width:78px;height:118px;border-radius:12px;border:1px solid #ddd;
+    box-shadow:0 10px 24px rgba(0,0,0,.18);
+    background:#fff;
+    overflow:visible;
+    flex:0 0 auto;
+  }
   .my-sweets.collect-hidden{
     opacity:0;
     visibility:hidden;
@@ -1373,9 +1356,6 @@ border-radius:0px;
   justify-content:center;
   pointer-events:none; /* 見た目専用（投票などにしたいなら外す） */
 }
-.other-cards-row.action-selectable{
-  pointer-events:auto;
-}
 
 /* 正体ミニ（裏） */
 .role-mini{
@@ -1421,14 +1401,6 @@ border-radius:0px;
   cursor:pointer;
 }
 .sweets-wrap.roundpick-selectable:hover{
-  animation:none;
-  transform:scale(1.12);
-}
-.sweets-wrap.accident-selectable{
-  cursor:pointer;
-  animation:accidentPulse 1.05s ease-in-out infinite;
-}
-.sweets-wrap.accident-selectable:hover{
   animation:none;
   transform:scale(1.12);
 }
@@ -2698,7 +2670,7 @@ function subscribeEvents(){
     }
     if(!expectedSessionId && !currentGameSessionId) return;
    const isStaleEvent = typeof ev.at === 'number' && eventsSubscribedAt && ev.at < eventsSubscribedAt;
-    if(isStaleEvent && ['miniSweetsShuffleStart','roundRevealSweets','revealCard','flyBackCard','wiretapArrow','accidentReturnSweets'].includes(ev.type)) return;
+    if(isStaleEvent && ['miniSweetsShuffleStart','roundRevealSweets','revealCard','flyBackCard','wiretapArrow'].includes(ev.type)) return;
     if(ev.type === 'revealCard'){
       showReveal(ev.card);
     }
@@ -2717,9 +2689,6 @@ function subscribeEvents(){
       if(ev.fromUid !== state.userId && ev.fromSeat !== null && ev.toSeat !== null){
         showWiretapArrow(ev.fromSeat, ev.toSeat);
       }
-    }
-    if(ev.type === 'accidentReturnSweets'){
-      await animateAccidentReturnSweets(ev.targetUid);
     }
 
     // ★ ラウンド終了演出（全員）
@@ -2915,12 +2884,12 @@ const ACTION_COUNTS_BASE = [
   { name:'宣伝', count:1, kind:'normal' },
 
   { name:'強奪', count:2, kind:'normal' },
-  { name:'偵察', count:2, kind:'normal' },
+  { name:'偵察', count:100, kind:'normal' },
   { name:'ひらめき', count:2, kind:'normal' },
   { name:'仕込み', count:2, kind:'normal' },
   { name:'交換', count:2, kind:'normal' },
   { name:'試行錯誤',     count:2, kind:'normal' },
-  { name:'事故',     count:100, kind:'normal' },
+  { name:'事故',     count:2, kind:'normal' },
   { name:'激推し',     count:4, kind:'normal' },
   { name:'無視', count:2, kind:'instruction' },
 
@@ -3438,50 +3407,6 @@ async function animateReturnExcludedDeckToSweetsDeck(){
   sweetsExcludedDeckUI.style.visibility = prevVis;
 }
 
-function getAccidentSweetsSource(targetUid){
-  if(!targetUid) return null;
-  const selected = document.querySelector(`.selected-sweets-tag[data-sweets-uid="${targetUid}"] .selected-sweets-card`);
-  if(selected){
-    return {
-      el: selected,
-      host: selected.closest('.selected-sweets-tag') || selected,
-      hideMode: 'container',
-    };
-  }
-  if(targetUid === state.userId){
-    const img = mySweetsEl?.querySelector('img');
-    if(img){
-      return { el: img, host: mySweetsEl, hideMode: 'image' };
-    }
-  }
-  const wrap = document.querySelector(`.sweets-wrap[data-sweets-uid="${targetUid}"]`);
-  const mini = wrap?.querySelector('.sweets-mini');
-  if(mini && !mini.classList.contains('hidden')){
-    return { el: mini, host: wrap, hideMode: 'container' };
-  }
-  return null;
-}
-
-async function animateAccidentReturnSweets(targetUid){
-  const target = getSweetsDeckTargetRect();
-  if(!target) return;
-
-  const source = getAccidentSweetsSource(targetUid);
-  if(!source || !source.el) return;
-
-  if(source.hideMode === 'image'){
-    source.el.style.visibility = 'hidden';
-  }else if(source.host?.classList){
-    source.host.classList.add('collect-hidden');
-  }else{
-    source.el.style.visibility = 'hidden';
-  }
-
-  const snapshot = getCollectAnimationSnapshot(source.el);
-  if(!snapshot) return;
-  await animateOneCardToDeck(snapshot, target, { rotateFrom: snapshot.rotateDeg, rotateTo: 0 });
-}
-
 // ✅ ホストだけ：ラウンド終了後に「全スイーツ（selected/非selected/手元）＋除外」をDB上で山札へ戻す
 async function hostFinalizeReturnSweetsToDeck(revealedCards = []){
   if(!state.isHost || !state.roomCode) return;
@@ -3864,34 +3789,16 @@ function renderMySweets(){
   mySweetsEl.innerHTML = '';
   applyTagChipStyle(mySweetsEl, getTagChipStyleByUid(state.userId));
   const c = getMySweetsCard();
-  const voterIds = getVoteVoterIds(state.userId);
-  const hasVotes = voterIds.length > 0;
   if(!c){
-    mySweetsEl.classList.remove('accident-selectable');
-    mySweetsEl.onpointerdown = null;
-    mySweetsEl.onclick = null;
-    if(!hasVotes){
-      mySweetsEl.classList.add('hidden');
-      updateRoundPickUI();
-      lastMySweetsSnapshot = null;
-      mySweetsFlyAnimatedFor = null;
-      return;
-    }
-    mySweetsEl.classList.remove('hidden');
-    mySweetsEl.classList.add('vote-only');
-    renderMySweetsVoteStack();
+    mySweetsEl.classList.add('hidden');
     updateRoundPickUI();
     lastMySweetsSnapshot = null;
     mySweetsFlyAnimatedFor = null;
     return;
   }
-  mySweetsEl.classList.remove('vote-only');
   if(collectedSweetsHidden.has(state.userId)){
     mySweetsEl.classList.add('hidden');
     mySweetsEl.innerHTML = '';
-    mySweetsEl.classList.remove('accident-selectable');
-    mySweetsEl.onpointerdown = null;
-    mySweetsEl.onclick = null;
     updateRoundPickUI();
     return;
   }
@@ -3899,9 +3806,6 @@ function renderMySweets(){
   if(decidedUids.includes(state.userId)){
     mySweetsEl.classList.add('hidden');
     mySweetsEl.innerHTML = '';
-    mySweetsEl.classList.remove('accident-selectable');
-    mySweetsEl.onpointerdown = null;
-    mySweetsEl.onclick = null;
     updateRoundPickUI();
     return;
   }
@@ -3915,20 +3819,6 @@ function renderMySweets(){
 
   // ★ 追加：自分スイーツにも投票ミニを重ねる
   renderMySweetsVoteStack();
-
-  const accidentSelectable = actionSelection?.type === 'accident' && actionSelection.phase === 'select';
-  mySweetsEl.classList.toggle('accident-selectable', accidentSelectable);
-  if(accidentSelectable){
-    const onAccident = (e) => {
-      e.stopPropagation();
-      handleAccidentCandidate(state.userId);
-    };
-    mySweetsEl.onpointerdown = onAccident;
-    mySweetsEl.onclick = onAccident;
-  }else{
-    mySweetsEl.onpointerdown = null;
-    mySweetsEl.onclick = null;
-  }
 
   updateRoundPickUI();
   requestAnimationFrame(cacheMySweetsSnapshot);
@@ -4074,28 +3964,12 @@ function updateActionSelectionUI(){
       if(actionConfirmPop) actionConfirmPop.classList.remove('hidden');
     }
   }
-  if(actionSelection.type === 'accident'){
-    if(actionSelection.phase === 'select'){
-      if(actionExplainPop){
-        actionExplainPop.textContent = '事故：戻したいスイーツを選択してください。';
-        actionExplainPop.classList.remove('hidden');
-      }
-    }
-    if(actionSelection.phase === 'confirm'){
-      const target = getPlayerByUid(actionSelection.targetUid);
-      if(actionConfirmText){
-        actionConfirmText.textContent = `「${target?.name ?? 'プレイヤー'}」のスイーツを戻しますか。`;
-      }
-      if(actionConfirmPop) actionConfirmPop.classList.remove('hidden');
-    }
-  }
 }
 
 function setActionSelection(next){
   actionSelection = next;
   updateActionSelectionUI();
   applyMyTurnClasses();
-  renderMySweets();
   updateSweetsDeckUI();
   renderMyVoteChip();
   updatePassRoundBtn();
@@ -4132,19 +4006,6 @@ function beginScoutSelection(){
   });
 }
 
-function beginAccidentSelection(){
-  const candidates = latestPlayers.filter(p => !!getSweetsCardByUid(p.id));
-  if(!candidates.length) return Promise.resolve(null);
-  return new Promise(resolve => {
-    setActionSelection({
-      type:'accident',
-      phase:'select',
-      targetUid:null,
-      resolve,
-    });
-  });
-}
-
 function handleWiretapCandidate(uid){
   if(!actionSelection || actionSelection.type !== 'wiretap') return;
   if(actionSelection.phase !== 'select') return;
@@ -4160,16 +4021,6 @@ function handleScoutCandidate(uid){
   actionSelection.phase = 'confirm';
   actionSelection.targetUid = uid;
   updateActionSelectionUI();
-  if(latestPlayers.length) renderPlayerCircle(latestPlayers);
-}
-
-function handleAccidentCandidate(uid){
-  if(!actionSelection || actionSelection.type !== 'accident') return;
-  if(actionSelection.phase !== 'select') return;
-  actionSelection.phase = 'confirm';
-  actionSelection.targetUid = uid;
-  updateActionSelectionUI();
-  renderMySweets();
   if(latestPlayers.length) renderPlayerCircle(latestPlayers);
 }
 
@@ -4258,7 +4109,6 @@ if(actionConfirmNo){
     actionSelection.phase = 'select';
     actionSelection.targetUid = null;
     updateActionSelectionUI();
-    renderMySweets();
     if(latestPlayers.length) renderPlayerCircle(latestPlayers);
   });
 }
@@ -4271,8 +4121,11 @@ let pendingSeatPlayerIdToSteal = null;
 let isRenderingSeatTabs = false;
 
 function renderMySweetsVoteStack(){
+  // スイーツ未所持なら何もしない（＆残骸があれば消す）
+  const c = getMySweetsCard();
   const old = mySweetsEl.querySelector('.vote-stack');
   if(old) old.remove();
+  if(!c) return;
 
   const voterIds = getVoteVoterIds(state.userId);
   if(!voterIds.length) return;
@@ -4934,10 +4787,9 @@ if(started && roleAssigned){
 
 
   const hasTheirSweets = !!(handData && Array.isArray(handData.sweets) && handData.sweets.length);
-  const hasVotes = getVoteCountFor(p.id) > 0;
-  const showVoteHold = voteHoldActive && hasVotes;
+  const showVoteHold = voteHoldActive && getVoteCountFor(p.id) > 0;
 
-  if(hasTheirSweets || hasVotes || showVoteHold){
+  if(hasTheirSweets || showVoteHold){
     const cardsRow = document.createElement('div');
     cardsRow.className = 'other-cards-row';
 
@@ -4947,19 +4799,6 @@ if(started && roleAssigned){
     sweetsWrap.classList.toggle('empty', !hasTheirSweets);
     if(collectedSweetsHidden.has(p.id)){
       sweetsWrap.classList.add('collect-hidden');
-    }
-    const accidentSelectable = actionSelection?.type === 'accident'
-      && actionSelection.phase === 'select'
-      && hasTheirSweets;
-    if(accidentSelectable){
-      cardsRow.classList.add('action-selectable');
-      sweetsWrap.classList.add('accident-selectable');
-      const onAccident = (e) => {
-        e.stopPropagation();
-        handleAccidentCandidate(p.id);
-      };
-      sweetsWrap.addEventListener('pointerdown', onAccident);
-      sweetsWrap.onclick = onAccident;
     }
     if(roundPickCanSelect && roundPickCandidates.includes(p.id)){
       sweetsWrap.classList.add('roundpick-candidate');
@@ -6775,11 +6614,6 @@ async function runActionCardEffect(cardObj){
   }
   if(cardObj?.name === '仕込み'){
     await runPreparationEffect(cardObj);
-    return;
-  }
-  if(cardObj?.name === '事故'){
-    await runAccidentEffect();
-    return;
   }
 }
 
@@ -6841,39 +6675,6 @@ async function runPreparationEffect(cardObj){
     type: 'actionDrawToHand',
     toUid: state.userId,
     toSeat: seat,
-  });
-}
-
-async function runAccidentEffect(){
-  if(!state.room?.gameStarted) return;
-  if(!state.roomCode) return;
-
-  const targetUid = await beginAccidentSelection();
-  if(!targetUid) return;
-
-  const base = `rooms/${state.roomCode}`;
-  const [handsSnap, decksSnap] = await Promise.all([
-    get(ref(db, `${base}/hands`)),
-    get(ref(db, `${base}/decks/sweets`)),
-  ]);
-
-  const hands = handsSnap.val() || {};
-  const deck = decksSnap.val() || [];
-  const targetHand = hands?.[targetUid] || {};
-  const sweetsArr = Array.isArray(targetHand.sweets) ? targetHand.sweets : [];
-  const targetCard = sweetsArr[0];
-  if(!targetCard) return;
-
-  await emitEvent({ type:'accidentReturnSweets', targetUid });
-  await sleep(850);
-
-  const deckArr = Array.isArray(deck) ? deck : [];
-  const filtered = deckArr.filter(card => card?.id !== targetCard.id);
-  const nextDeck = shuffle([...filtered, targetCard]);
-
-  await update(ref(db, base), {
-    [`hands/${targetUid}/sweets`]: [],
-    'decks/sweets': nextDeck,
   });
 }
 
