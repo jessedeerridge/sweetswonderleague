@@ -5975,13 +5975,23 @@ function updateRoundPickUI(){
   mySweetsEl.classList.toggle('roundpick-candidate', meIsCandidate);
   mySweetsEl.classList.toggle('roundpick-selectable', meCanSelect);
 
-  if(meCanSelect){
+ if(meCanSelect){
     mySweetsEl.onpointerdown = (e) => {
       e.stopPropagation();
       startRoundPickDrag(e, state.userId);
     };
   }else{
-    mySweetsEl.onpointerdown = null;
+    const exchangeSelectable = actionSelection?.type === 'exchange'
+      && actionSelection.phase === 'select'
+      && !!getMySweetsCard();
+    if(exchangeSelectable){
+      mySweetsEl.onpointerdown = (e) => {
+        e.stopPropagation();
+        handleExchangeCandidate(state.userId);
+      };
+    }else{
+      mySweetsEl.onpointerdown = null;
+    }
   }
 
 }
