@@ -511,7 +511,6 @@ display:none;
 
 
   /* 他プレイヤー：正体カード（裏） */
-/* 他プレイヤー：正体カード（裏） */
 .role-mini{
   position:absolute;
   left:-34px; top:50%;
@@ -524,21 +523,29 @@ display:none;
   pointer-events:none;
   overflow:visible;
 }
+.role-mini .role-mini-frame{
+  position:absolute;
+  inset:0;
+  border-radius:inherit;
+  overflow:hidden;
+}
 .role-mini img{
   width:100%;
   height:100%;
   object-fit:cover;
   display:block;
 }
-.player-tag .other-role-mini.wiretap-selectable{
+  .player-tag .other-role-mini.wiretap-selectable{
   pointer-events:auto;
   cursor:pointer;
-}
-.player-tag .other-role-mini.wiretap-selectable img{
-  animation:pulseCard 1.05s ease-in-out infinite;
+  animation:pulseRoleMini 1.05s ease-in-out infinite;
   transform-origin:center;
 }
-
+@keyframes pulseRoleMini{
+  0%{ transform:translate(var(--roleMiniX), var(--roleMiniY)) scale(1); }
+  50%{ transform:translate(var(--roleMiniX), var(--roleMiniY)) scale(1.4); }
+  100%{ transform:translate(var(--roleMiniX), var(--roleMiniY)) scale(1); }
+}
 .action-deal-card{
   position:fixed;
   left:0;
@@ -618,16 +625,18 @@ display:none;
     transform:translate(-50%,3px);
     width:60px;height:30px;pointer-events:none;
   }
-  .player-tag .other-role-mini{
+ .player-tag .other-role-mini{
     position:absolute;
     left:50%;
     top:100%;
-    transform:translate(calc(-50% - 40px), -3px);
+    --roleMiniX: calc(-50% - 40px);
+    --roleMiniY: -3px;
+    transform:translate(var(--roleMiniX), var(--roleMiniY));
     box-sizing:border-box;
     pointer-events:none;
   }
   .player-tag.right-side .other-role-mini{
-    transform:translate(calc(-50% + 40px), -3px);
+    --roleMiniX: calc(-50% + 40px);
   }
   .player-tag .mini-card{
     position:absolute;left:50%;top:0;width:16px;height:22px;
@@ -2614,9 +2623,13 @@ function subscribeEvents(){
     if(ev.type === 'flyBackCard'){
       animateFlyBackCard(ev.fromSeat, ev.toSeat);
     }
-    if(ev.type === 'dealActionCard'){
+   if(ev.type === 'dealActionCard'){
       const delayMs = (typeof ev.delayMs === 'number') ? ev.delayMs : 0;
       animateActionDealCard(ev.toSeat, delayMs);
+    }
+    if(ev.type === 'actionDrawToHand'){
+      const delayMs = (typeof ev.delayMs === 'number') ? ev.delayMs : 0;
+      animateActionDrawToHand(ev.toUid, ev.toSeat, delayMs);
     }
     if(ev.type === 'wiretapArrow'){
       if(ev.fromUid !== state.userId && ev.fromSeat !== null && ev.toSeat !== null){
@@ -2812,14 +2825,14 @@ async function endTurn(reason){
    ========================= */
 const ACTION_COUNTS_BASE = [
   { name:'監禁', count:1, kind:'normal' },
-  { name:'盗聴', count:100, kind:'normal' },
+  { name:'盗聴', count:10, kind:'normal' },
   { name:'世代交代', count:1, kind:'normal' },
   { name:'宣伝', count:1, kind:'normal' },
 
   { name:'強奪', count:2, kind:'normal' },
   { name:'偵察', count:2, kind:'normal' },
   { name:'ひらめき', count:2, kind:'normal' },
-  { name:'仕込み', count:2, kind:'normal' },
+  { name:'仕込み', count:20, kind:'normal' },
   { name:'交換', count:2, kind:'normal' },
   { name:'試行錯誤',     count:2, kind:'normal' },
   { name:'事故',     count:2, kind:'normal' },
@@ -4644,13 +4657,16 @@ if(started && roleAssigned){
   roleMini.className = 'role-mini other-role-mini';
   roleMini.dataset.uid = p.id;
 
+  const roleFrame = document.createElement('div');
+  roleFrame.className = 'role-mini-frame';
   const roleImg = document.createElement('img');
   const roleKey = state.roles?.[p.id];
   const revealed = revealedRoleUids.has(p.id);
   const roleInfo = revealed && roleKey ? roleToHelp(roleKey) : null;
   roleImg.src = roleInfo?.img || 'swroleura.jpg';
   roleImg.alt = roleInfo?.name || 'role';
-  roleMini.appendChild(roleImg);
+  roleFrame.appendChild(roleImg);
+  roleMini.appendChild(roleFrame);
 
   if(actionSelection?.type === 'wiretap' && actionSelection.phase === 'select' && p.id !== state.userId){
     roleMini.classList.add('wiretap-selectable');
@@ -5084,6 +5100,29 @@ function getPlayerTagRectBySeat(seat){
   if(!rect.width || !rect.height) return null;
   return rect;
 }
+function getMyHandRect(){
+  if(myHandEl){
+    const rect = myHandEl.getBoundingClientRect();
+    if(rect.width && rect.height) return rect;
+  }
+  const wrap = document.querySelector('.my-hand-wrapper');
+  if(!wrap) return null;
+  const rect = wrap.getBoundingClientRect();
+  if(!rect.width || !rect.height) return null;
+  return rect;
+}
+function getOtherPlayerHandRectBySeat(seat){
+  const tag = document.querySelector(`.player-tag[data-seat="${seat}"]`);
+  if(!tag) return null;
+  const miniHand = tag.querySelector('.mini-hand');
+  if(miniHand){
+    const rect = miniHand.getBoundingClientRect();
+    if(rect.width && rect.height) return rect;
+  }
+  const rect = tag.getBoundingClientRect();
+  if(!rect.width || !rect.height) return null;
+  return rect;
+}
 function animateActionDealCard(toSeat, delayMs = 0){
   const from = getActionDeckRect();
   const to = getPlayerTagRectBySeat(toSeat);
@@ -5106,6 +5145,45 @@ function animateActionDealCard(toSeat, delayMs = 0){
     { transform: `translate(${dx}px, ${dy}px) rotate(0deg) scale(${scale})` },
   ], {
     duration: 600,
+    delay: delayMs,
+    easing: 'ease-in-out',
+    fill: 'forwards',
+  }).onfinish = () => {
+    card.remove();
+  };
+}
+function animateActionDrawToHand(toUid, toSeat, delayMs = 0){
+  const from = getActionDeckRect();
+  if(!from) return;
+
+  let targetRect = null;
+  if(toUid && toUid === state.userId){
+    targetRect = getMyHandRect();
+  }else{
+    const seat = (typeof toSeat === 'number') ? toSeat : getSeatByUid(toUid);
+    if(typeof seat === 'number'){
+      targetRect = getOtherPlayerHandRectBySeat(seat);
+    }
+  }
+  if(!targetRect) return;
+
+  const card = document.createElement('div');
+  card.className = 'action-deal-card';
+  card.style.left = `${from.left}px`;
+  card.style.top = `${from.top}px`;
+  card.style.width = `${from.width}px`;
+  card.style.height = `${from.height}px`;
+  document.body.appendChild(card);
+
+  const dx = (targetRect.left + targetRect.width / 2) - (from.left + from.width / 2);
+  const dy = (targetRect.top + targetRect.height / 2) - (from.top + from.height / 2);
+  const scale = Math.min(targetRect.width / from.width, targetRect.height / from.height, 1.2);
+
+  card.animate([
+    { transform: 'translate(0px, 0px) rotate(-10deg) scale(1)' },
+    { transform: `translate(${dx}px, ${dy}px) rotate(0deg) scale(${scale})` },
+  ], {
+    duration: 620,
     delay: delayMs,
     easing: 'ease-in-out',
     fill: 'forwards',
@@ -6417,8 +6495,45 @@ async function playCardToCircle(cardObj){
 async function runActionCardEffect(cardObj){
   if(cardObj?.name === '盗聴'){
     await runWiretapEffect(cardObj);
+    return;
+  }
+  if(cardObj?.name === '仕込み'){
+    await runPreparationEffect(cardObj);
   }
 }
+
+async function runPreparationEffect(cardObj){
+  if(!state.roomCode) return;
+  if(!cardObj) return;
+
+  const base = `rooms/${state.roomCode}`;
+  const [deckSnap, mySnap] = await Promise.all([
+    get(ref(db, `${base}/decks/action`)),
+    get(ref(db, `${base}/hands/${state.userId}`)),
+  ]);
+  const deck = deckSnap.val() || [];
+  if(!Array.isArray(deck) || !deck.length) return;
+
+  const myData = mySnap.val() || {};
+  const action = Array.isArray(myData.action) ? myData.action : [];
+
+  const nextCard = deck.shift();
+  if(!nextCard) return;
+  action.push(nextCard);
+
+  await Promise.all([
+    set(ref(db, `${base}/decks/action`), deck),
+    update(ref(db, `${base}/hands/${state.userId}`), { action }),
+  ]);
+
+  const seat = getSeatByUid(state.userId) ?? state.seatedTable ?? null;
+  await emitEvent({
+    type: 'actionDrawToHand',
+    toUid: state.userId,
+    toSeat: seat,
+  });
+}
+
 
 async function runWiretapEffect(cardObj){
   if(!state.room?.gameStarted) return;
