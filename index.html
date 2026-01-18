@@ -486,7 +486,7 @@ display:none;
   border-radius:14px;
   border:2px solid #f59e0b;
   box-shadow:0 14px 30px rgba(0,0,0,.25);
-  z-index:230;
+  z-index:280;
   white-space:nowrap;
 }
 .leader-pick-pop.hidden{display:none;}
@@ -517,23 +517,13 @@ display:none;
   z-index:260;
 }
 .scout-reveal-overlay.hidden{display:none;}
-.scout-reveal-panel{
-  background:#fff;
-  border-radius:16px;
-  padding:18px;
-  max-width:min(92vw, 780px);
-  max-height:80vh;
-  overflow:auto;
-  box-shadow:0 18px 40px rgba(0,0,0,.35);
-}
-.scout-reveal-title{
-  font-weight:900;
-  margin-bottom:12px;
-}
 .scout-reveal-grid{
-  display:grid;
-  grid-template-columns:repeat(auto-fit, minmax(140px, 1fr));
+  display:flex;
+  flex-wrap:nowrap;
   gap:12px;
+  max-width:92vw;
+  overflow-x:auto;
+  padding:8px 12px;
 }
 .scout-reveal-grid .action-card{
   position:relative;
@@ -1854,10 +1844,7 @@ display:none;
   </div>
 </div>
 <div id="scoutRevealOverlay" class="scout-reveal-overlay hidden">
-  <div class="scout-reveal-panel">
-    <div id="scoutRevealTitle" class="scout-reveal-title"></div>
-    <div id="scoutRevealGrid" class="scout-reveal-grid"></div>
-  </div>
+  <div id="scoutRevealGrid" class="scout-reveal-grid"></div>
 </div>
 <div id="scoutCloseConfirmPop" class="leader-pick-pop action-pop hidden">
   <div class="action-pop-text">閉じてもいいですか。</div>
@@ -2058,7 +2045,6 @@ const actionConfirmText = document.getElementById('actionConfirmText');
 const actionConfirmYes = document.getElementById('actionConfirmYes');
 const actionConfirmNo = document.getElementById('actionConfirmNo');
 const scoutRevealOverlay = document.getElementById('scoutRevealOverlay');
-const scoutRevealTitle = document.getElementById('scoutRevealTitle');
 const scoutRevealGrid = document.getElementById('scoutRevealGrid');
 const scoutCloseConfirmPop = document.getElementById('scoutCloseConfirmPop');
 const scoutCloseYes = document.getElementById('scoutCloseYes');
@@ -6715,9 +6701,7 @@ async function runWiretapEffect(cardObj){
 }
 
 async function showScoutReveal(targetUid){
-  if(!scoutRevealOverlay || !scoutRevealGrid || !scoutRevealTitle) return;
-  const target = getPlayerByUid(targetUid);
-  scoutRevealTitle.textContent = `「${target?.name ?? 'プレイヤー'}」のアクションカード`;
+  if(!scoutRevealOverlay || !scoutRevealGrid) return;
   scoutRevealGrid.innerHTML = '';
 
   const cards = Array.isArray(state.hands?.[targetUid]?.action)
