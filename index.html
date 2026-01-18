@@ -295,9 +295,14 @@ display:none;
     50%{transform:scale(1.06);}
     100%{transform:scale(1);}
   }
- @keyframes pulseCardStrong {
+@keyframes pulseCardStrong {
     0%{transform:scale(1);}
     50%{transform:scale(1.12);}
+    100%{transform:scale(1);}
+  }
+  @keyframes pulseCardAccident {
+    0%{transform:scale(1);}
+    50%{transform:scale(1.4);}
     100%{transform:scale(1);}
   }
   .my-sweets.advertise-selectable,
@@ -1522,6 +1527,14 @@ left:-260px;
   animation:none;
   transform:scale(1.12);
 }
+.sweets-wrap.accident-selectable .sweets-mini{
+  animation:pulseCardAccident 1.05s ease-in-out infinite;
+  cursor:pointer;
+}
+.sweets-wrap.accident-selectable:hover .sweets-mini{
+  animation:none;
+  transform:scale(1.2);
+}
  .sweets-wrap.swap-selected{
     border-color:rgba(251,146,60,.95);
     box-shadow:0 0 0 3px rgba(251,146,60,.75);
@@ -1599,6 +1612,14 @@ left:-260px;
 .my-sweets.swap-selectable:hover{
   animation:none;
   transform:scale(1.12);
+}
+.my-sweets.accident-selectable{
+  animation:pulseCardAccident 1.05s ease-in-out infinite;
+  cursor:pointer;
+}
+.my-sweets.accident-selectable:hover{
+  animation:none;
+  transform:scale(1.2);
 }
 .my-sweets.swap-selected{
   box-shadow:0 0 0 3px rgba(251,146,60,.75);
@@ -2862,7 +2883,7 @@ function subscribeEvents(){
     }
     if(!expectedSessionId && !currentGameSessionId) return;
    const isStaleEvent = typeof ev.at === 'number' && eventsSubscribedAt && ev.at < eventsSubscribedAt;
-    if(isStaleEvent && ['miniSweetsShuffleStart','roundRevealSweets','revealCard','flyBackCard','wiretapArrow'].includes(ev.type)) return;
+    if(isStaleEvent && ['miniSweetsShuffleStart','roundRevealSweets','revealCard','flyBackCard','wiretapArrow','sweetsReturn'].includes(ev.type)) return;
     if(ev.type === 'revealCard'){
       showReveal(ev.card);
     }
@@ -2884,6 +2905,9 @@ function subscribeEvents(){
     }
     if(ev.type === 'sweetsSwap'){
       animateSweetsSwap(ev);
+    }
+    if(ev.type === 'sweetsReturn'){
+      await animateSweetsReturnToDeck(ev.uid);
     }
 
     // ★ ラウンド終了演出（全員）
@@ -3092,12 +3116,12 @@ const ACTION_COUNTS_BASE = [
   { name:'宣伝', count:1, kind:'normal' },
 
   { name:'強奪', count:2, kind:'normal' },
-  { name:'偵察', count:1, kind:'normal' },
-  { name:'ひらめき', count:200, kind:'normal' },
+  { name:'偵察', count:2, kind:'normal' },
+  { name:'ひらめき', count:2, kind:'normal' },
   { name:'仕込み', count:2, kind:'normal' },
   { name:'交換', count:2, kind:'normal' },
   { name:'試行錯誤',     count:2, kind:'normal' },
-  { name:'事故',     count:2, kind:'normal' },
+  { name:'事故',     count:200, kind:'normal' },
   { name:'激推し',     count:4, kind:'normal' },
   { name:'無視', count:2, kind:'instruction' },
 
@@ -4119,6 +4143,11 @@ function renderMySweets(){
       if(actionSelection.type === 'advertise' && actionSelection.phase === 'select'){
         e.stopPropagation();
         handleAdvertiseCandidate(state.userId);
+        return;
+      }
+      if(actionSelection.type === 'accident' && actionSelection.phase === 'select'){
+        e.stopPropagation();
+        handleAccidentCandidate(state.userId);
       }
     };
     mySweetsEl.addEventListener('pointerdown', handleSelect);
@@ -4128,7 +4157,7 @@ function renderMySweets(){
   mySweetsEl.innerHTML = '';
   applyTagChipStyle(mySweetsEl, getTagChipStyleByUid(state.userId));
   mySweetsEl.style.cursor = '';
-  mySweetsEl.classList.remove('swap-selectable','swap-selected','advertise-selectable');
+  mySweetsEl.classList.remove('swap-selectable','swap-selected','advertise-selectable','accident-selectable');
   const c = getMySweetsCard();
   if(!c){
     mySweetsEl.classList.add('hidden');
@@ -4188,6 +4217,16 @@ function renderMySweets(){
       mySweetsEl.style.cursor = 'pointer';
     }
   }
+  const accidentSelection = actionSelection?.type === 'accident'
+    ? actionSelection
+    : null;
+  if(accidentSelection){
+    const isSelectable = accidentSelection.phase === 'select';
+    mySweetsEl.classList.toggle('accident-selectable', isSelectable);
+    if(isSelectable){
+      mySweetsEl.style.cursor = 'pointer';
+    }
+  }
 
 
   const advertised = isAdvertised(state.userId);
@@ -4200,6 +4239,8 @@ function renderMySweets(){
   if(advertised){
     appendAdvertiseEye(mySweetsEl);
   }
+
+  cacheSweetsRectFromElement(state.userId, mySweetsEl);
 
   // ★ 追加：自分スイーツにも投票ミニを重ねる
   renderMySweetsVoteStack();
@@ -4444,6 +4485,21 @@ function updateActionSelectionUI(){
       if(actionConfirmPop) actionConfirmPop.classList.remove('hidden');
     }
   }
+  if(actionSelection.type === 'accident'){
+    if(actionSelection.phase === 'select'){
+      if(actionExplainPop){
+        actionExplainPop.textContent = '事故：戻したいスイーツを選択してください。';
+        actionExplainPop.classList.remove('hidden');
+      }
+    }
+    if(actionSelection.phase === 'confirm'){
+      const target = getPlayerByUid(actionSelection.targetUid);
+      if(actionConfirmText){
+        actionConfirmText.textContent = `「${target?.name ?? 'プレイヤー'}」のスイーツを戻しますか。`;
+      }
+      if(actionConfirmPop) actionConfirmPop.classList.remove('hidden');
+    }
+  }
   if(actionSelection.type === 'inspiration'){
     if(actionSelection.phase === 'select'){
       if(actionExplainPop){
@@ -4519,6 +4575,18 @@ function beginAdvertiseSelection(){
     });
   });
 }
+function beginAccidentSelection(){
+  const candidates = getSweetsOwners();
+  if(candidates.length < 1) return Promise.resolve(null);
+  return new Promise(resolve => {
+    setActionSelection({
+      type:'accident',
+      phase:'select',
+      targetUid:null,
+      resolve,
+    });
+  });
+}
 function beginInspirationSelection(){
   const excluded = state.room?.decks?.sweetsExcluded;
   if(!Array.isArray(excluded) || !excluded.length) return Promise.resolve(null);
@@ -4578,6 +4646,16 @@ function handleExchangeCandidate(uid){
 }
 function handleAdvertiseCandidate(uid){
   if(!actionSelection || actionSelection.type !== 'advertise') return;
+  if(actionSelection.phase !== 'select') return;
+  if(!getSweetsCardByUid(uid)) return;
+  setActionSelection({
+    ...actionSelection,
+    phase: 'confirm',
+    targetUid: uid,
+  });
+}
+function handleAccidentCandidate(uid){
+  if(!actionSelection || actionSelection.type !== 'accident') return;
   if(actionSelection.phase !== 'select') return;
   if(!getSweetsCardByUid(uid)) return;
   setActionSelection({
@@ -5526,7 +5604,14 @@ function renderPlayerCircle(players){
         chip.className = 'leader-chip';
         tag.appendChild(chip);
       }
-      if(voteHoldActive && !decidedUids.includes(state.userId)){
+    if(voteHoldActive && !decidedUids.includes(state.userId)){
+        const voteStack = buildVoteStackEl(state.userId);
+        if(voteStack){
+          tag.appendChild(voteStack);
+        }
+      }
+      const mySweetsCard = getSweetsCardByUid(state.userId);
+      if(!mySweetsCard && getVoteCountFor(state.userId) > 0){
         const voteStack = buildVoteStackEl(state.userId);
         if(voteStack){
           tag.appendChild(voteStack);
@@ -5747,7 +5832,7 @@ if(started && roleAssigned){
 
 
   const hasTheirSweets = !!(handData && Array.isArray(handData.sweets) && handData.sweets.length);
-  const showVoteHold = voteHoldActive && getVoteCountFor(p.id) > 0;
+  const showVoteHold = (!hasTheirSweets && getVoteCountFor(p.id) > 0) || (voteHoldActive && getVoteCountFor(p.id) > 0);
   const sweetsCard = getSweetsCardByUid(p.id);
 
   if(hasTheirSweets || showVoteHold){
@@ -5791,6 +5876,21 @@ if(started && roleAssigned){
         };
         sweetsWrap.addEventListener('pointerdown', onAdvertise);
         sweetsWrap.onclick = onAdvertise;
+      }
+    }
+    const accidentSelection = actionSelection?.type === 'accident'
+      ? actionSelection
+      : null;
+    const accidentSelectable = accidentSelection?.phase === 'select';
+    if(accidentSelection && hasTheirSweets){
+      sweetsWrap.classList.toggle('accident-selectable', accidentSelectable);
+      if(accidentSelectable){
+        const onAccident = (e) => {
+          e.stopPropagation();
+          handleAccidentCandidate(p.id);
+        };
+        sweetsWrap.addEventListener('pointerdown', onAccident);
+        sweetsWrap.onclick = onAccident;
       }
     }
     if(collectedSweetsHidden.has(p.id)){
@@ -5838,6 +5938,7 @@ if(started && roleAssigned){
       }
     }
     sweetsWrap.appendChild(sweetsMini);
+    cacheSweetsRectFromElement(p.id, sweetsMini);
 
     // 投票チップ（スイーツ右に重ね）
     const voteStack = buildVoteStackEl(p.id);
@@ -7675,6 +7776,10 @@ async function runActionCardEffect(cardObj){
     await runExchangeEffect();
     return true;
   }
+  if(cardObj?.name === '事故'){
+    await runAccidentEffect();
+    return true;
+  }
   if(cardObj?.name === '激推し'){
     await runGekioshiEffect();
     return false;
@@ -7767,6 +7872,16 @@ async function runExchangeEffect(){
   await swapSweetsBetweenUids(firstUid, secondUid);
 }
 
+async function runAccidentEffect(){
+  if(!state.room?.gameStarted) return;
+  const candidates = getSweetsOwners();
+  if(!candidates.length) return;
+  const targetUid = await beginAccidentSelection();
+  if(!targetUid) return;
+  await emitEvent({ type:'sweetsReturn', uid: targetUid });
+  await returnSweetsToDeckByUid(targetUid);
+}
+
 async function runGekioshiEffect(){
   if(!state.roomCode) return;
   const myRef = ref(db, `rooms/${state.roomCode}/hands/${state.userId}`);
@@ -7800,6 +7915,34 @@ function getMySweetsRectForAnimation(){
     width,
     height,
   };
+}
+
+const sweetsRectCache = new Map();
+function cacheSweetsRectFromElement(uid, el){
+  if(!uid || !el) return;
+  const rect = el.getBoundingClientRect();
+  if(!rect.width || !rect.height) return;
+  const width = el.offsetWidth || rect.width;
+  const height = el.offsetHeight || rect.height;
+  sweetsRectCache.set(uid, {
+    left: rect.left,
+    top: rect.top,
+    width,
+    height,
+  });
+}
+function getSweetsRectForAnimation(uid){
+  if(!uid) return null;
+  if(uid === state.userId){
+    const rect = getMySweetsRectForAnimation();
+    if(rect) sweetsRectCache.set(uid, rect);
+    return rect || sweetsRectCache.get(uid) || null;
+  }
+  const el = document.querySelector(`.sweets-wrap[data-sweets-uid="${uid}"] .sweets-mini`);
+  if(el && isVisibleRect(el)){
+    cacheSweetsRectFromElement(uid, el);
+  }
+  return sweetsRectCache.get(uid) || null;
 }
 
 function animateSweetsFlyToMyHand(cardObj, fromRect, toRect){
@@ -7856,6 +7999,41 @@ async function returnMySweetsToDeckIfNeeded(){
     update(myRef, { sweets: [] }),
   ]);
 
+  if(fromRect && target){
+    await animateOneCardToDeck(fromRect, target, { rotateFrom: 0, rotateTo: 0 });
+  }
+}
+
+async function returnSweetsToDeckByUid(uid){
+  if(!state.roomCode || !uid) return;
+  const base = `rooms/${state.roomCode}`;
+  const [handSnap, deckSnap] = await Promise.all([
+    get(ref(db, `${base}/hands/${uid}`)),
+    get(ref(db, `${base}/decks/sweets`)),
+  ]);
+  const handData = handSnap.val() || {};
+  const sweetsArr = Array.isArray(handData.sweets) ? handData.sweets : [];
+  if(!sweetsArr.length) return;
+
+  const deck = Array.isArray(deckSnap.val()) ? deckSnap.val() : [];
+  const returningCard = sweetsArr[0];
+  const nextDeck = [...deck, returningCard];
+
+  const updates = [
+    set(ref(db, `${base}/decks/sweets`), nextDeck),
+    update(ref(db, `${base}/hands/${uid}`), { sweets: [] }),
+  ];
+  if(state.game?.advertisedSweets?.[uid]){
+    updates.push(remove(ref(db, `${base}/game/advertisedSweets/${uid}`)));
+  }
+
+  await Promise.all(updates);
+}
+
+async function animateSweetsReturnToDeck(uid){
+  if(!uid) return;
+  const fromRect = getSweetsRectForAnimation(uid);
+  const target = getSweetsDeckTargetRect();
   if(fromRect && target){
     await animateOneCardToDeck(fromRect, target, { rotateFrom: 0, rotateTo: 0 });
   }
