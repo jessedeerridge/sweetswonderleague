@@ -490,6 +490,24 @@ display:none;
   white-space:nowrap;
 }
 .leader-pick-pop.hidden{display:none;}
+.action-pop{
+  display:flex;
+  flex-direction:column;
+  gap:6px;
+  align-items:center;
+  text-align:center;
+  white-space:normal;
+  max-width:min(90vw, 360px);
+}
+.action-pop .action-pop-actions{
+  display:flex;
+  gap:8px;
+  justify-content:center;
+  flex-wrap:wrap;
+}
+.action-pop .action-pop-text{
+  font-weight:900;
+}
 
 
   /* 他プレイヤー：正体カード（裏） */
@@ -502,9 +520,20 @@ display:none;
   height:var(--deckCardH);
   border-radius:var(--deckCardR);
   border:1px solid rgba(0,0,0,.18);
-  background:url('swroleura.jpg') center/cover no-repeat;
   box-shadow:0 6px 16px rgba(0,0,0,.18);
   pointer-events:none;
+  overflow:hidden;
+}
+.role-mini img{
+  width:100%;
+  height:100%;
+  object-fit:cover;
+  display:block;
+}
+.player-tag .other-role-mini.wiretap-selectable{
+  pointer-events:auto;
+  cursor:pointer;
+  animation:pulseCard 1.05s ease-in-out infinite;
 }
 
 .action-deal-card{
@@ -632,6 +661,26 @@ display:none;
   }
   .vote-stack.animating{
     opacity:0;
+  }
+  .wiretap-arrow{
+    position:fixed;
+    inset:0;
+    pointer-events:none;
+    z-index:950;
+  }
+  .wiretap-arrow svg{
+    width:100%;
+    height:100%;
+  }
+  .wiretap-arrow line{
+    stroke:#111;
+    stroke-width:2;
+    stroke-dasharray:6 6;
+  }
+  .wiretap-arrow .wiretap-eye{
+    position:fixed;
+    transform:translate(-50%,-50%);
+    font-size:20px;
   }
   /* 自分の手札表示（大きめ横並び） */
   .my-hand-wrapper{margin-top:40px;text-align:center; position:relative;}
@@ -767,6 +816,12 @@ border-radius:0px;
   .my-turn-blocked .my-hand .action-card.can-ignore:hover{
     animation:none !important;
     transform:scale(1.08);
+  }
+  .my-turn-selecting .action-card{
+    animation:none !important;
+    cursor:not-allowed;
+    filter:grayscale(.25);
+    opacity:.72;
   }
 
   /* ★ ドラッグ中の見た目 */
@@ -1729,6 +1784,14 @@ display:none;
 <!-- ★ 参加者：ホスト人数選択中ポップ -->
 <div id="hostSelectingPop" class="host-selecting-pop hidden">ホストが人数を選択中</div>
 <div id="leaderPickPop" class="leader-pick-pop hidden">最多票の中からリーダーを選んでください。</div>
+<div id="actionExplainPop" class="leader-pick-pop action-pop hidden"></div>
+<div id="actionConfirmPop" class="leader-pick-pop action-pop hidden">
+  <div id="actionConfirmText" class="action-pop-text"></div>
+  <div class="action-pop-actions">
+    <button id="actionConfirmYes" class="btn primary">はい</button>
+    <button id="actionConfirmNo" class="btn">いいえ</button>
+  </div>
+</div>
 
 <!-- 着席ポップ -->
 <div id="seatPop" class="seat-pop hidden">
@@ -1897,6 +1960,9 @@ let turnBlockedByShuffle = false;
 let leaderPickApplyTimer = null;
 let leaderPickApplyKey = null;
 let lastLeaderSeat = null;
+let actionSelection = null;
+const revealedRoleUids = new Set();
+let pendingWiretapZoomUid = null;
 /* =========================
    DOM
    ========================= */
@@ -1912,6 +1978,11 @@ const copyLinkBtn = document.getElementById('copyLinkBtn');
 
 const hostSelectingPop = document.getElementById('hostSelectingPop');
 const leaderPickPop = document.getElementById('leaderPickPop');
+const actionExplainPop = document.getElementById('actionExplainPop');
+const actionConfirmPop = document.getElementById('actionConfirmPop');
+const actionConfirmText = document.getElementById('actionConfirmText');
+const actionConfirmYes = document.getElementById('actionConfirmYes');
+const actionConfirmNo = document.getElementById('actionConfirmNo');
 
 const seatPop = document.getElementById('seatPop');
 const seatTabs = document.getElementById('seatTabs');
@@ -2099,6 +2170,10 @@ function resetLocalGameEffects(){
     revealTimer = null;
   }
   revealOverlay.classList.add('hidden');
+
+  clearActionSelection();
+  revealedRoleUids.clear();
+  pendingWiretapZoomUid = null;
 
   if(sweetsOverrideClearTimer){
     clearTimeout(sweetsOverrideClearTimer);
@@ -2297,7 +2372,7 @@ function updateSweetsDeckUI(){
   updateDeckStackUI(sweetsExcludedDeckUI, excludedCount);
 
 
-  const pulsing = isMyTurn() && !hasSweets() && !hasReceivedInstruction();
+  const pulsing = isMyTurn() && !hasSweets() && !hasReceivedInstruction() && !isActionSelectionActive();
   sweetsDeckUI.classList.toggle('pulsing', pulsing);
 }
 
@@ -2529,7 +2604,7 @@ function subscribeEvents(){
     }
     if(!expectedSessionId && !currentGameSessionId) return;
    const isStaleEvent = typeof ev.at === 'number' && eventsSubscribedAt && ev.at < eventsSubscribedAt;
-    if(isStaleEvent && ['miniSweetsShuffleStart','roundRevealSweets','revealCard','flyBackCard'].includes(ev.type)) return;
+    if(isStaleEvent && ['miniSweetsShuffleStart','roundRevealSweets','revealCard','flyBackCard','wiretapArrow'].includes(ev.type)) return;
     if(ev.type === 'revealCard'){
       showReveal(ev.card);
     }
@@ -2539,6 +2614,11 @@ function subscribeEvents(){
     if(ev.type === 'dealActionCard'){
       const delayMs = (typeof ev.delayMs === 'number') ? ev.delayMs : 0;
       animateActionDealCard(ev.toSeat, delayMs);
+    }
+    if(ev.type === 'wiretapArrow'){
+      if(ev.fromUid !== state.userId && ev.fromSeat !== null && ev.toSeat !== null){
+        showWiretapArrow(ev.fromSeat, ev.toSeat);
+      }
     }
 
     // ★ ラウンド終了演出（全員）
@@ -3418,6 +3498,7 @@ function getSweetsOwners(){
 function canVoteNow(){
   if(!state.room?.gameStarted) return false;
   if(!isMyTurn()) return false;
+  if(isActionSelectionActive()) return false;
   if(hasReceivedInstruction()) return false;
   if(getMyVoteChips() <= 0) return false;
   return getSweetsOwners().length >= 1;
@@ -3748,8 +3829,13 @@ function applyMyTurnClasses(){
   const receivedExists = hasReceivedInstruction();
   const roundPickActive = getRoundPick()?.phase === 'choose';
 
-  wrap.classList.remove('my-turn-free','my-turn-blocked');
+  wrap.classList.remove('my-turn-free','my-turn-blocked','my-turn-selecting');
   if(!mine || roundPickActive) return;
+
+  if(isActionSelectionActive()){
+    wrap.classList.add('my-turn-selecting');
+    return;
+  }
 
   if(receivedExists){
     wrap.classList.add('my-turn-blocked');
@@ -3768,6 +3854,140 @@ function renderHands(){
   renderMyVoteChip();
   if (latestPlayers.length) renderPlayerCircle(latestPlayers);
   updatePassRoundBtn();
+}
+
+function isActionSelectionActive(){
+  return !!actionSelection;
+}
+
+function updateActionSelectionUI(){
+  if(actionExplainPop) actionExplainPop.classList.add('hidden');
+  if(actionConfirmPop) actionConfirmPop.classList.add('hidden');
+  if(!actionSelection) return;
+  if(actionSelection.type === 'wiretap'){
+    if(actionSelection.phase === 'select'){
+      if(actionExplainPop){
+        actionExplainPop.textContent = '盗聴：見たいプレイヤーの正体カードを選んでください。';
+        actionExplainPop.classList.remove('hidden');
+      }
+    }
+    if(actionSelection.phase === 'confirm'){
+      const target = getPlayerByUid(actionSelection.targetUid);
+      if(actionConfirmText){
+        actionConfirmText.textContent = `「${target?.name ?? 'プレイヤー'}」の正体を見ますか。`;
+      }
+      if(actionConfirmPop) actionConfirmPop.classList.remove('hidden');
+    }
+  }
+}
+
+function setActionSelection(next){
+  actionSelection = next;
+  updateActionSelectionUI();
+  applyMyTurnClasses();
+  updateSweetsDeckUI();
+  renderMyVoteChip();
+  updatePassRoundBtn();
+  if(latestPlayers.length) renderPlayerCircle(latestPlayers);
+}
+
+function clearActionSelection(){
+  setActionSelection(null);
+}
+
+function beginWiretapSelection(){
+  const candidates = latestPlayers.filter(p => p.id !== state.userId);
+  if(!candidates.length) return Promise.resolve(null);
+  return new Promise(resolve => {
+    setActionSelection({
+      type:'wiretap',
+      phase:'select',
+      targetUid:null,
+      resolve,
+    });
+  });
+}
+
+function handleWiretapCandidate(uid){
+  if(!actionSelection || actionSelection.type !== 'wiretap') return;
+  if(actionSelection.phase !== 'select') return;
+  actionSelection.phase = 'confirm';
+  actionSelection.targetUid = uid;
+  updateActionSelectionUI();
+  if(latestPlayers.length) renderPlayerCircle(latestPlayers);
+}
+
+function triggerWiretapZoom(uid){
+  const roleEl = document.querySelector(`.role-mini[data-uid="${uid}"]`);
+  const img = roleEl?.querySelector('img');
+  if(!img) return;
+  img.animate([
+    { transform:'scale(1)' },
+    { transform:'scale(1.2)' },
+    { transform:'scale(1)' },
+  ], {
+    duration: 1500,
+    easing: 'ease-in-out',
+  });
+}
+
+function showWiretapArrow(fromSeat, toSeat){
+  const fromTag = document.querySelector(`.player-tag[data-seat="${fromSeat}"]`);
+  const toTag = document.querySelector(`.player-tag[data-seat="${toSeat}"]`);
+  if(!fromTag || !toTag) return;
+
+  const fromRect = fromTag.getBoundingClientRect();
+  const toRect = toTag.getBoundingClientRect();
+  const x1 = fromRect.left + fromRect.width / 2;
+  const y1 = fromRect.top + fromRect.height / 2;
+  const x2 = toRect.left + toRect.width / 2;
+  const y2 = toRect.top + toRect.height / 2;
+
+  const wrap = document.createElement('div');
+  wrap.className = 'wiretap-arrow';
+
+  const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+  svg.setAttribute('viewBox', `0 0 ${window.innerWidth} ${window.innerHeight}`);
+  const line = document.createElementNS('http://www.w3.org/2000/svg', 'line');
+  line.setAttribute('x1', String(x1));
+  line.setAttribute('y1', String(y1));
+  line.setAttribute('x2', String(x2));
+  line.setAttribute('y2', String(y2));
+  svg.appendChild(line);
+  wrap.appendChild(svg);
+
+  const eye = document.createElement('div');
+  eye.className = 'wiretap-eye';
+  eye.textContent = '👀';
+  eye.style.left = `${(x1 + x2) / 2}px`;
+  eye.style.top = `${(y1 + y2) / 2}px`;
+  wrap.appendChild(eye);
+
+  document.body.appendChild(wrap);
+  setTimeout(() => {
+    wrap.remove();
+  }, 1500);
+}
+
+if(actionConfirmYes){
+  actionConfirmYes.addEventListener('click', () => {
+    if(!actionSelection || actionSelection.type !== 'wiretap') return;
+    if(actionSelection.phase !== 'confirm') return;
+    const targetUid = actionSelection.targetUid;
+    const resolve = actionSelection.resolve;
+    clearActionSelection();
+    if(resolve) resolve(targetUid);
+  });
+}
+if(actionConfirmNo){
+  actionConfirmNo.addEventListener('click', () => {
+    if(!actionSelection || actionSelection.type !== 'wiretap') return;
+    if(actionSelection.phase !== 'confirm') return;
+    actionSelection.phase = 'select';
+    actionSelection.targetUid = null;
+    updateActionSelectionUI();
+    if(latestPlayers.length) renderPlayerCircle(latestPlayers);
+  });
 }
 
 /* =========================
@@ -4403,6 +4623,27 @@ let roleMini = null;
 if(started && roleAssigned){
   roleMini = document.createElement('div');
   roleMini.className = 'role-mini other-role-mini';
+  roleMini.dataset.uid = p.id;
+
+  const roleImg = document.createElement('img');
+  const roleKey = state.roles?.[p.id];
+  const revealed = revealedRoleUids.has(p.id);
+  const roleInfo = revealed && roleKey ? roleToHelp(roleKey) : null;
+  roleImg.src = roleInfo?.img || 'swroleura.jpg';
+  roleImg.alt = roleInfo?.name || 'role';
+  roleMini.appendChild(roleImg);
+
+  if(actionSelection?.type === 'wiretap' && actionSelection.phase === 'select' && p.id !== state.userId){
+    roleMini.classList.add('wiretap-selectable');
+    roleMini.addEventListener('pointerdown', (e) => {
+      e.stopPropagation();
+      handleWiretapCandidate(p.id);
+    });
+    roleMini.onclick = (e) => {
+      e.stopPropagation();
+      handleWiretapCandidate(p.id);
+    };
+  }
   tag.appendChild(roleMini);
 
 
@@ -4520,6 +4761,13 @@ if(leaderSeat !== null && leaderSeat === p.seatIndex){
   scheduleVoteChipAnimations();
   updateActionDeckUI();
   updateSweetsDeckUI();
+  if(pendingWiretapZoomUid){
+    const uid = pendingWiretapZoomUid;
+    pendingWiretapZoomUid = null;
+    requestAnimationFrame(() => {
+      triggerWiretapZoom(uid);
+    });
+  }
 }
 
 /* =========================
@@ -4527,15 +4775,22 @@ if(leaderSeat !== null && leaderSeat === p.seatIndex){
    ========================= */
 function updateTurnUI(){
   if(!state.turn || state.game?.status !== 'playing' || allSeatedPlayersPassed()){
+    if(actionSelection){
+      clearActionSelection();
+    }
     turnBar.classList.add('hidden');
     turnBadge.textContent = 'TURN';
     const wrap = document.querySelector('.my-hand-wrapper');
-    wrap?.classList.remove('my-turn-free','my-turn-blocked');
+    wrap?.classList.remove('my-turn-free','my-turn-blocked','my-turn-selecting');
     renderMySweets();
     updateSweetsDeckUI();
     renderMyVoteChip();
     updatePassRoundBtn();
     return;
+  }
+
+  if(actionSelection && !isMyTurn()){
+    clearActionSelection();
   }
 
   const activeP = getPlayerBySeat(state.turn.activeSeat);
@@ -5898,6 +6153,7 @@ function canUseOnOtherPlayer(card){
 function canStartUseCard(cardObj){
   if(!isMyTurn()) return false;
   if(getRoundPick()?.phase === 'choose') return false;
+  if(isActionSelectionActive()) return false;
   const receivedExists = hasReceivedInstruction();
   if(!receivedExists) return true;
   const isReceived = (getMyReceivedCard()?.id === cardObj.id);
@@ -6140,7 +6396,30 @@ async function playCardToCircle(cardObj){
 }
 
 async function runActionCardEffect(cardObj){
-  return;
+  if(cardObj?.name === '盗聴'){
+    await runWiretapEffect(cardObj);
+  }
+}
+
+async function runWiretapEffect(cardObj){
+  if(!state.room?.gameStarted) return;
+  const targetUid = await beginWiretapSelection();
+  if(!targetUid) return;
+
+  revealedRoleUids.add(targetUid);
+  pendingWiretapZoomUid = targetUid;
+  if(latestPlayers.length) renderPlayerCircle(latestPlayers);
+
+  const fromSeat = state.turn?.activeSeat ?? state.seatedTable;
+  const toSeat = getSeatByUid(targetUid);
+  if(fromSeat !== null && toSeat !== null){
+    await emitEvent({
+      type:'wiretapArrow',
+      fromSeat,
+      toSeat,
+      fromUid: state.userId,
+    });
+  }
 }
 
 /* =========================
@@ -6188,6 +6467,7 @@ let sweetsPanelLocked = false;
 function canOpenSweetsPicker(){
   if(!state.room?.gameStarted) return false;
   if(!isMyTurn()) return false;
+  if(isActionSelectionActive()) return false;
   if(hasReceivedInstruction()) return false;
   if(hasSweets()) return false;
   const deck = state.room?.decks?.sweets;
