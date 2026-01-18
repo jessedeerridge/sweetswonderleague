@@ -376,6 +376,9 @@ display:none;
 }
   .sweets-deck.pulsing{ animation:pulseSweetsDeck 1.05s ease-in-out infinite; }
   .sweets-deck.pulsing:hover{ animation:none; transform:scale(1.14); }
+  .sweets-exclude-deck.pulsing{ animation:pulseSweetsDeck 1.05s ease-in-out infinite; }
+  .sweets-exclude-deck.pulsing:hover{ animation:none; transform:scale(1.14); }
+  .sweets-exclude-deck.selectable{ pointer-events:auto; cursor:pointer; }
 
   /* ★★ 他プレイヤー：ネームタグ＋カード周りを円で囲む（otherplayerscircle） */
  .otherplayerscircle{
@@ -2619,6 +2622,10 @@ function updateSweetsDeckUI(){
   const sweetsAllowed = instructionNames.has('応援') || instructionNames.has('脅迫') || instructionNames.size === 0;
   const pulsing = isMyTurn() && !hasSweets() && sweetsAllowed && !isActionSelectionActive();
   sweetsDeckUI.classList.toggle('pulsing', pulsing);
+  const inspirationActive = actionSelection?.type === 'inspiration' && actionSelection.phase === 'select';
+  const excludedPulse = inspirationActive && excludedCount > 0;
+  sweetsExcludedDeckUI.classList.toggle('pulsing', excludedPulse);
+  sweetsExcludedDeckUI.classList.toggle('selectable', excludedPulse);
 }
 
 function getRequiredSweetsCount(){
@@ -3148,7 +3155,7 @@ function getActionEffectText(cardName){
     '宣伝': '選んだプレイヤーのスイーツを公開する。',
     '強奪': '置かれている任意の投票チップを1つ移動させる。',
     '偵察': '選んだプレイヤーのアクションカードを見る。',
-    'ひらめき': '除外した山札からスイーツを作る。',
+    'ひらめき': '手札のスイーツを山札へ戻し、除外山札からスイーツを作る。',
     '仕込み': 'アクションカードを1枚ひく。',
     '交換': '選んだプレイヤーとスイーツを交換する。',
     '試行錯誤': '一番上の除外カードをレシピに加える。そしてレシピから1枚選んで除外する。',
@@ -4437,6 +4444,14 @@ function updateActionSelectionUI(){
       if(actionConfirmPop) actionConfirmPop.classList.remove('hidden');
     }
   }
+  if(actionSelection.type === 'inspiration'){
+    if(actionSelection.phase === 'select'){
+      if(actionExplainPop){
+        actionExplainPop.textContent = 'ひらめき：除外山札からスイーツを選んでください。';
+        actionExplainPop.classList.remove('hidden');
+      }
+    }
+  }
 }
 
 function setActionSelection(next){
@@ -4500,6 +4515,17 @@ function beginAdvertiseSelection(){
       type:'advertise',
       phase:'select',
       targetUid:null,
+      resolve,
+    });
+  });
+}
+function beginInspirationSelection(){
+  const excluded = state.room?.decks?.sweetsExcluded;
+  if(!Array.isArray(excluded) || !excluded.length) return Promise.resolve(null);
+  return new Promise(resolve => {
+    setActionSelection({
+      type:'inspiration',
+      phase:'select',
       resolve,
     });
   });
@@ -7653,6 +7679,10 @@ async function runActionCardEffect(cardObj){
     await runGekioshiEffect();
     return false;
   }
+  if(cardObj?.name === 'ひらめき'){
+    await runInspirationEffect();
+    return true;
+  }
   return true;
 }
 
@@ -7746,6 +7776,96 @@ async function runGekioshiEffect(){
   await update(myRef, { bonusVoteChips: bonusChips + 1 });
   renderMyVoteChip();
   updatePassRoundBtn();
+}
+
+function getMySweetsRectForAnimation(){
+  if(!mySweetsEl) return null;
+  const wasHidden = mySweetsEl.classList.contains('hidden');
+  const prevVisibility = mySweetsEl.style.visibility;
+  if(wasHidden){
+    mySweetsEl.classList.remove('hidden');
+    mySweetsEl.style.visibility = 'hidden';
+  }
+  const rect = mySweetsEl.getBoundingClientRect();
+  if(wasHidden){
+    mySweetsEl.style.visibility = prevVisibility;
+    mySweetsEl.classList.add('hidden');
+  }
+  if(!rect.width || !rect.height) return null;
+  const width = mySweetsEl.offsetWidth || rect.width;
+  const height = mySweetsEl.offsetHeight || rect.height;
+  return {
+    left: rect.left,
+    top: rect.top,
+    width,
+    height,
+  };
+}
+
+function animateSweetsFlyToMyHand(cardObj, fromRect, toRect){
+  if(!cardObj || !fromRect || !toRect) return;
+  const fly = document.createElement('div');
+  fly.className = 'sweets-fly-card';
+  fly.style.left = `${fromRect.left}px`;
+  fly.style.top = `${fromRect.top}px`;
+  fly.style.width = `${fromRect.width}px`;
+  fly.style.height = `${fromRect.height}px`;
+
+  const img = document.createElement('img');
+  img.src = cardObj.img;
+  img.alt = `sweets ${cardObj.value ?? ''}`;
+  img.onerror = () => { if(cardObj.fallback) img.src = cardObj.fallback; };
+  fly.appendChild(img);
+
+  document.body.appendChild(fly);
+
+  const dx = toRect.left - fromRect.left;
+  const dy = toRect.top - fromRect.top;
+  const scale = toRect.width / fromRect.width;
+
+  fly.animate([
+    { transform:'translate(0px, 0px) scale(1)' },
+    { transform:`translate(${dx}px, ${dy}px) scale(${scale})` },
+  ], {
+    duration: 520,
+    easing: 'ease-in-out',
+    fill: 'forwards',
+  }).onfinish = () => fly.remove();
+}
+
+async function returnMySweetsToDeckIfNeeded(){
+  if(!state.roomCode) return;
+
+  const myRef = ref(db, `rooms/${state.roomCode}/hands/${state.userId}`);
+  const deckRef = ref(db, `rooms/${state.roomCode}/decks/sweets`);
+  const [mySnap, deckSnap] = await Promise.all([get(myRef), get(deckRef)]);
+
+  const myData = mySnap.val() || {};
+  const sweetsArr = Array.isArray(myData.sweets) ? myData.sweets : [];
+  if(!sweetsArr.length) return;
+
+  const currentDeck = Array.isArray(deckSnap.val()) ? deckSnap.val() : [];
+  const returningCard = sweetsArr[0];
+  const nextDeck = [...currentDeck, returningCard];
+
+  const fromRect = getMySweetsRectForAnimation();
+  const target = getSweetsDeckTargetRect();
+
+  await Promise.all([
+    set(deckRef, nextDeck),
+    update(myRef, { sweets: [] }),
+  ]);
+
+  if(fromRect && target){
+    await animateOneCardToDeck(fromRect, target, { rotateFrom: 0, rotateTo: 0 });
+  }
+}
+
+async function runInspirationEffect(){
+  if(!state.room?.gameStarted) return;
+  const selectionPromise = beginInspirationSelection();
+  await returnMySweetsToDeckIfNeeded();
+  await selectionPromise;
 }
 
 async function revealAdvertisedSweets(uid){
@@ -7902,6 +8022,11 @@ async function runInstructionCardEffect(cardObj, targetUid){
    ★ スイーツ：山札クリック → 一覧表示
    ========================= */
 let sweetsPanelLocked = false;
+const SWEETS_PICK_SOURCE = {
+  MAIN: 'main',
+  EXCLUDED: 'excluded',
+};
+let sweetsPickSource = SWEETS_PICK_SOURCE.MAIN;
 
 function canOpenSweetsPicker(){
   if(!state.room?.gameStarted) return false;
@@ -7912,6 +8037,15 @@ function canOpenSweetsPicker(){
   const instructionNames = getActiveInstructionNames();
   if(instructionNames.size > 0 && !instructionNames.has('応援') && !instructionNames.has('脅迫')) return false;
   const deck = state.room?.decks?.sweets;
+  if(!Array.isArray(deck) || !deck.length) return false;
+  return true;
+}
+
+function canOpenExcludedSweetsPicker(){
+  if(!state.room?.gameStarted) return false;
+  if(!isMyTurn()) return false;
+  if(actionSelection?.type !== 'inspiration' || actionSelection.phase !== 'select') return false;
+  const deck = state.room?.decks?.sweetsExcluded;
   if(!Array.isArray(deck) || !deck.length) return false;
   return true;
 }
@@ -7938,15 +8072,28 @@ function getRestrictedSweetsIds(deck){
   return allowed;
 }
 
-function openSweetsPicker(){
-  const deck = state.room?.decks?.sweets;
+function canStartSweetsDrag(source){
+  if(source === SWEETS_PICK_SOURCE.EXCLUDED){
+    return canOpenExcludedSweetsPicker();
+  }
+  return canOpenSweetsPicker();
+}
+
+function openSweetsPicker(options = {}){
+  const source = options.source ?? SWEETS_PICK_SOURCE.MAIN;
+  const deck = source === SWEETS_PICK_SOURCE.EXCLUDED
+    ? state.room?.decks?.sweetsExcluded
+    : state.room?.decks?.sweets;
   if(!Array.isArray(deck) || !deck.length) return;
 
   sweetsPanelLocked = true;
   btnSweetsClose.disabled = true;
+  sweetsPickSource = source;
 
   const sorted = [...deck].sort((a,b)=> (a.value ?? 0) - (b.value ?? 0));
-  const allowedIds = getRestrictedSweetsIds(sorted);
+  const allowedIds = (source === SWEETS_PICK_SOURCE.MAIN)
+    ? getRestrictedSweetsIds(sorted)
+    : null;
   const cols = Math.ceil(sorted.length / 2);
   sweetsGrid.style.gridTemplateColumns = `repeat(${cols}, 90px)`;
 
@@ -7987,6 +8134,10 @@ sweetsDeckUI.addEventListener('click', () => {
   if(!canOpenSweetsPicker()) return;
   openSweetsPicker();
 });
+sweetsExcludedDeckUI.addEventListener('click', () => {
+  if(!canOpenExcludedSweetsPicker()) return;
+  openSweetsPicker({ source: SWEETS_PICK_SOURCE.EXCLUDED });
+});
 
 /* =========================
    ★ スイーツ：ドラッグ → dropZone で獲得
@@ -8000,16 +8151,18 @@ const sweetsDrag = {
   offsetY:0,
   lastClientX:null,
   lastClientY:null,
+  source:SWEETS_PICK_SOURCE.MAIN,
 };
 
 function startDragSweets(e, cardObj, srcEl){
-  if(!canOpenSweetsPicker()) return;
+  if(!canStartSweetsDrag(sweetsPickSource)) return;
   if(srcEl.classList.contains('restricted')) return;
   e.preventDefault();
 
   sweetsDrag.active = true;
   sweetsDrag.card = cardObj;
   sweetsDrag.srcEl = srcEl;
+  sweetsDrag.source = sweetsPickSource;
   const r = srcEl.getBoundingClientRect();
   sweetsDrag.offsetX = e.clientX - r.left;
   sweetsDrag.offsetY = e.clientY - r.top;
@@ -8061,7 +8214,11 @@ async function onSweetsDragEnd(e){
     : false;
 
   if(inDropZone){
-    await acquireSweetsCard(sweetsDrag.card);
+    if(sweetsDrag.source === SWEETS_PICK_SOURCE.EXCLUDED){
+      await acquireExcludedSweetsCard(sweetsDrag.card);
+    }else{
+      await acquireSweetsCard(sweetsDrag.card);
+    }
     cleanupSweetsDrag();
     return;
   }
@@ -8088,6 +8245,7 @@ function cleanupSweetsDrag(){
   sweetsDrag.offsetY = 0;
   sweetsDrag.lastClientX = null;
   sweetsDrag.lastClientY = null;
+  sweetsDrag.source = SWEETS_PICK_SOURCE.MAIN;
 }
 
 async function acquireSweetsCard(cardObj){
@@ -8116,6 +8274,52 @@ async function acquireSweetsCard(cardObj){
   sweetsBackdrop.classList.add('hidden');
 
   await endTurn('drawSweets');
+
+  updateSweetsDeckUI();
+  renderMyVoteChip();
+  updatePassRoundBtn();
+}
+
+async function acquireExcludedSweetsCard(cardObj){
+  if(!state.roomCode) return;
+  if(!canOpenExcludedSweetsPicker()) return;
+
+  const myRef = ref(db, `rooms/${state.roomCode}/hands/${state.userId}`);
+  const mySnap = await get(myRef);
+  const myData = mySnap.val() || {};
+  const already = Array.isArray(myData.sweets) && myData.sweets.length;
+  if(already) return;
+
+  const deckRef = ref(db, `rooms/${state.roomCode}/decks/sweetsExcluded`);
+  const deckSnap = await get(deckRef);
+  const deck = deckSnap.val() || [];
+  const exists = Array.isArray(deck) && deck.some(c => c.id === cardObj.id);
+  if(!exists) return;
+
+  const nextDeck = deck.filter(c => c.id !== cardObj.id);
+  const fromRect = await getSweetsExcludedDeckRectForMiniShuffle();
+  const toRect = getMySweetsRectForAnimation();
+
+  await Promise.all([
+    set(deckRef, nextDeck),
+    update(myRef, { sweets: [cardObj] }),
+  ]);
+
+  sweetsPanelLocked = false;
+  btnSweetsClose.disabled = false;
+  sweetsBackdrop.classList.add('hidden');
+
+  if(fromRect && toRect){
+    requestAnimationFrame(() => {
+      animateSweetsFlyToMyHand(cardObj, fromRect, toRect);
+    });
+  }
+
+  if(actionSelection?.type === 'inspiration'){
+    const resolve = actionSelection.resolve;
+    clearActionSelection();
+    if(resolve) resolve(cardObj);
+  }
 
   updateSweetsDeckUI();
   renderMyVoteChip();
