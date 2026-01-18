@@ -1424,6 +1424,18 @@ border-radius:0px;
   animation:none;
   transform:scale(1.12);
 }
+.sweets-wrap.swap-selectable{
+  animation:pulseCard 1.05s ease-in-out infinite;
+  cursor:pointer;
+}
+.sweets-wrap.swap-selectable:hover{
+  animation:none;
+  transform:scale(1.12);
+}
+.sweets-wrap.swap-selected{
+  border-color:rgba(251,146,60,.95);
+  box-shadow:0 0 0 3px rgba(251,146,60,.75);
+}
 .sweets-wrap.decided-move{
   transform:translate(var(--decidedMoveX), var(--decidedMoveY));
 }
@@ -1474,6 +1486,17 @@ border-radius:0px;
 .my-sweets.roundpick-selectable:hover ~ .vote-chip,
 .my-sweets.roundpick-selectable:active ~ .vote-chip{
   transform:scale(1.12);
+}
+.my-sweets.swap-selectable{
+  animation:pulseCard 1.05s ease-in-out infinite;
+  cursor:pointer;
+}
+.my-sweets.swap-selectable:hover{
+  animation:none;
+  transform:scale(1.12);
+}
+.my-sweets.swap-selected{
+  box-shadow:0 0 0 3px rgba(251,146,60,.75);
 }
 .my-sweets.decided-move{
   transform:translateY(-30px);
@@ -2728,6 +2751,9 @@ function subscribeEvents(){
         showWiretapArrow(ev.fromSeat, ev.toSeat);
       }
     }
+    if(ev.type === 'sweetsSwap'){
+      animateSweetsSwap(ev);
+    }
 
     // ★ ラウンド終了演出（全員）
     if(ev.type === 'roundRevealSweets'){
@@ -3888,6 +3914,8 @@ function renderMyRole(){
 function renderMySweets(){
   mySweetsEl.innerHTML = '';
   applyTagChipStyle(mySweetsEl, getTagChipStyleByUid(state.userId));
+  mySweetsEl.onpointerdown = null;
+  mySweetsEl.classList.remove('swap-selectable','swap-selected');
   const c = getMySweetsCard();
   if(!c){
     mySweetsEl.classList.add('hidden');
@@ -3911,11 +3939,31 @@ function renderMySweets(){
   }
   mySweetsFlyAnimatedFor = null;
   mySweetsEl.classList.remove('hidden');
+  mySweetsEl.dataset.sweetsUid = state.userId;
   const img = document.createElement('img');
   img.src = c.img;
   img.alt = `sweets ${c.value ?? ''}`;
   img.onerror = () => { if(c.fallback) img.src = c.fallback; };
   mySweetsEl.appendChild(img);
+
+  const exchangeSelection = actionSelection?.type === 'exchange'
+    ? actionSelection
+    : null;
+  if(exchangeSelection){
+    const isSelectable = exchangeSelection.phase === 'select';
+    mySweetsEl.classList.toggle('swap-selectable', isSelectable);
+    mySweetsEl.classList.toggle(
+      'swap-selected',
+      Array.isArray(exchangeSelection.selectedUids)
+        && exchangeSelection.selectedUids.includes(state.userId)
+    );
+    if(isSelectable){
+      mySweetsEl.onpointerdown = (e) => {
+        e.stopPropagation();
+        handleExchangeCandidate(state.userId);
+      };
+    }
+  }
 
   // ★ 追加：自分スイーツにも投票ミニを重ねる
   renderMySweetsVoteStack();
@@ -4125,12 +4173,33 @@ function updateActionSelectionUI(){
       if(actionConfirmPop) actionConfirmPop.classList.remove('hidden');
     }
   }
+  if(actionSelection.type === 'exchange'){
+    const selectedUids = Array.isArray(actionSelection.selectedUids)
+      ? actionSelection.selectedUids
+      : [];
+    if(actionSelection.phase === 'select'){
+      if(actionExplainPop){
+        actionExplainPop.textContent = `交換：入れ替えたいスイーツを2枚選んでください。（${selectedUids.length}/2）`;
+        actionExplainPop.classList.remove('hidden');
+      }
+    }
+    if(actionSelection.phase === 'confirm'){
+      const [firstUid, secondUid] = selectedUids;
+      const firstName = getPlayerByUid(firstUid)?.name ?? 'プレイヤー';
+      const secondName = getPlayerByUid(secondUid)?.name ?? 'プレイヤー';
+      if(actionConfirmText){
+        actionConfirmText.textContent = `「${firstName}」と「${secondName}」のスイーツを交換しますか。`;
+      }
+      if(actionConfirmPop) actionConfirmPop.classList.remove('hidden');
+    }
+  }
 }
 
 function setActionSelection(next){
   actionSelection = next;
   updateActionSelectionUI();
   applyMyTurnClasses();
+  renderMySweets();
   updateSweetsDeckUI();
   renderMyVoteChip();
   updatePassRoundBtn();
@@ -4167,6 +4236,19 @@ function beginScoutSelection(){
   });
 }
 
+function beginExchangeSelection(){
+  const candidates = getSweetsOwners();
+  if(candidates.length < 2) return Promise.resolve(null);
+  return new Promise(resolve => {
+    setActionSelection({
+      type:'exchange',
+      phase:'select',
+      selectedUids: [],
+      resolve,
+    });
+  });
+}
+
 function handleWiretapCandidate(uid){
   if(!actionSelection || actionSelection.type !== 'wiretap') return;
   if(actionSelection.phase !== 'select') return;
@@ -4183,6 +4265,34 @@ function handleScoutCandidate(uid){
   actionSelection.targetUid = uid;
   updateActionSelectionUI();
   if(latestPlayers.length) renderPlayerCircle(latestPlayers);
+}
+
+function handleExchangeCandidate(uid){
+  if(!actionSelection || actionSelection.type !== 'exchange') return;
+  if(actionSelection.phase !== 'select') return;
+  if(!getSweetsCardByUid(uid)) return;
+
+  const selected = Array.isArray(actionSelection.selectedUids)
+    ? actionSelection.selectedUids
+    : [];
+  const alreadySelected = selected.includes(uid);
+  if(alreadySelected){
+    const nextSelected = selected.filter(id => id !== uid);
+    setActionSelection({
+      ...actionSelection,
+      selectedUids: nextSelected,
+      phase:'select',
+    });
+    return;
+  }
+  if(selected.length >= 2) return;
+  const nextSelected = [...selected, uid];
+  const nextPhase = (nextSelected.length === 2) ? 'confirm' : 'select';
+  setActionSelection({
+    ...actionSelection,
+    selectedUids: nextSelected,
+    phase: nextPhase,
+  });
 }
 
 function triggerWiretapZoom(uid){
@@ -4259,6 +4369,15 @@ if(actionConfirmYes){
     if(actionSelection.phase !== 'confirm') return;
     const targetUid = actionSelection.targetUid;
     const resolve = actionSelection.resolve;
+    if(actionSelection.type === 'exchange'){
+      const selectedUids = Array.isArray(actionSelection.selectedUids)
+        ? actionSelection.selectedUids
+        : [];
+      if(selectedUids.length < 2) return;
+      clearActionSelection();
+      if(resolve) resolve(selectedUids);
+      return;
+    }
     clearActionSelection();
     if(resolve) resolve(targetUid);
   });
@@ -4267,6 +4386,14 @@ if(actionConfirmNo){
   actionConfirmNo.addEventListener('click', () => {
     if(!actionSelection) return;
     if(actionSelection.phase !== 'confirm') return;
+    if(actionSelection.type === 'exchange'){
+      setActionSelection({
+        ...actionSelection,
+        phase:'select',
+        selectedUids: [],
+      });
+      return;
+    }
     actionSelection.phase = 'select';
     actionSelection.targetUid = null;
     updateActionSelectionUI();
@@ -4657,6 +4784,75 @@ function animateMySweetsToTag(targetEl, card){
   mySweetsFlyAnimatedFor = card.id;
 }
 
+const SWAP_MOVE_DURATION_MS = 650;
+
+function getSwapSweetsRect(uid){
+  const candidates = [];
+  if(uid === state.userId && mySweetsEl){
+    candidates.push(mySweetsEl);
+  }
+  const wrapEl = document.querySelector(`.sweets-wrap[data-sweets-uid="${uid}"]`);
+  if(wrapEl) candidates.push(wrapEl);
+  const decidedEl = document.querySelector(`.selected-sweets-tag[data-sweets-uid="${uid}"]`);
+  if(decidedEl) candidates.push(decidedEl);
+
+  for(const el of candidates){
+    if(!el || el.classList.contains('hidden')) continue;
+    const rect = el.getBoundingClientRect();
+    if(rect && rect.width && rect.height) return rect;
+  }
+  return null;
+}
+
+
+
+function createSwapFlyCard(card, rect){
+  if(!rect || !card) return null;
+  const fly = document.createElement('div');
+  fly.className = 'sweets-fly-card';
+  fly.style.left = `${rect.left}px`;
+  fly.style.top = `${rect.top}px`;
+  fly.style.width = `${rect.width}px`;
+  fly.style.height = `${rect.height}px`;
+
+  const img = document.createElement('img');
+  img.src = card.img || card.fallback || SWEETS_BACK_IMG;
+  img.alt = `sweets ${card.value ?? ''}`;
+  img.onerror = () => { if(card.fallback) img.src = card.fallback; };
+  fly.appendChild(img);
+
+  document.body.appendChild(fly);
+  return fly;
+}
+
+function animateSwapFly(fly, fromRect, toRect){
+  if(!fly || !fromRect || !toRect) return;
+  const dx = toRect.left - fromRect.left;
+  const dy = toRect.top - fromRect.top;
+  const scaleX = toRect.width / fromRect.width;
+  const scaleY = toRect.height / fromRect.height;
+  fly.animate([
+    { transform:'translate(0px, 0px) scale(1, 1)' },
+    { transform:`translate(${dx}px, ${dy}px) scale(${scaleX}, ${scaleY})` },
+  ], {
+    duration: SWAP_MOVE_DURATION_MS,
+    easing: 'ease-in-out',
+    fill: 'forwards',
+  }).onfinish = () => fly.remove();
+}
+
+function animateSweetsSwap({ fromUid, toUid, fromCard, toCard }){
+  if(!fromUid || !toUid) return;
+  const fromRect = getSwapSweetsRect(fromUid);
+  const toRect = getSwapSweetsRect(toUid);
+  if(!fromRect || !toRect) return;
+
+  const flyFrom = createSwapFlyCard(fromCard, fromRect);
+  const flyTo = createSwapFlyCard(toCard, toRect);
+  animateSwapFly(flyFrom, fromRect, toRect);
+  animateSwapFly(flyTo, toRect, fromRect);
+}
+
 
 function renderPlayerCircle(players){
   playerCircle.innerHTML = '';
@@ -4958,6 +5154,25 @@ if(started && roleAssigned){
     sweetsWrap.className = 'sweets-wrap';
     sweetsWrap.dataset.sweetsUid = p.id;
     sweetsWrap.classList.toggle('empty', !hasTheirSweets);
+    const exchangeSelection = actionSelection?.type === 'exchange'
+      ? actionSelection
+      : null;
+    const exchangeSelectable = exchangeSelection?.phase === 'select';
+    if(exchangeSelection && hasTheirSweets){
+      const selectedUids = Array.isArray(exchangeSelection.selectedUids)
+        ? exchangeSelection.selectedUids
+        : [];
+      sweetsWrap.classList.toggle('swap-selectable', exchangeSelectable);
+      sweetsWrap.classList.toggle('swap-selected', selectedUids.includes(p.id));
+      if(exchangeSelectable){
+        const onExchange = (e) => {
+          e.stopPropagation();
+          handleExchangeCandidate(p.id);
+        };
+        sweetsWrap.addEventListener('pointerdown', onExchange);
+        sweetsWrap.onclick = onExchange;
+      }
+    }
     if(collectedSweetsHidden.has(p.id)){
       sweetsWrap.classList.add('collect-hidden');
     }
@@ -6800,6 +7015,10 @@ async function runActionCardEffect(cardObj){
   }
   if(cardObj?.name === '仕込み'){
     await runPreparationEffect(cardObj);
+    return;
+  }
+  if(cardObj?.name === '交換'){
+    await runExchangeEffect();
   }
 }
 
@@ -6862,6 +7081,47 @@ async function runPreparationEffect(cardObj){
     toUid: state.userId,
     toSeat: seat,
   });
+}
+
+async function runExchangeEffect(){
+  if(!state.room?.gameStarted) return;
+  const candidates = getSweetsOwners();
+  if(candidates.length < 2) return;
+  const selection = await beginExchangeSelection();
+  if(!selection || selection.length < 2) return;
+  const [firstUid, secondUid] = selection;
+  if(!firstUid || !secondUid || firstUid === secondUid) return;
+  await swapSweetsBetweenUids(firstUid, secondUid);
+}
+
+async function swapSweetsBetweenUids(firstUid, secondUid){
+  if(!state.roomCode) return;
+  if(firstUid === secondUid) return;
+  const base = `rooms/${state.roomCode}/hands`;
+  const [firstSnap, secondSnap] = await Promise.all([
+    get(ref(db, `${base}/${firstUid}`)),
+    get(ref(db, `${base}/${secondUid}`)),
+  ]);
+  const firstData = firstSnap.val() || {};
+  const secondData = secondSnap.val() || {};
+  const firstSweets = Array.isArray(firstData.sweets) ? firstData.sweets : [];
+  const secondSweets = Array.isArray(secondData.sweets) ? secondData.sweets : [];
+  if(!firstSweets.length || !secondSweets.length) return;
+  const firstCard = firstSweets[0];
+  const secondCard = secondSweets[0];
+
+  await emitEvent({
+    type:'sweetsSwap',
+    fromUid:firstUid,
+    toUid:secondUid,
+    fromCard:firstCard,
+    toCard:secondCard,
+  });
+
+  await Promise.all([
+    update(ref(db, `${base}/${firstUid}`), { sweets: [secondCard] }),
+    update(ref(db, `${base}/${secondUid}`), { sweets: [firstCard] }),
+  ]);
 }
 
 
