@@ -184,7 +184,7 @@ display:none;
     user-select:none;
     touch-action:none;
   }
-  .sweets-deck-wrap{
+ .sweets-deck-wrap{
     position:relative;
     width:28px;
     height:40px;
@@ -192,6 +192,16 @@ display:none;
   .sweets-deck-wrap .sweets-deck{
     position:absolute;
     inset:0;
+  }
+  .sweets-deck-mover{
+    position:absolute;
+    inset:0;
+    transition:transform .45s cubic-bezier(.22,.84,.44,1);
+    will-change:transform;
+    z-index:4;
+  }
+  .sweets-deck-mover.relocating{
+    z-index:520;
   }
   .sweets-deck.hidden{display:none;}
   .sweets-deck .stack{position:absolute; inset:0;}
@@ -2156,15 +2166,17 @@ display:none;
           </div>
 
          <div class="sweets-deck-wrap">
-            <div id="sweetsDeckUI" class="sweets-deck hidden" aria-label="スイーツ山札">
-              <div class="stack" aria-hidden="true">
-                <div class="card c5"></div>
-                <div class="card c4"></div>
-                <div class="card c3"></div>
-                <div class="card c2"></div>
-                <div class="card c1"></div>
+            <div id="sweetsDeckMover" class="sweets-deck-mover">
+              <div id="sweetsDeckUI" class="sweets-deck hidden" aria-label="スイーツ山札">
+                <div class="stack" aria-hidden="true">
+                  <div class="card c5"></div>
+                  <div class="card c4"></div>
+                  <div class="card c3"></div>
+                  <div class="card c2"></div>
+                  <div class="card c1"></div>
+                </div>
+                <div id="sweetsDeckCount" class="count">0</div>
               </div>
-              <div id="sweetsDeckCount" class="count">0</div>
             </div>
             <div id="sweetsExcludedDeckUI" class="sweets-exclude-deck hidden" aria-label="スイーツ除外山札">
               <div class="stack" aria-hidden="true">
@@ -2468,6 +2480,7 @@ const roundChipImgEls = Array.from(document.querySelectorAll('#roundChips .round
 /* 中央の山札UI */
 const actionDeckUI = document.getElementById('actionDeckUI');
 const actionDeckCountEl = document.getElementById('actionDeckCount');
+const sweetsDeckMover = document.getElementById('sweetsDeckMover');
 const sweetsDeckUI = document.getElementById('sweetsDeckUI');
 const sweetsDeckCountEl = document.getElementById('sweetsDeckCount');
 const sweetsExcludedDeckUI = document.getElementById('sweetsExcludedDeckUI');
@@ -2850,6 +2863,51 @@ function updateSweetsDeckUI(){
   const excludedPulse = inspirationActive && excludedCount > 0;
   sweetsExcludedDeckUI.classList.toggle('pulsing', excludedPulse);
   sweetsExcludedDeckUI.classList.toggle('selectable', excludedPulse);
+}
+
+function getSweetsDeckFocus(){
+  const focus = state.game?.sweetsDeckFocus;
+  if(!focus || typeof focus !== 'object') return null;
+  if(!focus.uid || !focus.active) return null;
+  return focus;
+}
+
+function updateSweetsDeckRelocation(){
+  if(!sweetsDeckMover || !sweetsDeckUI) return;
+  if(sweetsDeckUI.classList.contains('hidden')){
+    sweetsDeckMover.classList.remove('relocating');
+    sweetsDeckMover.style.transform = '';
+    return;
+  }
+  const focus = getSweetsDeckFocus();
+  const shouldRelocate = !!(focus && focus.uid && focus.uid !== state.userId);
+  if(!shouldRelocate){
+    sweetsDeckMover.classList.remove('relocating');
+    sweetsDeckMover.style.transform = '';
+    return;
+  }
+
+  const tagEl = document.querySelector(`.player-tag[data-uid="${focus.uid}"]`);
+  if(!tagEl){
+    sweetsDeckMover.classList.remove('relocating');
+    sweetsDeckMover.style.transform = '';
+    return;
+  }
+
+  const deckRect = sweetsDeckUI.getBoundingClientRect();
+  const tagRect = tagEl.getBoundingClientRect();
+  if(!deckRect.width || !deckRect.height || !tagRect.width || !tagRect.height) return;
+
+  const targetX = tagRect.left + tagRect.width / 2;
+  const targetY = tagRect.bottom + 8;
+  const deckCenterX = deckRect.left + deckRect.width / 2;
+  const deckCenterY = deckRect.top + deckRect.height / 2;
+
+  const moveX = targetX - deckCenterX;
+  const moveY = targetY - deckCenterY;
+
+  sweetsDeckMover.classList.add('relocating');
+  sweetsDeckMover.style.transform = `translate(${moveX}px, ${moveY}px)`;
 }
 
 function getRequiredSweetsCount(){
@@ -6783,6 +6841,7 @@ if(leaderSeat !== null && leaderSeat === p.seatIndex){
   scheduleVoteChipAnimations();
   updateActionDeckUI();
   updateSweetsDeckUI();
+  requestAnimationFrame(updateSweetsDeckRelocation);
   if(pendingWiretapZoomUid){
     const uid = pendingWiretapZoomUid;
     pendingWiretapZoomUid = null;
@@ -9174,6 +9233,19 @@ function canStartSweetsDrag(source){
   return canOpenSweetsPicker();
 }
 
+async function setSweetsDeckFocus(active){
+  if(!state.roomCode) return;
+  const focusRef = ref(db, `rooms/${state.roomCode}/game/sweetsDeckFocus`);
+  const current = getSweetsDeckFocus();
+  if(active){
+    if(current?.uid === state.userId && current.active) return;
+    await set(focusRef, { uid: state.userId, active: true, ts: Date.now() });
+    return;
+  }
+  if(current?.uid !== state.userId) return;
+  await set(focusRef, null);
+}
+
 function openSweetsPicker(options = {}){
   const source = options.source ?? SWEETS_PICK_SOURCE.MAIN;
   const mode = options.mode ?? SWEETS_PANEL_MODE.PICK;
@@ -9224,12 +9296,16 @@ function openSweetsPicker(options = {}){
   });
 
   sweetsBackdrop.classList.remove('hidden');
+  if(source === SWEETS_PICK_SOURCE.MAIN){
+    setSweetsDeckFocus(true);
+  }
 }
 
 function closeSweetsPicker(){
   if(sweetsPanelLocked) return;
   sweetsBackdrop.classList.add('hidden');
   setSweetsPanelMode(SWEETS_PANEL_MODE.PICK);
+  setSweetsDeckFocus(false);
 }
 
 function getTrialAddedIds(){
@@ -9492,6 +9568,7 @@ async function acquireSweetsCard(cardObj){
   btnSweetsClose.disabled = false;
   sweetsBackdrop.classList.add('hidden');
   setSweetsPanelMode(SWEETS_PANEL_MODE.PICK);
+  setSweetsDeckFocus(false);
 
   await endTurn('drawSweets');
 
@@ -9529,6 +9606,7 @@ async function acquireExcludedSweetsCard(cardObj){
   btnSweetsClose.disabled = false;
   sweetsBackdrop.classList.add('hidden');
   setSweetsPanelMode(SWEETS_PANEL_MODE.PICK);
+  setSweetsDeckFocus(false);
 
   if(fromRect && toRect){
     requestAnimationFrame(() => {
@@ -9884,6 +9962,7 @@ function syncFloatingDragPositions(){
     robVoteDrag.ghost.style.left = `${x}px`;
     robVoteDrag.ghost.style.top  = `${y}px`;
   }
+  updateSweetsDeckRelocation();
 }
 
 mainEl.addEventListener('scroll', syncFloatingDragPositions, { passive: true });
