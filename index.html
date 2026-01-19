@@ -2876,21 +2876,21 @@ function updateSweetsDeckRelocation(){
   if(!sweetsDeckMover || !sweetsDeckUI) return;
   if(sweetsDeckUI.classList.contains('hidden')){
     sweetsDeckMover.classList.remove('relocating');
-    sweetsDeckMover.style.transform = '';
+    sweetsDeckMover.style.transform = 'translate(0px, 0px)';
     return;
   }
   const focus = getSweetsDeckFocus();
   const shouldRelocate = !!(focus && focus.uid && focus.uid !== state.userId);
   if(!shouldRelocate){
     sweetsDeckMover.classList.remove('relocating');
-    sweetsDeckMover.style.transform = '';
+    sweetsDeckMover.style.transform = 'translate(0px, 0px)';
     return;
   }
 
   const tagEl = document.querySelector(`.player-tag[data-uid="${focus.uid}"]`);
   if(!tagEl){
     sweetsDeckMover.classList.remove('relocating');
-    sweetsDeckMover.style.transform = '';
+    sweetsDeckMover.style.transform = 'translate(0px, 0px)';
     return;
   }
 
