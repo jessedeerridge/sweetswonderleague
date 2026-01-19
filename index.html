@@ -9203,28 +9203,39 @@ const sweetsDeckMoveState = {
   uid: null,
 };
 
-function moveSweetsDeckToTag(uid){
+function getSweetsDeckBaseRect(){
+  const wrap = sweetsDeckMover?.parentElement;
+  if(!wrap) return null;
+  return wrap.getBoundingClientRect();
+}
+
+function applySweetsDeckTransform(uid, baseRect){
   if(!sweetsDeckMover || sweetsDeckUI.classList.contains('hidden')) return;
-  if(!uid) return;
+  if(!uid || !baseRect) return;
   const tag = document.querySelector(`.player-tag[data-uid="${uid}"]`);
   if(!tag) return;
-  const deckRect = sweetsDeckMover.getBoundingClientRect();
-  if(!deckRect.width || !deckRect.height) return;
   const tagRect = tag.getBoundingClientRect();
   const targetX = tagRect.left + tagRect.width / 2;
-  const targetY = tagRect.bottom + 10 + deckRect.height / 2;
-  const deckX = deckRect.left + deckRect.width / 2;
-  const deckY = deckRect.top + deckRect.height / 2;
+  const targetY = tagRect.bottom + 10 + baseRect.height / 2;
+  const deckX = baseRect.left + baseRect.width / 2;
+  const deckY = baseRect.top + baseRect.height / 2;
   sweetsDeckMover.style.setProperty('--sweetsDeckMoveX', `${targetX - deckX}px`);
   sweetsDeckMover.style.setProperty('--sweetsDeckMoveY', `${targetY - deckY}px`);
   sweetsDeckMover.classList.add('moving');
+}
+
+function moveSweetsDeckToTag(uid){
+  if(!uid) return;
   sweetsDeckMoveState.active = true;
   sweetsDeckMoveState.uid = uid;
+  const baseRect = getSweetsDeckBaseRect();
+  applySweetsDeckTransform(uid, baseRect);
 }
 
 function updateSweetsDeckMovePosition(){
   if(!sweetsDeckMoveState.active || !sweetsDeckMoveState.uid) return;
-  moveSweetsDeckToTag(sweetsDeckMoveState.uid);
+  const baseRect = getSweetsDeckBaseRect();
+  applySweetsDeckTransform(sweetsDeckMoveState.uid, baseRect);
 }
 
 function resetSweetsDeckPosition(){
