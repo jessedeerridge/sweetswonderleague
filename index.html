@@ -424,10 +424,19 @@ display:none;
 
   .player-tag{
     position:absolute;transform:translate(-50%,-50%);
-    padding:4px 8px;border-radius:999px;background:var(--tagFill, #f8f8f8);
-    border:1px solid var(--tagBorder, #ddd);font-size:12px;white-space:nowrap;
-    color:var(--tagText, #111);
     display:flex;align-items:center;gap:6px;
+  }
+  .player-tag .name-pill{
+    display:inline-flex;
+    align-items:center;
+    padding:4px 8px;
+    border-radius:999px;
+    background:var(--tagFill, #f8f8f8);
+    border:1px solid var(--tagBorder, #ddd);
+    font-size:12px;
+    white-space:nowrap;
+    color:var(--tagText, #111);
+    font-weight:inherit;
   }
   .player-tag.me{
     transform:translate(-50%,-50%) translateY(45px);
@@ -435,15 +444,12 @@ display:none;
   /* ★ 手番の青枠：ネームタグ輪郭の外側 */
   .player-tag.active-turn{
     outline:none;
-    font-weight:800;
   }
-  .player-tag .name-text{
-    display:inline-block;
-  }
-  .player-tag .name-text.active-turn{
+  .player-tag .name-pill.active-turn{
     animation:nametagpuls1 1.05s ease-in-out infinite;
     transform-origin:center;
     will-change:transform;
+    font-weight:800;
   }
 
   /* otherplayerscircle 内のタグは「中央配置」扱い */
@@ -6673,7 +6679,10 @@ function renderPlayerCircle(players){
     if(p.id === state.userId){
       const tag = document.createElement('div');
       tag.className = 'player-tag me';
-      tag.textContent = p.name;
+      const namePill = document.createElement('span');
+      namePill.className = 'name-pill';
+      namePill.textContent = p.name;
+      tag.appendChild(namePill);
       tag.style.left = `${x}%`;
       tag.style.top = `${y}%`;
       tag.dataset.seat = String(p.seatIndex);
@@ -6839,10 +6848,10 @@ circle.style.setProperty('--rotDeg', `${rotDeg}deg`);
 const tag = document.createElement('div');
 tag.className = 'player-tag in-othercircle';
 
-const nameText = document.createElement('span');
-nameText.className = 'name-text';
-nameText.textContent = p.name;
-tag.appendChild(nameText);
+const namePill = document.createElement('span');
+namePill.className = 'name-pill';
+namePill.textContent = p.name;
+tag.appendChild(namePill);
 tag.dataset.seat = String(p.seatIndex);
 tag.dataset.uid = p.id;
 applyTagChipStyle(tag, p.tagChipStyle);
@@ -6897,7 +6906,7 @@ if(scoutSelectable){
 
 if(activeSeat === p.seatIndex && p.id !== state.userId){
   tag.classList.add('active-turn');
-  nameText.classList.add('active-turn');
+  namePill.classList.add('active-turn');
 }
 
 circle.appendChild(tag);
