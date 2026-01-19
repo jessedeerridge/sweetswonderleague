@@ -2894,14 +2894,15 @@ function updateSweetsDeckRelocation(){
     return;
   }
 
+  const baseRect = sweetsDeckMover.parentElement?.getBoundingClientRect?.();
   const deckRect = sweetsDeckUI.getBoundingClientRect();
   const tagRect = tagEl.getBoundingClientRect();
-  if(!deckRect.width || !deckRect.height || !tagRect.width || !tagRect.height) return;
+  if(!baseRect || !baseRect.width || !baseRect.height || !tagRect.width || !tagRect.height) return;
 
   const targetX = tagRect.left + tagRect.width / 2;
   const targetY = tagRect.bottom + 8;
-  const deckCenterX = deckRect.left + deckRect.width / 2;
-  const deckCenterY = deckRect.top + deckRect.height / 2;
+  const deckCenterX = baseRect.left + baseRect.width / 2;
+  const deckCenterY = baseRect.top + baseRect.height / 2;
 
   const moveX = targetX - deckCenterX;
   const moveY = targetY - deckCenterY;
