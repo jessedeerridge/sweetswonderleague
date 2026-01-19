@@ -4287,15 +4287,16 @@ function removeMovingVoteChip(key){
   }
   movingVoteChips.set(key, count - 1);
 }
-function moveVoteChipElement({ voterUid, fromTargetUid, toTargetUid }){
+function moveVoteChipElement({ voterUid, fromTargetUid, toTargetUid, sourceRect }){
   const movingKey = `${voterUid}:${toTargetUid}`;
   const sourceEl = document.querySelector(
     `.vote-mini[data-voter-uid="${voterUid}"][data-target-uid="${fromTargetUid}"]`
   );
-  const sourceRect = sourceEl?.getBoundingClientRect()
+  const moveSourceRect = sourceRect
+    || sourceEl?.getBoundingClientRect()
     || getVoteChipSourceRectForMove(voterUid, fromTargetUid);
   const targetRect = getVoteChipTargetRectForMove(toTargetUid);
-  if(!sourceRect || !targetRect) return;
+  if(!moveSourceRect || !targetRect) return;
 
   addMovingVoteChip(movingKey);
   const existingTargetStack = document.querySelector(`.vote-stack[data-target-uid="${toTargetUid}"]`);
@@ -4305,7 +4306,7 @@ function moveVoteChipElement({ voterUid, fromTargetUid, toTargetUid }){
   }
 
   if(!sourceEl){
-    animateVoteChipRelocate({ voterUid, sourceRect, targetUid: toTargetUid });
+    animateVoteChipRelocate({ voterUid, sourceRect: moveSourceRect, targetUid: toTargetUid });
     setTimeout(() => {
       removeMovingVoteChip(movingKey);
       if(latestPlayers.length) renderPlayerCircle(latestPlayers);
@@ -4314,33 +4315,22 @@ function moveVoteChipElement({ voterUid, fromTargetUid, toTargetUid }){
     return;
   }
 
-  const moveEl = sourceEl;
-  const originalStyle = {
-    position: moveEl.style.position,
-    left: moveEl.style.left,
-    top: moveEl.style.top,
-    width: moveEl.style.width,
-    height: moveEl.style.height,
-    margin: moveEl.style.margin,
-    zIndex: moveEl.style.zIndex,
-    pointerEvents: moveEl.style.pointerEvents,
-    transform: moveEl.style.transform,
-  };
+  const flyEl = sourceEl.cloneNode(true);
+  flyEl.style.position = 'fixed';
+  flyEl.style.left = `${moveSourceRect.left}px`;
+  flyEl.style.top = `${moveSourceRect.top}px`;
+  flyEl.style.width = `${moveSourceRect.width}px`;
+  flyEl.style.height = `${moveSourceRect.height}px`;
+  flyEl.style.margin = '0';
+  flyEl.style.zIndex = '999';
+  flyEl.style.pointerEvents = 'none';
+  flyEl.style.willChange = 'transform';
+  document.body.appendChild(flyEl);
+  sourceEl.remove();
 
-  moveEl.style.position = 'fixed';
-  moveEl.style.left = `${sourceRect.left}px`;
-  moveEl.style.top = `${sourceRect.top}px`;
-  moveEl.style.width = `${sourceRect.width}px`;
-  moveEl.style.height = `${sourceRect.height}px`;
-  moveEl.style.margin = '0';
-  moveEl.style.zIndex = '999';
-  moveEl.style.pointerEvents = 'none';
-  moveEl.style.transform = '';
-  document.body.appendChild(moveEl);
-
-  const dx = targetRect.left - sourceRect.left;
-  const dy = targetRect.top - sourceRect.top;
-  moveEl.animate([
+  const dx = targetRect.left - moveSourceRect.left;
+  const dy = targetRect.top - moveSourceRect.top;
+  flyEl.animate([
     { transform: 'translate(0px, 0px) scale(1)' },
     { transform: `translate(${dx}px, ${dy}px) scale(1)` },
   ], {
@@ -4348,27 +4338,21 @@ function moveVoteChipElement({ voterUid, fromTargetUid, toTargetUid }){
     easing: 'ease-in-out',
     fill: 'forwards',
   }).onfinish = () => {
-    moveEl.style.position = originalStyle.position;
-    moveEl.style.left = originalStyle.left;
-    moveEl.style.top = originalStyle.top;
-    moveEl.style.width = originalStyle.width;
-    moveEl.style.height = originalStyle.height;
-    moveEl.style.margin = originalStyle.margin;
-    moveEl.style.zIndex = originalStyle.zIndex;
-    moveEl.style.pointerEvents = originalStyle.pointerEvents;
-    moveEl.style.transform = originalStyle.transform;
-    moveEl.dataset.targetUid = toTargetUid;
-
     const targetStack = document.querySelector(`.vote-stack[data-target-uid="${toTargetUid}"]`);
     if(targetStack){
-      targetStack.appendChild(moveEl);
-    }else{
-      moveEl.remove();
+      sourceEl.dataset.targetUid = toTargetUid;
+      targetStack.appendChild(sourceEl);
+    } else {
       if(latestPlayers.length) renderPlayerCircle(latestPlayers);
       renderMySweetsVoteStack();
     }
-
+    flyEl.remove();
     removeMovingVoteChip(movingKey);
+
+    if(!targetStack){
+      if(latestPlayers.length) renderPlayerCircle(latestPlayers);
+      renderMySweetsVoteStack();
+    }
   };
 }
 async function moveVoteChipBetweenTargets(fromTargetUid, toTargetUid, voterUid, options = {}){
@@ -4377,7 +4361,12 @@ async function moveVoteChipBetweenTargets(fromTargetUid, toTargetUid, voterUid, 
   if(fromTargetUid === toTargetUid) return false;
 
   requestAnimationFrame(() => {
-    moveVoteChipElement({ voterUid, fromTargetUid, toTargetUid });
+    moveVoteChipElement({
+      voterUid,
+      fromTargetUid,
+      toTargetUid,
+      sourceRect: options.sourceRect || null,
+    });
   });
 
   const base = `rooms/${state.roomCode}/votes`;
