@@ -188,12 +188,11 @@ display:none;
     position:relative;
     width:28px;
     height:40px;
-    transform:translate(0,0);
+  }
+  .sweets-deck.moving-to-tag{
+    transform:translate(var(--sweetsDeckMoveX, 0px), var(--sweetsDeckMoveY, 0px));
     transition:transform .55s ease;
     will-change:transform;
-  }
-  .sweets-deck-wrap.moving-to-tag{
-    transform:translate(var(--sweetsDeckMoveX, 0px), var(--sweetsDeckMoveY, 0px));
     z-index:12;
     pointer-events:none;
   }
@@ -2478,7 +2477,6 @@ const roundChipImgEls = Array.from(document.querySelectorAll('#roundChips .round
 const actionDeckUI = document.getElementById('actionDeckUI');
 const actionDeckCountEl = document.getElementById('actionDeckCount');
 const sweetsDeckUI = document.getElementById('sweetsDeckUI');
-const sweetsDeckWrap = document.getElementById('sweetsDeckWrap');
 const sweetsDeckCountEl = document.getElementById('sweetsDeckCount');
 const sweetsExcludedDeckUI = document.getElementById('sweetsExcludedDeckUI');
 const sweetsExcludedDeckCountEl = document.getElementById('sweetsExcludedDeckCount');
@@ -2864,14 +2862,14 @@ function updateSweetsDeckUI(){
 }
 
 function clearSweetsDeckMove(){
-  if(!sweetsDeckWrap) return;
-  sweetsDeckWrap.classList.remove('moving-to-tag');
-  sweetsDeckWrap.style.removeProperty('--sweetsDeckMoveX');
-  sweetsDeckWrap.style.removeProperty('--sweetsDeckMoveY');
+  if(!sweetsDeckUI) return;
+  sweetsDeckUI.classList.remove('moving-to-tag');
+  sweetsDeckUI.style.removeProperty('--sweetsDeckMoveX');
+  sweetsDeckUI.style.removeProperty('--sweetsDeckMoveY');
 }
 
 function updateSweetsDeckMove(){
-  if(!sweetsDeckWrap || !sweetsDeckUI) return;
+  if(!sweetsDeckUI) return;
   const targetUid = state.game?.sweetsPicking;
   if(!targetUid || targetUid === state.userId || sweetsDeckUI.classList.contains('hidden')){
     clearSweetsDeckMove();
@@ -2882,19 +2880,19 @@ function updateSweetsDeckMove(){
     clearSweetsDeckMove();
     return;
   }
-  const wrapRect = sweetsDeckWrap.getBoundingClientRect();
+  const wrapRect = sweetsDeckUI.getBoundingClientRect();
   const tagRect = tag.getBoundingClientRect();
   const targetX = tagRect.left + tagRect.width / 2 - wrapRect.width / 2;
   const targetY = tagRect.bottom + 6;
   const moveX = targetX - wrapRect.left;
   const moveY = targetY - wrapRect.top;
-  sweetsDeckWrap.style.setProperty('--sweetsDeckMoveX', `${moveX}px`);
-  sweetsDeckWrap.style.setProperty('--sweetsDeckMoveY', `${moveY}px`);
-  sweetsDeckWrap.classList.add('moving-to-tag');
+  sweetsDeckUI.style.setProperty('--sweetsDeckMoveX', `${moveX}px`);
+  sweetsDeckUI.style.setProperty('--sweetsDeckMoveY', `${moveY}px`);
+  sweetsDeckUI.classList.add('moving-to-tag');
 }
 
 function queueSweetsDeckMoveUpdate(){
-  if(!sweetsDeckWrap) return;
+  if(!sweetsDeckUI) return;
   if(sweetsDeckMoveRaf){
     cancelAnimationFrame(sweetsDeckMoveRaf);
   }
