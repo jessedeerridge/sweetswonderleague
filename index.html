@@ -379,8 +379,15 @@ display:none;
   50%  { transform: scale(1.4); } /* ← 強さ（例：1.06〜1.14） */
   100% { transform: scale(1); }
 }
+@keyframes pulseSweetsDeckTrial {
+  0%   { transform: scale(1); }
+  50%  { transform: scale(1.4); }
+  100% { transform: scale(1); }
+}
   .sweets-deck.pulsing{ animation:pulseSweetsDeck 1.05s ease-in-out infinite; }
+  .sweets-deck.trial-pulsing{ animation:pulseSweetsDeckTrial 1.05s ease-in-out infinite; }
   .sweets-deck.pulsing:hover{ animation:none; transform:scale(1.14); }
+  .sweets-deck.trial-pulsing:hover{ animation:none; transform:scale(1.14); }
   .sweets-exclude-deck.pulsing{ animation:pulseSweetsDeck 1.05s ease-in-out infinite; }
   .sweets-exclude-deck.pulsing:hover{ animation:none; transform:scale(1.14); }
   .sweets-exclude-deck.selectable{ pointer-events:auto; cursor:pointer; }
@@ -536,7 +543,7 @@ display:none;
   border-radius:14px;
   border:2px solid #f59e0b;
   box-shadow:0 14px 30px rgba(0,0,0,.25);
-  z-index:280;
+  z-index:720;
   white-space:nowrap;
 }
 .leader-pick-pop.hidden{display:none;}
@@ -1320,6 +1327,29 @@ border-radius:0px;
     object-fit:cover;
     display:block;
   }
+  .sweets-pick-card.trial-added{
+    border:2px solid #7dd3fc;
+    box-shadow:0 10px 24px rgba(125,211,252,.35);
+  }
+  .sweets-pick-card .trial-added-note{
+    position:absolute;
+    left:50%;
+    bottom:6px;
+    transform:translateX(-50%);
+    font-size:10px;
+    font-weight:800;
+    color:#fff;
+    background:#38bdf8;
+    border:1px solid #7dd3fc;
+    border-radius:999px;
+    padding:2px 6px;
+    text-align:center;
+    white-space:normal;
+    line-height:1.2;
+    max-width:96%;
+    overflow-wrap:break-word;
+    z-index:2;
+  }
 
   /* ★ スイーツドラッグ中の見た目 */
  .sweets-dragging{
@@ -1343,10 +1373,44 @@ border-radius:0px;
     padding:8px 12px;
     margin-top:130px;
   }
+  .sweets-drop-zone.trial{
+    border:2px dashed #7dd3fc;
+    color:#0ea5e9;
+    background:rgba(224,242,254,.65);
+    margin-top:28px;
+    width:min(520px, calc(100% - 32px));
+    justify-content:center;
+  }
   .sweets-drop-zone.active{
     border-color:transparent;
     color:transparent;
     background:transparent;
+  }
+  .sweets-drop-zone.trial.active{
+    border-color:#38bdf8;
+    color:#0369a1;
+    background:rgba(186,230,253,.9);
+  }
+  .sweets-drop-zone .trial-drop-preview{
+    width:90px;
+    height:135px;
+    border-radius:12px;
+    border:2px solid #7dd3fc;
+    background:#fff;
+    box-shadow:0 10px 24px rgba(0,0,0,.18);
+    display:flex;
+    align-items:center;
+    justify-content:center;
+    overflow:hidden;
+  }
+  .sweets-drop-zone .trial-drop-preview img{
+    width:100%;
+    height:100%;
+    object-fit:cover;
+    display:block;
+  }
+  .sweets-backdrop.trial .sweets-panel{
+    top:80px;
   }
 
   /* =========================
@@ -1487,7 +1551,7 @@ body.rob-active .vote-mini:hover{
     position:fixed;
     width:90px;
     height:135px;
-    border-radius:7px;
+    border-radius:12px;
     border:1px solid rgba(255,255,255,.25);
     background:url('swsweetsura.jpg') center/cover no-repeat;
     z-index:610;
@@ -2407,6 +2471,9 @@ const sweetsBackdrop = document.getElementById('sweetsBackdrop');
 const sweetsDropZone = document.getElementById('sweetsDropZone');
 const btnSweetsClose = document.getElementById('btnSweetsClose');
 const sweetsGrid = document.getElementById('sweetsGrid');
+const sweetsPanelTitleEl = sweetsBackdrop?.querySelector('.sweets-panel-title');
+const sweetsPanelDefaultTitle = sweetsPanelTitleEl?.textContent?.trim() || 'スイーツ（下にドラッグ）';
+const sweetsDropZoneDefaultText = sweetsDropZone?.textContent?.trim() || 'ここにカードを出すと獲得';
 
 const kickDialog = document.getElementById('kickDialog');
 const kickMessage = document.getElementById('kickMessage');
@@ -2767,8 +2834,10 @@ function updateSweetsDeckUI(){
 
   const instructionNames = getActiveInstructionNames();
   const sweetsAllowed = instructionNames.has('応援') || instructionNames.has('脅迫') || instructionNames.size === 0;
+  const trialActive = actionSelection?.type === 'trial' && actionSelection.phase === 'draw';
   const pulsing = isMyTurn() && !hasSweets() && sweetsAllowed && !isActionSelectionActive();
-  sweetsDeckUI.classList.toggle('pulsing', pulsing);
+  sweetsDeckUI.classList.toggle('pulsing', pulsing && !trialActive);
+  sweetsDeckUI.classList.toggle('trial-pulsing', trialActive);
   const inspirationActive = actionSelection?.type === 'inspiration' && actionSelection.phase === 'select';
   const excludedPulse = inspirationActive && excludedCount > 0;
   sweetsExcludedDeckUI.classList.toggle('pulsing', excludedPulse);
@@ -3059,7 +3128,7 @@ function subscribeEvents(){
     }
     if(!expectedSessionId && !currentGameSessionId) return;
    const isStaleEvent = typeof ev.at === 'number' && eventsSubscribedAt && ev.at < eventsSubscribedAt;
-    if(isStaleEvent && ['miniSweetsShuffleStart','roundRevealSweets','revealCard','flyBackCard','wiretapArrow','sweetsReturn'].includes(ev.type)) return;
+    if(isStaleEvent && ['miniSweetsShuffleStart','roundRevealSweets','revealCard','flyBackCard','wiretapArrow','sweetsReturn','trialExcludedToSweets','trialSweetsToExcluded'].includes(ev.type)) return;
     if(ev.type === 'revealCard'){
       showReveal(ev.card);
     }
@@ -3084,6 +3153,12 @@ function subscribeEvents(){
     }
     if(ev.type === 'sweetsReturn'){
       await animateSweetsReturnToDeck(ev.uid);
+    }
+    if(ev.type === 'trialExcludedToSweets'){
+      await animateTrialExcludedToSweets();
+    }
+    if(ev.type === 'trialSweetsToExcluded'){
+      await animateTrialSweetsToExcluded();
     }
 
     // ★ ラウンド終了演出（全員）
@@ -4985,6 +5060,22 @@ function updateActionSelectionUI(){
       }
     }
   }
+  if(actionSelection.type === 'trial'){
+    if(actionSelection.phase === 'draw'){
+      if(actionExplainPop){
+        actionExplainPop.textContent = '試行錯誤：スイーツ山札をクリックして除外山札から1枚戻してください。';
+        actionExplainPop.classList.remove('hidden');
+      }
+    }
+    if(actionSelection.phase === 'select'){
+    }
+    if(actionSelection.phase === 'confirm'){
+      if(actionConfirmText){
+        actionConfirmText.textContent = 'このカードを除外しますか。';
+      }
+      if(actionConfirmPop) actionConfirmPop.classList.remove('hidden');
+    }
+  }
 }
 
 let actionBlockedTimer = null;
@@ -5120,6 +5211,17 @@ function beginInspirationSelection(){
     setActionSelection({
       type:'inspiration',
       phase:'select',
+      resolve,
+    });
+  });
+}
+
+function beginTrialSelection(){
+  return new Promise(resolve => {
+    setActionSelection({
+      type:'trial',
+      phase:'draw',
+      addedIds: [],
       resolve,
     });
   });
@@ -5292,6 +5394,39 @@ if(actionConfirmYes){
       if(resolve) resolve(true);
       return;
     }
+    if(actionSelection.type === 'trial'){
+      const pendingCard = actionSelection.pendingCard;
+      if(!pendingCard || !state.roomCode) return;
+      const base = `rooms/${state.roomCode}/decks`;
+      const [sweetsSnap, excludedSnap] = await Promise.all([
+        get(ref(db, `${base}/sweets`)),
+        get(ref(db, `${base}/sweetsExcluded`)),
+      ]);
+      const sweets = Array.isArray(sweetsSnap.val()) ? sweetsSnap.val() : [];
+      const excluded = Array.isArray(excludedSnap.val()) ? excludedSnap.val() : [];
+      const nextSweets = sweets.filter(card => card.id !== pendingCard.id);
+      const nextExcluded = [...excluded, pendingCard];
+
+      await Promise.all([
+        set(ref(db, `${base}/sweets`), nextSweets),
+        set(ref(db, `${base}/sweetsExcluded`), nextExcluded),
+      ]);
+
+      updateSweetsDeckUI();
+
+      clearTrialDropPreview({ restoreSource: false });
+      sweetsPanelLocked = false;
+      btnSweetsClose.disabled = false;
+      sweetsBackdrop.classList.add('hidden');
+      setSweetsPanelMode(SWEETS_PANEL_MODE.PICK);
+
+      await new Promise(resolve => requestAnimationFrame(() => resolve()));
+      await emitEvent({ type:'trialSweetsToExcluded' });
+
+      clearActionSelection();
+      if(resolve) resolve(true);
+      return;
+    }
     clearActionSelection();
     if(resolve) resolve(targetUid);
   });
@@ -5317,6 +5452,17 @@ if(actionConfirmNo){
         voterUid:null,
         sourceRect:null,
       });
+      return;
+    }
+    if(actionSelection.type === 'trial'){
+      clearTrialDropPreview();
+      setActionSelection({
+        ...actionSelection,
+        phase:'select',
+        pendingCard: null,
+        sourceRect: null,
+      });
+      openTrialSweetsPicker();
       return;
     }
     actionSelection.phase = 'select';
@@ -8336,6 +8482,10 @@ function getActionBlockReason(cardObj){
   if(cardObj.name === '強奪'){
     if(getTotalVoteChipsOnField() <= 0) return '場に投票チップがありません。';
   }
+  if(cardObj.name === '試行錯誤'){
+    const excluded = state.room?.decks?.sweetsExcluded;
+    if(!Array.isArray(excluded) || !excluded.length) return '除外山札にカードがありません。';
+  }
   return null;
 }
 
@@ -8450,6 +8600,9 @@ async function runActionCardEffect(cardObj){
   if(cardObj?.name === 'ひらめき'){
     await runInspirationEffect();
     return true;
+  }
+  if(cardObj?.name === '試行錯誤'){
+    return await runTrialEffect();
   }
   return true;
 }
@@ -8716,6 +8869,17 @@ async function runInspirationEffect(){
   await selectionPromise;
 }
 
+async function runTrialEffect(){
+  if(!state.room?.gameStarted) return true;
+  const excluded = state.room?.decks?.sweetsExcluded;
+  if(!Array.isArray(excluded) || !excluded.length){
+    showActionBlockedMessage('除外山札にカードがありません。');
+    return true;
+  }
+  await beginTrialSelection();
+  return true;
+}
+
 async function revealAdvertisedSweets(uid){
   if(!state.roomCode || !uid) return;
   const refPath = ref(db, `rooms/${state.roomCode}/game/advertisedSweets/${uid}`);
@@ -8889,11 +9053,62 @@ async function runInstructionCardEffect(cardObj, targetUid){
    ★ スイーツ：山札クリック → 一覧表示
    ========================= */
 let sweetsPanelLocked = false;
+const SWEETS_PANEL_MODE = {
+  PICK: 'pick',
+  TRIAL: 'trial',
+};
+let sweetsPanelMode = SWEETS_PANEL_MODE.PICK;
 const SWEETS_PICK_SOURCE = {
   MAIN: 'main',
   EXCLUDED: 'excluded',
 };
 let sweetsPickSource = SWEETS_PICK_SOURCE.MAIN;
+let trialDropPreviewEl = null;
+let trialPendingSourceEl = null;
+
+function setSweetsPanelMode(mode){
+  sweetsPanelMode = mode;
+  if(!sweetsPanelTitleEl || !sweetsDropZone) return;
+  if(mode === SWEETS_PANEL_MODE.TRIAL){
+    sweetsPanelTitleEl.textContent = 'スイーツ（除外エリアにドラッグ）';
+    sweetsDropZone.textContent = '除外したいカードを下の除外エリアへドラッグしてください。';
+    sweetsDropZone.setAttribute('aria-label', 'スイーツ除外エリア');
+    sweetsDropZone.classList.add('trial');
+    sweetsBackdrop?.classList.add('trial');
+    return;
+  }
+  sweetsPanelTitleEl.textContent = sweetsPanelDefaultTitle;
+  sweetsDropZone.textContent = sweetsDropZoneDefaultText;
+  sweetsDropZone.setAttribute('aria-label', 'スイーツ獲得エリア');
+  sweetsDropZone.classList.remove('trial');
+  sweetsBackdrop?.classList.remove('trial');
+}
+
+function clearTrialDropPreview(options = {}){
+  const { restoreSource = true } = options;
+  if(trialDropPreviewEl){
+    trialDropPreviewEl.remove();
+    trialDropPreviewEl = null;
+  }
+  if(restoreSource && trialPendingSourceEl){
+    trialPendingSourceEl.style.visibility = '';
+  }
+  trialPendingSourceEl = null;
+}
+
+function showTrialDropPreview(cardObj){
+  if(!sweetsDropZone || !cardObj) return;
+  clearTrialDropPreview({ restoreSource: false });
+  const preview = document.createElement('div');
+  preview.className = 'trial-drop-preview';
+  const img = document.createElement('img');
+  img.src = cardObj.img;
+  img.alt = `sweets ${cardObj.value ?? ''}`;
+  img.onerror = () => { if(cardObj.fallback) img.src = cardObj.fallback; };
+  preview.appendChild(img);
+  sweetsDropZone.appendChild(preview);
+  trialDropPreviewEl = preview;
+}
 
 function canOpenSweetsPicker(){
   if(!state.room?.gameStarted) return false;
@@ -8940,6 +9155,9 @@ function getRestrictedSweetsIds(deck){
 }
 
 function canStartSweetsDrag(source){
+  if(sweetsPanelMode === SWEETS_PANEL_MODE.TRIAL){
+    return actionSelection?.type === 'trial' && actionSelection.phase === 'select';
+  }
   if(source === SWEETS_PICK_SOURCE.EXCLUDED){
     return canOpenExcludedSweetsPicker();
   }
@@ -8948,6 +9166,8 @@ function canStartSweetsDrag(source){
 
 function openSweetsPicker(options = {}){
   const source = options.source ?? SWEETS_PICK_SOURCE.MAIN;
+  const mode = options.mode ?? SWEETS_PANEL_MODE.PICK;
+  const highlightedIds = options.highlightedIds ?? null;
   const deck = source === SWEETS_PICK_SOURCE.EXCLUDED
     ? state.room?.decks?.sweetsExcluded
     : state.room?.decks?.sweets;
@@ -8956,9 +9176,10 @@ function openSweetsPicker(options = {}){
   sweetsPanelLocked = true;
   btnSweetsClose.disabled = true;
   sweetsPickSource = source;
+  setSweetsPanelMode(mode);
 
   const sorted = [...deck].sort((a,b)=> (a.value ?? 0) - (b.value ?? 0));
-  const allowedIds = (source === SWEETS_PICK_SOURCE.MAIN)
+  const allowedIds = (source === SWEETS_PICK_SOURCE.MAIN && mode === SWEETS_PANEL_MODE.PICK)
     ? getRestrictedSweetsIds(sorted)
     : null;
   const cols = Math.ceil(sorted.length / 2);
@@ -8979,6 +9200,13 @@ function openSweetsPicker(options = {}){
     img.onerror = () => { if(cardObj.fallback) img.src = cardObj.fallback; };
 
     el.appendChild(img);
+    if(highlightedIds && highlightedIds.has(cardObj.id)){
+      el.classList.add('trial-added');
+      const note = document.createElement('div');
+      note.className = 'trial-added-note';
+      note.textContent = '除外された山札から追加されました。';
+      el.appendChild(note);
+    }
     if(!el.classList.contains('restricted')){
       el.addEventListener('pointerdown', (e) => startDragSweets(e, cardObj, el));
     }
@@ -8991,13 +9219,108 @@ function openSweetsPicker(options = {}){
 function closeSweetsPicker(){
   if(sweetsPanelLocked) return;
   sweetsBackdrop.classList.add('hidden');
+  setSweetsPanelMode(SWEETS_PANEL_MODE.PICK);
+}
+
+function getTrialAddedIds(){
+  if(actionSelection?.type !== 'trial') return null;
+  return new Set(Array.isArray(actionSelection.addedIds) ? actionSelection.addedIds : []);
+}
+
+function openTrialSweetsPicker(){
+  const highlightedIds = getTrialAddedIds();
+  clearTrialDropPreview();
+  openSweetsPicker({
+    source: SWEETS_PICK_SOURCE.MAIN,
+    mode: SWEETS_PANEL_MODE.TRIAL,
+    highlightedIds,
+  });
+}
+
+function buildDeckTargetFromRect(rect){
+  return rect ? {
+    x: rect.left + rect.width / 2,
+    y: rect.top + rect.height / 2,
+    w: rect.width,
+    h: rect.height,
+    raw: rect,
+  } : null;
+}
+
+async function moveTopExcludedToSweetsDeckForTrial(){
+  if(!state.roomCode) return null;
+  const base = `rooms/${state.roomCode}/decks`;
+  const [sweetsSnap, excludedSnap] = await Promise.all([
+    get(ref(db, `${base}/sweets`)),
+    get(ref(db, `${base}/sweetsExcluded`)),
+  ]);
+  const deck = Array.isArray(sweetsSnap.val()) ? sweetsSnap.val() : [];
+  const excluded = Array.isArray(excludedSnap.val()) ? excludedSnap.val() : [];
+  if(!excluded.length) return null;
+
+  const movedCard = excluded.shift();
+  const nextDeck = [...deck, movedCard];
+
+  await Promise.all([
+    set(ref(db, `${base}/sweets`), nextDeck),
+    set(ref(db, `${base}/sweetsExcluded`), excluded),
+  ]);
+
+  updateSweetsDeckUI();
+  await emitEvent({ type:'trialExcludedToSweets' });
+  return movedCard;
+}
+
+async function getExcludedDeckTargetRectForTrial(){
+  const rect = await getSweetsExcludedDeckRectForMiniShuffle();
+  return buildDeckTargetFromRect(rect);
+}
+
+async function animateTrialExcludedToSweets(){
+  const fromRect = await getSweetsExcludedDeckRectForMiniShuffle();
+  const target = getSweetsDeckTargetRect();
+  if(fromRect && target){
+    await animateOneCardToDeck(fromRect, target, { rotateFrom: 90, rotateTo: 0 });
+  }
+}
+
+async function animateTrialSweetsToExcluded(){
+  const fromRect = await getSweetsDeckRectForMiniShuffle();
+  const target = await getExcludedDeckTargetRectForTrial();
+  if(fromRect && target){
+    await animateOneCardToDeck(fromRect, target, { rotateFrom: 0, rotateTo: 90 });
+  }
+}
+
+async function handleTrialSweetsDeckClick(){
+  if(actionSelection?.type !== 'trial') return;
+  if(actionSelection.phase === 'draw'){
+    const moved = await moveTopExcludedToSweetsDeckForTrial();
+    if(!moved){
+      showActionBlockedMessage('除外山札にカードがありません。');
+      return;
+    }
+    const nextAdded = Array.isArray(actionSelection.addedIds)
+      ? [...actionSelection.addedIds, moved.id]
+      : [moved.id];
+    setActionSelection({
+      ...actionSelection,
+      phase: 'select',
+      addedIds: nextAdded,
+    });
+    openTrialSweetsPicker();
+  }
 }
 btnSweetsClose.addEventListener('click', closeSweetsPicker);
 sweetsBackdrop.addEventListener('click', (e) => {
   if(e.target === sweetsBackdrop) closeSweetsPicker();
 });
 
-sweetsDeckUI.addEventListener('click', () => {
+sweetsDeckUI.addEventListener('click', async () => {
+  if(actionSelection?.type === 'trial'){
+    await handleTrialSweetsDeckClick();
+    return;
+  }
   if(!canOpenSweetsPicker()) return;
   openSweetsPicker();
 });
@@ -9081,6 +9404,23 @@ async function onSweetsDragEnd(e){
     : false;
 
   if(inDropZone){
+    if(sweetsPanelMode === SWEETS_PANEL_MODE.TRIAL){
+      if(actionSelection?.type === 'trial' && actionSelection.phase === 'select'){
+        const srcRect = sweetsDrag.srcEl?.getBoundingClientRect();
+        trialPendingSourceEl = sweetsDrag.srcEl;
+        showTrialDropPreview(sweetsDrag.card);
+        setActionSelection({
+          ...actionSelection,
+          phase: 'confirm',
+          pendingCard: sweetsDrag.card,
+          sourceRect: srcRect
+            ? { left: srcRect.left, top: srcRect.top, width: srcRect.width, height: srcRect.height }
+            : null,
+        });
+      }
+      cleanupSweetsDrag({ restoreSource: false });
+      return;
+    }
     if(sweetsDrag.source === SWEETS_PICK_SOURCE.EXCLUDED){
       await acquireExcludedSweetsCard(sweetsDrag.card);
     }else{
@@ -9093,14 +9433,15 @@ async function onSweetsDragEnd(e){
   cleanupSweetsDrag();
 }
 
-function cleanupSweetsDrag(){
+function cleanupSweetsDrag(options = {}){
+  const { restoreSource = true } = options;
   if(sweetsDrag.ghost){
     sweetsDrag.ghost.removeEventListener('pointermove', onSweetsDragMove);
     sweetsDrag.ghost.removeEventListener('pointerup', onSweetsDragEnd);
     sweetsDrag.ghost.removeEventListener('pointercancel', onSweetsDragEnd);
     sweetsDrag.ghost.remove();
   }
-  if(sweetsDrag.srcEl){
+  if(restoreSource && sweetsDrag.srcEl){
     sweetsDrag.srcEl.style.visibility = '';
   }
   sweetsDropZone?.classList.remove('active');
@@ -9139,6 +9480,7 @@ async function acquireSweetsCard(cardObj){
   sweetsPanelLocked = false;
   btnSweetsClose.disabled = false;
   sweetsBackdrop.classList.add('hidden');
+  setSweetsPanelMode(SWEETS_PANEL_MODE.PICK);
 
   await endTurn('drawSweets');
 
@@ -9175,6 +9517,7 @@ async function acquireExcludedSweetsCard(cardObj){
   sweetsPanelLocked = false;
   btnSweetsClose.disabled = false;
   sweetsBackdrop.classList.add('hidden');
+  setSweetsPanelMode(SWEETS_PANEL_MODE.PICK);
 
   if(fromRect && toRect){
     requestAnimationFrame(() => {
