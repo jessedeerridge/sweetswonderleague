@@ -4025,6 +4025,37 @@ function renderMyVoteChip(){
 let lastVoteSnapshot = null;
 const VOTE_CHIP_MOVE_DURATION = 600;
 const movingVoteChips = new Map();
+const voteChipSourceCache = new Map();
+
+function cacheVoteChipSourceRects(){
+  voteChipSourceCache.clear();
+  document.querySelectorAll('.player-tag').forEach((tag) => {
+    const voterUid = tag.dataset.uid || null;
+    if(!voterUid) return;
+    const chip = tag.querySelector(`.other-vote-chip[data-voter-uid="${voterUid}"]`);
+    if(chip){
+      const rect = chip.getBoundingClientRect();
+      voteChipSourceCache.set(voterUid, {
+        left: rect.left,
+        top: rect.top,
+        width: rect.width,
+        height: rect.height,
+      });
+      return;
+    }
+    const roleMini = tag.querySelector('.role-mini');
+    const size = getVoteChipSizePx();
+    if(roleMini){
+      const rect = roleMini.getBoundingClientRect();
+      voteChipSourceCache.set(voterUid, {
+        left: rect.right - 6 - size,
+        top: rect.bottom - 6 - size,
+        width: size,
+        height: size,
+      });
+    }
+  });
+}
 
 function getVoteSnapshot(votesObj){
   const snapshot = new Map();
@@ -4129,7 +4160,7 @@ function buildVoteStackEl(targetUid){
 }
 function getVoteChipSourceRect(voterUid){
   const tag = document.querySelector(`.player-tag[data-uid="${voterUid}"]`);
-  if(!tag) return null;
+  if(!tag) return voteChipSourceCache.get(voterUid) || null;
   const chip = tag.querySelector(`.other-vote-chip[data-voter-uid="${voterUid}"]`);
   if(chip){
     const rect = chip.getBoundingClientRect();
@@ -4151,7 +4182,7 @@ function getVoteChipSourceRect(voterUid){
       height: size,
     };
   }
-  return null;
+  return voteChipSourceCache.get(voterUid) || null;
 }
 function getVoteChipTargetInfo(targetUid){
   const stack = document.querySelector(`.vote-stack[data-target-uid="${targetUid}"]`);
@@ -5996,6 +6027,7 @@ function animateSweetsSwap({ fromUid, toUid, fromCard, toCard }){
 
 
 function renderPlayerCircle(players){
+  cacheVoteChipSourceRects();
   playerCircle.innerHTML = '';
 
   // ★ 中央リーダーボード → ★ playCircle の順で復元
@@ -9311,17 +9343,38 @@ function onVoteDragMove(e){
   updateSwareaHint(e.clientX, e.clientY);
 }
 
-async function onVoteDragEnd(e){
+function onVoteDragEnd(e){
   if(!voteDrag.active) return;
 
   const drop = getVoteDropTarget(e.clientX, e.clientY, { useBonus: voteDrag.useBonus });
   clearSwareaHint();
+  const shouldCast = drop.type === 'swwrap' && drop.ok;   // ★変更
+  const ghost = voteDrag.ghost;
+  const targetRect = shouldCast ? getVoteChipTargetRectForMove(drop.uid) : null;
 
-  if(drop.type === 'swwrap' && drop.ok){   // ★変更
-    await castVote(drop.uid, { useBonus: voteDrag.useBonus });
+  const finish = () => {
+    cleanupVoteDrag();
+    if(shouldCast){
+      void castVote(drop.uid, { useBonus: voteDrag.useBonus });
+    }
+  };
+
+  if(ghost && targetRect){
+    const sourceRect = ghost.getBoundingClientRect();
+    const dx = targetRect.left - sourceRect.left;
+    const dy = targetRect.top - sourceRect.top;
+    ghost.animate([
+      { transform: 'translate(0px, 0px) scale(1)' },
+      { transform: `translate(${dx}px, ${dy}px) scale(1)` },
+    ], {
+      duration: VOTE_CHIP_MOVE_DURATION,
+      easing: 'ease-in-out',
+      fill: 'forwards',
+    }).onfinish = finish;
+    return;
   }
 
-  cleanupVoteDrag();
+  finish();
 }
 
 function cleanupVoteDrag(){
