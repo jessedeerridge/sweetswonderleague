@@ -193,14 +193,16 @@ display:none;
     position:absolute;
     inset:0;
   }
-  .sweets-deck-mover{
+  .sweets-deck-mover,
+  .sweets-excluded-deck-mover{
     position:absolute;
     inset:0;
     transition:transform .65s cubic-bezier(.22,.84,.44,1);
     will-change:transform;
     z-index:4;
   }
-  .sweets-deck-mover.relocating{
+  .sweets-deck-mover.relocating,
+  .sweets-excluded-deck-mover.relocating{
     z-index:520;
   }
   .sweets-deck.hidden{display:none;}
@@ -544,11 +546,11 @@ display:none;
 }
 
 @keyframes leaderPickPulse{
-  0%{ scale:1; }
-  50%{ scale:1.12; }
-  100%{ scale:1; }
+  0%{ transform:scale(1); }
+  50%{ transform:scale(1.5); }
+  100%{ transform:scale(1); }
 }
-.leader-pick-candidate{
+.leader-pick-candidate .name-pill{
   animation:leaderPickPulse 1.1s ease-in-out infinite;
   transform-origin:center;
 }
@@ -2273,15 +2275,17 @@ display:none;
                 <div id="sweetsDeckCount" class="count">0</div>
               </div>
             </div>
-            <div id="sweetsExcludedDeckUI" class="sweets-exclude-deck hidden" aria-label="スイーツ除外山札">
-              <div class="stack" aria-hidden="true">
-                <div class="card c5"></div>
-                <div class="card c4"></div>
-                <div class="card c3"></div>
-                <div class="card c2"></div>
-                <div class="card c1"></div>
+            <div id="sweetsExcludedDeckMover" class="sweets-excluded-deck-mover">
+              <div id="sweetsExcludedDeckUI" class="sweets-exclude-deck hidden" aria-label="スイーツ除外山札">
+                <div class="stack" aria-hidden="true">
+                  <div class="card c5"></div>
+                  <div class="card c4"></div>
+                  <div class="card c3"></div>
+                  <div class="card c2"></div>
+                  <div class="card c1"></div>
+                </div>
+                <div id="sweetsExcludedDeckCount" class="count">0</div>
               </div>
-              <div id="sweetsExcludedDeckCount" class="count">0</div>
             </div>
           </div>
         </div>
@@ -2333,7 +2337,6 @@ display:none;
   <div class="action-pop-text">閉じてもいいですか。</div>
   <div class="action-pop-actions">
     <button id="scoutCloseYes" class="btn primary">はい</button>
-    <button id="scoutCloseNo" class="btn">いいえ</button>
   </div>
 </div>
 <div id="sweetsPeekCloseConfirmPop" class="leader-pick-pop action-pop hidden">
@@ -2523,6 +2526,8 @@ let leaderPickApplyKey = null;
 let lastLeaderSeat = null;
 let lastRoundNo = null;
 let actionSelection = null;
+let sweetsExcludedFocusActive = null;
+let sweetsGridCols = 0;
 let mySweetsSelectHandlersBound = false;
 const ADVERTISE_PULSE_DURATION_MS = 1400;
 const advertisedPulseUids = new Set();
@@ -2533,6 +2538,7 @@ const advertisedStarHideTimers = new Map();
 const advertisedKeyByUid = new Map();
 const revealedRoleUids = new Set();
 let pendingWiretapZoomUid = null;
+const activeWiretapArrows = new Map();
 /* =========================
    DOM
    ========================= */
@@ -2557,7 +2563,6 @@ const scoutRevealOverlay = document.getElementById('scoutRevealOverlay');
 const scoutRevealGrid = document.getElementById('scoutRevealGrid');
 const scoutCloseConfirmPop = document.getElementById('scoutCloseConfirmPop');
 const scoutCloseYes = document.getElementById('scoutCloseYes');
-const scoutCloseNo = document.getElementById('scoutCloseNo');
 const sweetsPeekOverlay = document.getElementById('sweetsPeekOverlay');
 const sweetsPeekCard = document.getElementById('sweetsPeekCard');
 const sweetsPeekImg = document.getElementById('sweetsPeekImg');
@@ -2596,10 +2601,13 @@ const actionDeckCountEl = document.getElementById('actionDeckCount');
 const sweetsDeckMover = document.getElementById('sweetsDeckMover');
 const sweetsDeckUI = document.getElementById('sweetsDeckUI');
 const sweetsDeckCountEl = document.getElementById('sweetsDeckCount');
+const sweetsExcludedDeckMover = document.getElementById('sweetsExcludedDeckMover');
 const sweetsExcludedDeckUI = document.getElementById('sweetsExcludedDeckUI');
 const sweetsExcludedDeckCountEl = document.getElementById('sweetsExcludedDeckCount');
 let sweetsDeckReturnPending = false;
 let sweetsDeckReturnRaf = null;
+let sweetsExcludedDeckReturnPending = false;
+let sweetsExcludedDeckReturnRaf = null;
 
 
 /* スイーツ一覧（ローカル） */
@@ -2608,6 +2616,7 @@ const sweetsDropZone = document.getElementById('sweetsDropZone');
 const btnSweetsClose = document.getElementById('btnSweetsClose');
 const sweetsGrid = document.getElementById('sweetsGrid');
 const sweetsPanelTitleEl = sweetsBackdrop?.querySelector('.sweets-panel-title');
+const sweetsPanelBodyEl = sweetsBackdrop?.querySelector('.sweets-panel-body');
 const sweetsPanelDefaultTitle = sweetsPanelTitleEl?.textContent?.trim() || 'スイーツ（下にドラッグ）';
 const sweetsDropZoneDefaultText = sweetsDropZone?.textContent?.trim() || 'ここにカードを出すと獲得';
 
@@ -2987,6 +2996,13 @@ function getSweetsDeckFocus(){
   return focus;
 }
 
+function getSweetsExcludedDeckFocus(){
+  const focus = state.game?.sweetsExcludedFocus;
+  if(!focus || typeof focus !== 'object') return null;
+  if(!focus.uid || !focus.active) return null;
+  return focus;
+}
+
 function updateSweetsDeckRelocation(){
   if(!sweetsDeckMover || !sweetsDeckUI) return;
   const focus = getSweetsDeckFocus();
@@ -3039,12 +3055,73 @@ function updateSweetsDeckRelocation(){
   setSweetsDeckMoverTransform(`translate(${moveX}px, ${moveY}px)`);
 }
 
+function updateSweetsExcludedDeckRelocation(){
+  if(!sweetsExcludedDeckMover || !sweetsExcludedDeckUI) return;
+  const focus = getSweetsExcludedDeckFocus();
+  const shouldRelocate = !!(focus && focus.uid && focus.uid !== state.userId);
+  if(shouldRelocate){
+    sweetsExcludedDeckReturnPending = false;
+    cancelSweetsExcludedDeckReturn();
+  }
+  if(sweetsExcludedDeckUI.classList.contains('hidden')){
+    sweetsExcludedDeckMover.classList.toggle('relocating', shouldRelocate);
+    if(!shouldRelocate){
+      sweetsExcludedDeckReturnPending = true;
+    }
+    return;
+  }
+  if(sweetsExcludedDeckReturnPending && !shouldRelocate){
+    sweetsExcludedDeckReturnPending = false;
+    sweetsExcludedDeckMover.classList.remove('relocating');
+    scheduleSweetsExcludedDeckReturn();
+    return;
+  }
+  if(!shouldRelocate){
+    sweetsExcludedDeckMover.classList.remove('relocating');
+    scheduleSweetsExcludedDeckReturn();
+    return;
+  }
+
+  const sweetsWrap = document.querySelector(`.sweets-wrap[data-sweets-uid="${focus.uid}"]`);
+  const fallbackTag = document.querySelector(`.player-tag[data-uid="${focus.uid}"]`);
+  const targetEl = sweetsWrap || fallbackTag;
+  if(!targetEl){
+    sweetsExcludedDeckMover.classList.remove('relocating');
+    setSweetsExcludedDeckMoverTransform('translate(0px, 0px)');
+    return;
+  }
+
+  const baseRect = sweetsExcludedDeckMover.parentElement?.getBoundingClientRect?.();
+  const targetRect = targetEl.getBoundingClientRect();
+  if(!baseRect || !baseRect.width || !baseRect.height || !targetRect.width || !targetRect.height) return;
+
+  const targetX = targetRect.left + targetRect.width / 2;
+  const targetY = targetRect.top + targetRect.height / 2;
+  const deckCenterX = baseRect.left + baseRect.width / 2;
+  const deckCenterY = baseRect.top + baseRect.height / 2;
+
+  const moveX = targetX - deckCenterX;
+  const moveY = targetY - deckCenterY;
+
+  sweetsExcludedDeckMover.classList.add('relocating');
+  setSweetsExcludedDeckMoverTransform(`translate(${moveX}px, ${moveY}px)`);
+}
+
 function setSweetsDeckMoverTransform(value){
   if(!sweetsDeckMover) return;
   if(sweetsDeckMover.style.transform === value) return;
   requestAnimationFrame(() => {
     if(sweetsDeckMover.style.transform === value) return;
     sweetsDeckMover.style.transform = value;
+  });
+}
+
+function setSweetsExcludedDeckMoverTransform(value){
+  if(!sweetsExcludedDeckMover) return;
+  if(sweetsExcludedDeckMover.style.transform === value) return;
+  requestAnimationFrame(() => {
+    if(sweetsExcludedDeckMover.style.transform === value) return;
+    sweetsExcludedDeckMover.style.transform = value;
   });
 }
 
@@ -3061,10 +3138,29 @@ function scheduleSweetsDeckReturn(){
   });
 }
 
+function scheduleSweetsExcludedDeckReturn(){
+  if(!sweetsExcludedDeckMover) return;
+  if(sweetsExcludedDeckReturnRaf) return;
+  sweetsExcludedDeckReturnRaf = requestAnimationFrame(() => {
+    sweetsExcludedDeckReturnRaf = requestAnimationFrame(() => {
+      sweetsExcludedDeckReturnRaf = null;
+      const value = 'translate(0px, 0px)';
+      if(sweetsExcludedDeckMover.style.transform === value) return;
+      sweetsExcludedDeckMover.style.transform = value;
+    });
+  });
+}
+
 function cancelSweetsDeckReturn(){
   if(!sweetsDeckReturnRaf) return;
   cancelAnimationFrame(sweetsDeckReturnRaf);
   sweetsDeckReturnRaf = null;
+}
+
+function cancelSweetsExcludedDeckReturn(){
+  if(!sweetsExcludedDeckReturnRaf) return;
+  cancelAnimationFrame(sweetsExcludedDeckReturnRaf);
+  sweetsExcludedDeckReturnRaf = null;
 }
 
 function getRequiredSweetsCount(){
@@ -3351,7 +3447,7 @@ function subscribeEvents(){
     }
     if(!expectedSessionId && !currentGameSessionId) return;
    const isStaleEvent = typeof ev.at === 'number' && eventsSubscribedAt && ev.at < eventsSubscribedAt;
-    if(isStaleEvent && ['miniSweetsShuffleStart','roundRevealSweets','revealCard','flyBackCard','wiretapArrow','sweetsReturn','trialExcludedToSweets','trialSweetsToExcluded','actionDiscardPeek','sweetsPeekArrow'].includes(ev.type)) return;
+    if(isStaleEvent && ['miniSweetsShuffleStart','roundRevealSweets','revealCard','flyBackCard','wiretapArrow','scoutArrowStart','scoutArrowEnd','sweetsReturn','trialExcludedToSweets','trialSweetsToExcluded','actionDiscardPeek','sweetsPeekArrow'].includes(ev.type)) return;
     if(ev.type === 'revealCard'){
       showReveal(ev.card);
     }
@@ -3369,6 +3465,16 @@ function subscribeEvents(){
     if(ev.type === 'wiretapArrow'){
       if(ev.fromUid !== state.userId && ev.fromSeat !== null && ev.toSeat !== null){
         showWiretapArrow(ev.fromSeat, ev.toSeat);
+      }
+    }
+    if(ev.type === 'scoutArrowStart'){
+      if(ev.fromUid !== state.userId && ev.fromSeat !== null && ev.toSeat !== null){
+        showWiretapArrow(ev.fromSeat, ev.toSeat, { key: ev.arrowId, persist: true });
+      }
+    }
+    if(ev.type === 'scoutArrowEnd'){
+      if(ev.fromUid !== state.userId && ev.arrowId){
+        removeWiretapArrow(ev.arrowId);
       }
     }
     if(ev.type === 'actionDiscardPeek'){
@@ -5348,6 +5454,7 @@ function showActionBlockedMessage(message){
 function setActionSelection(next){
   actionSelection = next;
   document.body.classList.toggle('rob-active', actionSelection?.type === 'rob' && actionSelection.phase === 'select');
+  syncSweetsExcludedFocus();
   updateActionSelectionUI();
   applyMyTurnClasses();
   renderMyRole();
@@ -5356,6 +5463,13 @@ function setActionSelection(next){
   renderMyVoteChip();
   updatePassRoundBtn();
   if(latestPlayers.length) renderPlayerCircle(latestPlayers);
+}
+
+function syncSweetsExcludedFocus(){
+  const shouldFocus = actionSelection?.type === 'inspiration' && actionSelection.phase === 'select';
+  if(sweetsExcludedFocusActive === shouldFocus) return;
+  sweetsExcludedFocusActive = shouldFocus;
+  setSweetsExcludedDeckFocus(shouldFocus);
 }
 
 function clearActionSelection(){
@@ -5581,69 +5695,17 @@ function triggerWiretapZoom(uid){
   });
 }
 
-function showWiretapArrow(fromSeat, toSeat){
-  const fromTag = document.querySelector(`.player-tag[data-seat="${fromSeat}"]`);
-  const toTag = document.querySelector(`.player-tag[data-seat="${toSeat}"]`);
-  if(!fromTag || !toTag) return;
-
-  const fromRect = fromTag.getBoundingClientRect();
-  const toRect = toTag.getBoundingClientRect();
-  const x1 = fromRect.left + fromRect.width / 2;
-  const y1 = fromRect.top + fromRect.height / 2;
-  const x2 = toRect.left + toRect.width / 2;
-  const y2 = toRect.top + toRect.height / 2;
-
-  const wrap = document.createElement('div');
-  wrap.className = 'wiretap-arrow';
-
-  const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
- const defs = document.createElementNS('http://www.w3.org/2000/svg', 'defs');
-  const marker = document.createElementNS('http://www.w3.org/2000/svg', 'marker');
-  marker.setAttribute('id', 'wiretapArrowHead');
-  marker.setAttribute('markerWidth', '10');
-  marker.setAttribute('markerHeight', '10');
-  marker.setAttribute('refX', '10');
-  marker.setAttribute('refY', '5');
-  marker.setAttribute('orient', 'auto');
-  marker.setAttribute('markerUnits', 'strokeWidth');
-  const arrowPath = document.createElementNS('http://www.w3.org/2000/svg', 'path');
-  arrowPath.setAttribute('d', 'M 0 0 L 10 5 L 0 10 z');
-  arrowPath.setAttribute('fill', '#111');
-  marker.appendChild(arrowPath);
-  defs.appendChild(marker);
-  svg.appendChild(defs);
-  svg.setAttribute('viewBox', `0 0 ${window.innerWidth} ${window.innerHeight}`);
-  const line = document.createElementNS('http://www.w3.org/2000/svg', 'line');
-  line.setAttribute('x1', String(x1));
-  line.setAttribute('y1', String(y1));
-  line.setAttribute('x2', String(x2));
-  line.setAttribute('y2', String(y2));
-  line.setAttribute('marker-end', 'url(#wiretapArrowHead)');
-  svg.appendChild(line);
-  wrap.appendChild(svg);
-
-  const eye = document.createElement('div');
-  eye.className = 'wiretap-eye';
-  eye.textContent = '👀';
-  eye.style.left = `${(x1 + x2) / 2}px`;
-  eye.style.top = `${(y1 + y2) / 2}px`;
-  wrap.appendChild(eye);
-
-  document.body.appendChild(wrap);
-  setTimeout(() => {
-    wrap.remove();
-  }, 1500);
+function removeWiretapArrow(key){
+  if(!key) return;
+  const existing = activeWiretapArrows.get(key);
+  if(!existing) return;
+  existing.remove();
+  activeWiretapArrows.delete(key);
 }
 
-function showSweetsPeekArrow(fromSeat, targetUid){
-  const fromTag = document.querySelector(`.player-tag[data-seat="${fromSeat}"]`);
-  const sweetsMini = (targetUid === state.userId)
-    ? mySweetsEl
-    : document.querySelector(`.sweets-wrap[data-sweets-uid="${targetUid}"] .sweets-mini`);
-  if(!fromTag || !sweetsMini) return;
-
-  const fromRect = fromTag.getBoundingClientRect();
-  const toRect = sweetsMini.getBoundingClientRect();
+function createWiretapArrow(fromRect, toRect, options = {}){
+  if(!fromRect || !toRect) return null;
+  const { key = null, duration = 1500, persist = false } = options;
   const x1 = fromRect.left + fromRect.width / 2;
   const y1 = fromRect.top + fromRect.height / 2;
   const x2 = toRect.left + toRect.width / 2;
@@ -5685,10 +5747,45 @@ function showSweetsPeekArrow(fromSeat, targetUid){
   eye.style.top = `${(y1 + y2) / 2}px`;
   wrap.appendChild(eye);
 
+  if(key){
+    removeWiretapArrow(key);
+    activeWiretapArrows.set(key, wrap);
+  }
+
   document.body.appendChild(wrap);
-  setTimeout(() => {
+  if(!persist){
+    setTimeout(() => {
+      if(key && activeWiretapArrows.get(key) !== wrap) return;
+      wrap.remove();
+      if(key) activeWiretapArrows.delete(key);
+    }, duration);
+  }
+  return () => {
     wrap.remove();
-  }, 1500);
+    if(key) activeWiretapArrows.delete(key);
+  };
+}
+
+function showWiretapArrow(fromSeat, toSeat, options = {}){
+  const fromTag = document.querySelector(`.player-tag[data-seat="${fromSeat}"]`);
+  const toTag = document.querySelector(`.player-tag[data-seat="${toSeat}"]`);
+  if(!fromTag || !toTag) return null;
+
+  const fromRect = fromTag.getBoundingClientRect();
+  const toRect = toTag.getBoundingClientRect();
+  return createWiretapArrow(fromRect, toRect, options);
+}
+
+function showSweetsPeekArrow(fromSeat, targetUid){
+  const fromTag = document.querySelector(`.player-tag[data-seat="${fromSeat}"]`);
+  const sweetsMini = (targetUid === state.userId)
+    ? mySweetsEl
+    : document.querySelector(`.sweets-wrap[data-sweets-uid="${targetUid}"] .sweets-mini`);
+  if(!fromTag || !sweetsMini) return;
+
+  const fromRect = fromTag.getBoundingClientRect();
+  const toRect = sweetsMini.getBoundingClientRect();
+  createWiretapArrow(fromRect, toRect, { duration: 1500 });
 }
 
 function showDiscardedActionCard(cardObj){
@@ -7170,6 +7267,7 @@ if(leaderSeat !== null && leaderSeat === p.seatIndex){
   updateActionDeckUI();
   updateSweetsDeckUI();
   requestAnimationFrame(updateSweetsDeckRelocation);
+  requestAnimationFrame(updateSweetsExcludedDeckRelocation);
   if(pendingWiretapZoomUid){
     const uid = pendingWiretapZoomUid;
     pendingWiretapZoomUid = null;
@@ -9096,16 +9194,27 @@ async function runScoutEffect(){
 
   const fromSeat = state.turn?.activeSeat ?? state.seatedTable;
   const toSeat = getSeatByUid(targetUid);
+  const arrowId = `scout-${state.userId}-${Date.now()}`;
   if(fromSeat !== null && toSeat !== null){
+    showWiretapArrow(fromSeat, toSeat, { key: arrowId, persist: true });
     await emitEvent({
-      type:'wiretapArrow',
+      type:'scoutArrowStart',
       fromSeat,
       toSeat,
       fromUid: state.userId,
+      arrowId,
     });
   }
 
   await showScoutReveal(targetUid);
+  if(fromSeat !== null && toSeat !== null){
+    removeWiretapArrow(arrowId);
+    await emitEvent({
+      type:'scoutArrowEnd',
+      fromUid: state.userId,
+      arrowId,
+    });
+  }
 }
 
 async function runPreparationEffect(cardObj){
@@ -9429,16 +9538,12 @@ async function runImprisonEffect(){
 async function showScoutReveal(targetUid){
   if(!scoutRevealOverlay || !scoutRevealGrid) return;
   scoutRevealGrid.innerHTML = '';
-  const showScoutCloseConfirm = () => {
-    if(scoutCloseConfirmPop) scoutCloseConfirmPop.classList.remove('hidden');
-  };
   const cards = Array.isArray(state.hands?.[targetUid]?.action)
     ? state.hands[targetUid].action
     : [];
   if(cards.length){
     cards.forEach(cardObj => {
       const cardEl = buildCardEl(cardObj);
-      cardEl.addEventListener('click', showScoutCloseConfirm);
       scoutRevealGrid.appendChild(cardEl);
     });
   }else{
@@ -9447,30 +9552,18 @@ async function showScoutReveal(targetUid){
     scoutRevealGrid.appendChild(empty);
   }
 
-  if(scoutCloseConfirmPop) scoutCloseConfirmPop.classList.add('hidden');
+  if(scoutCloseConfirmPop) scoutCloseConfirmPop.classList.remove('hidden');
   scoutRevealOverlay.classList.remove('hidden');
 
   return new Promise(resolve => {
     const closeOverlay = () => {
       scoutRevealOverlay.classList.add('hidden');
       if(scoutCloseConfirmPop) scoutCloseConfirmPop.classList.add('hidden');
-      scoutRevealOverlay.removeEventListener('click', onOverlayClick);
       scoutCloseYes?.removeEventListener('click', onCloseYes);
-      scoutCloseNo?.removeEventListener('click', onCloseNo);
       resolve();
     };
-    const onOverlayClick = (e) => {
-      if(e.target !== scoutRevealOverlay) return;
-      showScoutCloseConfirm();
-    };
     const onCloseYes = () => closeOverlay();
-    const onCloseNo = () => {
-      if(scoutCloseConfirmPop) scoutCloseConfirmPop.classList.add('hidden');
-    };
-
-    scoutRevealOverlay.addEventListener('click', onOverlayClick);
     scoutCloseYes?.addEventListener('click', onCloseYes);
-    scoutCloseNo?.addEventListener('click', onCloseNo);
   });
 }
 
@@ -9656,10 +9749,52 @@ function canStartSweetsDrag(source){
   return canOpenSweetsPicker();
 }
 
+function adjustSweetsPanelHeight(){
+  if(!sweetsPanelBodyEl || !sweetsGrid) return;
+  const panelEl = sweetsPanelBodyEl.closest('.sweets-panel');
+  if(!panelEl) return;
+  const cardEl = sweetsGrid.querySelector('.sweets-pick-card');
+  if(!cardEl){
+    sweetsPanelBodyEl.style.maxHeight = '';
+    return;
+  }
+  const cardRect = cardEl.getBoundingClientRect();
+  const cardHeight = cardRect.height || 135;
+  const gridStyles = getComputedStyle(sweetsGrid);
+  const gapValue = parseFloat(gridStyles.rowGap || gridStyles.gap) || 10;
+  const totalCards = sweetsGrid.children.length;
+  const cols = sweetsGridCols || 1;
+  const rows = Math.ceil(totalCards / cols);
+  const panelRect = panelEl.getBoundingClientRect();
+  const availableHeight = Math.max(0, window.innerHeight - panelRect.top - 24);
+  const contentHeight = rows * cardHeight + Math.max(0, rows - 1) * gapValue;
+  if(!availableHeight){
+    sweetsPanelBodyEl.style.maxHeight = '';
+    return;
+  }
+  const maxRows = Math.max(1, Math.floor((availableHeight + gapValue) / (cardHeight + gapValue)));
+  const visibleRows = Math.min(rows, maxRows);
+  const targetHeight = visibleRows * cardHeight + Math.max(0, visibleRows - 1) * gapValue;
+  sweetsPanelBodyEl.style.maxHeight = `${Math.min(contentHeight, targetHeight)}px`;
+}
+
 async function setSweetsDeckFocus(active){
   if(!state.roomCode) return;
   const focusRef = ref(db, `rooms/${state.roomCode}/game/sweetsDeckFocus`);
   const current = getSweetsDeckFocus();
+  if(active){
+    if(current?.uid === state.userId && current.active) return;
+    await set(focusRef, { uid: state.userId, active: true, ts: Date.now() });
+    return;
+  }
+  if(current?.uid !== state.userId) return;
+  await set(focusRef, null);
+}
+
+async function setSweetsExcludedDeckFocus(active){
+  if(!state.roomCode) return;
+  const focusRef = ref(db, `rooms/${state.roomCode}/game/sweetsExcludedFocus`);
+  const current = getSweetsExcludedDeckFocus();
   if(active){
     if(current?.uid === state.userId && current.active) return;
     await set(focusRef, { uid: state.userId, active: true, ts: Date.now() });
@@ -9688,6 +9823,7 @@ function openSweetsPicker(options = {}){
     ? getRestrictedSweetsIds(sorted)
     : null;
   const cols = Math.ceil(sorted.length / 2);
+  sweetsGridCols = cols;
   sweetsGrid.style.gridTemplateColumns = `repeat(${cols}, 90px)`;
 
   sweetsGrid.innerHTML = '';
@@ -9719,7 +9855,8 @@ function openSweetsPicker(options = {}){
   });
 
   sweetsBackdrop.classList.remove('hidden');
-  if(source === SWEETS_PICK_SOURCE.MAIN){
+  requestAnimationFrame(adjustSweetsPanelHeight);
+  if(source === SWEETS_PICK_SOURCE.MAIN && mode !== SWEETS_PANEL_MODE.TRIAL){
     setSweetsDeckFocus(true);
   }
 }
@@ -10382,6 +10519,10 @@ function syncFloatingDragPositions(){
     robVoteDrag.ghost.style.top  = `${y}px`;
   }
   updateSweetsDeckRelocation();
+  updateSweetsExcludedDeckRelocation();
+  if(sweetsBackdrop && !sweetsBackdrop.classList.contains('hidden')){
+    adjustSweetsPanelHeight();
+  }
 }
 
 mainEl.addEventListener('scroll', syncFloatingDragPositions, { passive: true });
