@@ -1373,10 +1373,29 @@ left:-260px;
   100% { transform: scale(1); }
 }
 
+@keyframes pulseRobVoteChip {
+  0%   { transform: scale(1); }
+  50%  { transform: scale(1.6); }
+  100% { transform: scale(1); }
+}
+
 .vote-chip.hidden{display:none;}
 .vote-chip:active{cursor:grabbing;}
 .vote-chip.pulsing{ animation:pulseVoteChip 1.05s ease-in-out infinite; }
 .vote-chip.pulsing:hover{ animation:none; transform:scale(1.10); } /* ← hover拡大も投票専用に調整 */
+
+body.rob-active .vote-stack{
+  pointer-events:auto;
+}
+body.rob-active .vote-mini{
+  animation:pulseRobVoteChip 1.05s ease-in-out infinite;
+  cursor:grab;
+}
+body.rob-active .vote-mini:active{ cursor:grabbing; }
+body.rob-active .vote-mini:hover{
+  animation:none;
+  transform:scale(1.6);
+}
 
 
 /* 既存の「V」文字は消す（デザイン統一） */
@@ -1557,6 +1576,14 @@ left:-260px;
   background: rgba(200, 200, 200, 0.3);
 }
 .sweets-wrap.hint-ng{
+  border-color:rgba(239,68,68,.75);
+  background: rgba(200, 200, 200, 0.3);
+}
+.my-sweets.hint-ok{
+  border-color:transparent;
+  background: rgba(200, 200, 200, 0.3);
+}
+.my-sweets.hint-ng{
   border-color:rgba(239,68,68,.75);
   background: rgba(200, 200, 200, 0.3);
 }
@@ -3176,12 +3203,12 @@ async function clearBonusVoteChipsForTurn(){
    デッキ構築（アクションカード）
    ========================= */
 const ACTION_COUNTS_BASE = [
-  { name:'監禁', count:100, kind:'normal' },
+  { name:'監禁', count:1, kind:'normal' },
   { name:'盗聴', count:1, kind:'normal' },
   { name:'世代交代', count:1, kind:'normal' },
   { name:'宣伝', count:1, kind:'normal' },
 
-  { name:'強奪', count:2, kind:'normal' },
+  { name:'強奪', count:20, kind:'normal' },
   { name:'偵察', count:2, kind:'normal' },
   { name:'ひらめき', count:2, kind:'normal' },
   { name:'仕込み', count:2, kind:'normal' },
@@ -3997,6 +4024,7 @@ function renderMyVoteChip(){
 }
 
 let lastVoteSnapshot = null;
+
 function getVoteSnapshot(votesObj){
   const snapshot = new Map();
   const votes = votesObj && typeof votesObj === 'object' ? votesObj : {};
@@ -4042,7 +4070,13 @@ function buildVoteStackEl(targetUid){
   voterIds.forEach((voterUid) => {
     const v = document.createElement('div');
     v.className = 'vote-mini';
+    v.dataset.voterUid = voterUid;
+    v.dataset.targetUid = targetUid;
     applyTagChipStyle(v, getTagChipStyleByUid(voterUid));
+    if(shouldEnableRobVoteDrag()){
+      v.classList.add('rob-selectable');
+      v.addEventListener('pointerdown', (e) => startRobVoteDrag(e, v));
+    }
     voteStack.appendChild(v);
   });
   return voteStack;
@@ -4133,6 +4167,90 @@ function scheduleVoteChipAnimations(){
       animateVoteChipFly(voterUid, targetUid);
     });
   });
+}
+
+const VOTE_STACK_OFFSET_PX = 22;
+function getVoteChipTargetRectForMove(targetUid){
+  const info = getVoteChipTargetInfo(targetUid);
+  if(info) return info.rect;
+  const size = getVoteChipSizePx();
+  let wrap = document.querySelector(`.sweets-wrap[data-sweets-uid="${targetUid}"]`);
+  if(!wrap && targetUid === state.userId){
+    wrap = mySweetsEl;
+  }
+  if(!wrap) return null;
+  const rect = wrap.getBoundingClientRect();
+  return {
+    left: rect.right - VOTE_STACK_OFFSET_PX - size,
+    top: rect.top + rect.height / 2 - size / 2,
+    width: size,
+    height: size,
+  };
+}
+function getVoteChipSourceRectForMove(voterUid, targetUid){
+  const el = document.querySelector(`.vote-mini[data-voter-uid="${voterUid}"][data-target-uid="${targetUid}"]`);
+  if(!el) return null;
+  const rect = el.getBoundingClientRect();
+  return {
+    left: rect.left,
+    top: rect.top,
+    width: rect.width,
+    height: rect.height,
+  };
+}
+function animateVoteChipRelocate({ voterUid, sourceRect, targetUid }){
+  const source = sourceRect;
+  const target = getVoteChipTargetRectForMove(targetUid);
+  if(!source || !target) return;
+
+  const fly = document.createElement('div');
+  fly.className = 'vote-chip-fly';
+  applyTagChipStyle(fly, getTagChipStyleByUid(voterUid));
+  fly.style.left = `${source.left}px`;
+  fly.style.top = `${source.top}px`;
+  fly.style.width = `${source.width}px`;
+  fly.style.height = `${source.height}px`;
+  document.body.appendChild(fly);
+
+  const dx = target.left - source.left;
+  const dy = target.top - source.top;
+  fly.animate([
+    { transform: 'translate(0px, 0px) scale(1)' },
+    { transform: `translate(${dx}px, ${dy}px) scale(1)` },
+  ], {
+    duration: 600,
+    easing: 'ease-in-out',
+    fill: 'forwards',
+  }).onfinish = () => {
+    fly.remove();
+  };
+}
+async function moveVoteChipBetweenTargets(fromTargetUid, toTargetUid, voterUid, options = {}){
+  if(!state.roomCode) return false;
+  if(!fromTargetUid || !toTargetUid || !voterUid) return false;
+  if(fromTargetUid === toTargetUid) return false;
+
+  const sourceRect = options.sourceRect || getVoteChipSourceRectForMove(voterUid, fromTargetUid);
+  if(sourceRect){
+    requestAnimationFrame(() => {
+      animateVoteChipRelocate({ voterUid, sourceRect, targetUid: toTargetUid });
+    });
+  }
+
+  const base = `rooms/${state.roomCode}/votes`;
+  const [fromSnap, toSnap] = await Promise.all([
+    get(ref(db, `${base}/${fromTargetUid}/${voterUid}`)),
+    get(ref(db, `${base}/${toTargetUid}/${voterUid}`)),
+  ]);
+  const fromCount = (typeof fromSnap.val() === 'number') ? fromSnap.val() : (fromSnap.exists() ? 1 : 0);
+  if(fromCount <= 0) return false;
+  const toCount = (typeof toSnap.val() === 'number') ? toSnap.val() : (toSnap.exists() ? 1 : 0);
+
+  const updates = {};
+  updates[`${fromTargetUid}/${voterUid}`] = (fromCount > 1) ? (fromCount - 1) : null;
+  updates[`${toTargetUid}/${voterUid}`] = toCount + 1;
+  await update(ref(db, base), updates);
+  return true;
 }
 
 
@@ -4615,6 +4733,21 @@ function updateActionSelectionUI(){
       if(actionConfirmPop) actionConfirmPop.classList.remove('hidden');
     }
   }
+  if(actionSelection.type === 'rob'){
+    if(actionSelection.phase === 'select'){
+      if(actionExplainPop){
+        actionExplainPop.textContent = '強奪：動かす投票チップをドラッグしてください。';
+        actionExplainPop.classList.remove('hidden');
+      }
+    }
+    if(actionSelection.phase === 'confirm'){
+      const target = getPlayerByUid(actionSelection.toTargetUid);
+      if(actionConfirmText){
+        actionConfirmText.textContent = `「${target?.name ?? 'プレイヤー'}」のスイーツへ置き換えますか。`;
+      }
+      if(actionConfirmPop) actionConfirmPop.classList.remove('hidden');
+    }
+  }
   if(actionSelection.type === 'inspiration'){
     if(actionSelection.phase === 'select'){
       if(actionExplainPop){
@@ -4627,6 +4760,7 @@ function updateActionSelectionUI(){
 
 function setActionSelection(next){
   actionSelection = next;
+  document.body.classList.toggle('rob-active', actionSelection?.type === 'rob' && actionSelection.phase === 'select');
   updateActionSelectionUI();
   applyMyTurnClasses();
   renderMyRole();
@@ -4712,6 +4846,23 @@ function beginAccidentSelection(){
       type:'accident',
       phase:'select',
       targetUid:null,
+      resolve,
+    });
+  });
+}
+function beginRobSelection(){
+  const candidates = getSweetsOwners();
+  if(candidates.length < 2) return Promise.resolve(true);
+  const hasVotes = candidates.some(uid => getVoteCountFor(uid) > 0);
+  if(!hasVotes) return Promise.resolve(true);
+  return new Promise(resolve => {
+    setActionSelection({
+      type:'rob',
+      phase:'select',
+      fromTargetUid:null,
+      toTargetUid:null,
+      voterUid:null,
+      sourceRect:null,
       resolve,
     });
   });
@@ -4873,7 +5024,7 @@ function showWiretapArrow(fromSeat, toSeat){
 }
 
 if(actionConfirmYes){
-  actionConfirmYes.addEventListener('click', () => {
+  actionConfirmYes.addEventListener('click', async () => {
     if(!actionSelection) return;
     if(actionSelection.phase !== 'confirm') return;
     const targetUid = actionSelection.targetUid;
@@ -4885,6 +5036,14 @@ if(actionConfirmYes){
       if(selectedUids.length < 2) return;
       clearActionSelection();
       if(resolve) resolve(selectedUids);
+      return;
+    }
+    if(actionSelection.type === 'rob'){
+      const { fromTargetUid, toTargetUid, voterUid, sourceRect } = actionSelection;
+      if(!fromTargetUid || !toTargetUid || !voterUid || fromTargetUid === toTargetUid) return;
+      clearActionSelection();
+      await moveVoteChipBetweenTargets(fromTargetUid, toTargetUid, voterUid, { sourceRect });
+      if(resolve) resolve(true);
       return;
     }
     clearActionSelection();
@@ -4900,6 +5059,17 @@ if(actionConfirmNo){
         ...actionSelection,
         phase:'select',
         selectedUids: [],
+      });
+      return;
+    }
+    if(actionSelection.type === 'rob'){
+      setActionSelection({
+        ...actionSelection,
+        phase:'select',
+        fromTargetUid:null,
+        toTargetUid:null,
+        voterUid:null,
+        sourceRect:null,
       });
       return;
     }
@@ -4935,7 +5105,13 @@ function renderMySweetsVoteStack(){
   voterIds.forEach((voterUid) => {
     const v = document.createElement('div');
     v.className = 'vote-mini';
+    v.dataset.voterUid = voterUid;
+    v.dataset.targetUid = state.userId;
     applyTagChipStyle(v, getTagChipStyleByUid(voterUid));
+    if(shouldEnableRobVoteDrag()){
+      v.classList.add('rob-selectable');
+      v.addEventListener('pointerdown', (e) => startRobVoteDrag(e, v));
+    }
     voteStack.appendChild(v);
   });
   mySweetsEl.appendChild(voteStack);
@@ -5833,7 +6009,13 @@ function renderPlayerCircle(players){
             voterIds.forEach((voterUid) => {
               const v = document.createElement('div');
               v.className = 'vote-mini';
+              v.dataset.voterUid = voterUid;
+              v.dataset.targetUid = state.userId;
               applyTagChipStyle(v, getTagChipStyleByUid(voterUid));
+              if(shouldEnableRobVoteDrag()){
+                v.classList.add('rob-selectable');
+                v.addEventListener('pointerdown', (e) => startRobVoteDrag(e, v));
+              }
               voteStack.appendChild(v);
             });
             selected.appendChild(voteStack);
@@ -7968,6 +8150,9 @@ async function runActionCardEffect(cardObj){
     await runAccidentEffect();
     return true;
   }
+  if(cardObj?.name === '強奪'){
+    return await runRobEffect();
+  }
   if(cardObj?.name === '激推し'){
     await runGekioshiEffect();
     return false;
@@ -8068,6 +8253,13 @@ async function runAccidentEffect(){
   if(!targetUid) return;
   await emitEvent({ type:'sweetsReturn', uid: targetUid });
   await returnSweetsToDeckByUid(targetUid);
+}
+
+async function runRobEffect(){
+  if(!state.room?.gameStarted) return true;
+  const result = await beginRobSelection();
+  if(typeof result === 'boolean') return result;
+  return true;
 }
 
 async function runGekioshiEffect(){
@@ -8706,6 +8898,156 @@ async function acquireExcludedSweetsCard(cardObj){
 }
 
 /* =========================
+   ★ 強奪：投票チップドラッグ
+   ========================= */
+const robVoteDrag = {
+  active:false,
+  ghost:null,
+  offsetX:0,
+  offsetY:0,
+  lastClientX:null,
+  lastClientY:null,
+  sourceEl:null,
+  fromTargetUid:null,
+  voterUid:null,
+  sourceRect:null,
+};
+function shouldEnableRobVoteDrag(){
+  return actionSelection?.type === 'rob' && actionSelection.phase === 'select';
+}
+function canRobMoveTo(uid, fromUid){
+  if(!uid || uid === fromUid) return false;
+  const handData = state.hands?.[uid];
+  return !!(handData && Array.isArray(handData.sweets) && handData.sweets.length);
+}
+function setRobSweetsWrapHints(active, options = {}){
+  const { fromUid = null } = options;
+  document.querySelectorAll('.sweets-wrap').forEach((wrap) => {
+    wrap.classList.remove('hint-ok', 'hint-ng');
+    if(!active) return;
+    const uid = wrap.dataset.sweetsUid || null;
+    const ok = canRobMoveTo(uid, fromUid);
+    wrap.classList.add(ok ? 'hint-ok' : 'hint-ng');
+  });
+  if(mySweetsEl){
+    mySweetsEl.classList.remove('hint-ok', 'hint-ng');
+    if(active){
+      const ok = canRobMoveTo(state.userId, fromUid);
+      mySweetsEl.classList.add(ok ? 'hint-ok' : 'hint-ng');
+    }
+  }
+}
+function getRobDropTarget(x,y, fromUid){
+  const el = document.elementFromPoint(x,y);
+  const wrap = el?.closest?.('.sweets-wrap');
+  if(wrap){
+    const uid = wrap.dataset.sweetsUid || null;
+    return { type:'swwrap', uid, ok: canRobMoveTo(uid, fromUid) };
+  }
+  const myWrap = el?.closest?.('#mySweets');
+  if(myWrap){
+    const uid = state.userId;
+    return { type:'mySweets', uid, ok: canRobMoveTo(uid, fromUid) };
+  }
+  return { type:'none' };
+}
+function startRobVoteDrag(e, sourceEl){
+  if(!shouldEnableRobVoteDrag()) return;
+  const voterUid = sourceEl?.dataset?.voterUid || null;
+  const fromTargetUid = sourceEl?.dataset?.targetUid || null;
+  if(!voterUid || !fromTargetUid) return;
+  e.preventDefault();
+
+  const r = sourceEl.getBoundingClientRect();
+  robVoteDrag.active = true;
+  robVoteDrag.sourceEl = sourceEl;
+  robVoteDrag.fromTargetUid = fromTargetUid;
+  robVoteDrag.voterUid = voterUid;
+  robVoteDrag.offsetX = e.clientX - r.left;
+  robVoteDrag.offsetY = e.clientY - r.top;
+  robVoteDrag.lastClientX = e.clientX;
+  robVoteDrag.lastClientY = e.clientY;
+  robVoteDrag.sourceRect = {
+    left: r.left,
+    top: r.top,
+    width: r.width,
+    height: r.height,
+  };
+
+  setRobSweetsWrapHints(true, { fromUid: fromTargetUid });
+
+  const ghost = sourceEl.cloneNode(true);
+  ghost.classList.add('vote-dragging');
+  ghost.style.visibility = 'visible';
+  ghost.style.left = `${r.left}px`;
+  ghost.style.top  = `${r.top}px`;
+  ghost.style.width = `${r.width}px`;
+  ghost.style.height = `${r.height}px`;
+  document.body.appendChild(ghost);
+  robVoteDrag.ghost = ghost;
+  robVoteDrag.sourceEl.style.visibility = 'hidden';
+
+  ghost.setPointerCapture(e.pointerId);
+  ghost.addEventListener('pointermove', onRobVoteDragMove);
+  ghost.addEventListener('pointerup', onRobVoteDragEnd);
+  ghost.addEventListener('pointercancel', onRobVoteDragEnd);
+}
+function onRobVoteDragMove(e){
+  if(!robVoteDrag.active || !robVoteDrag.ghost) return;
+  const x = e.clientX - robVoteDrag.offsetX;
+  const y = e.clientY - robVoteDrag.offsetY;
+  robVoteDrag.lastClientX = e.clientX;
+  robVoteDrag.lastClientY = e.clientY;
+  robVoteDrag.ghost.style.left = `${x}px`;
+  robVoteDrag.ghost.style.top  = `${y}px`;
+}
+function onRobVoteDragEnd(e){
+  if(!robVoteDrag.active) return;
+
+  const drop = getRobDropTarget(e.clientX, e.clientY, robVoteDrag.fromTargetUid);
+  const fromTargetUid = robVoteDrag.fromTargetUid;
+  const voterUid = robVoteDrag.voterUid;
+  const sourceRect = robVoteDrag.sourceRect;
+
+  cleanupRobVoteDrag();
+
+  if(!actionSelection || actionSelection.type !== 'rob') return;
+  if(drop.type === 'none' || !drop.ok) return;
+  if(drop.uid === fromTargetUid) return;
+
+  setActionSelection({
+    ...actionSelection,
+    phase:'confirm',
+    fromTargetUid,
+    toTargetUid: drop.uid,
+    voterUid,
+    sourceRect,
+  });
+}
+function cleanupRobVoteDrag(){
+  if(robVoteDrag.ghost){
+    robVoteDrag.ghost.removeEventListener('pointermove', onRobVoteDragMove);
+    robVoteDrag.ghost.removeEventListener('pointerup', onRobVoteDragEnd);
+    robVoteDrag.ghost.removeEventListener('pointercancel', onRobVoteDragEnd);
+    robVoteDrag.ghost.remove();
+  }
+  if(robVoteDrag.sourceEl){
+    robVoteDrag.sourceEl.style.visibility = '';
+  }
+  setRobSweetsWrapHints(false);
+  robVoteDrag.active = false;
+  robVoteDrag.ghost = null;
+  robVoteDrag.offsetX = 0;
+  robVoteDrag.offsetY = 0;
+  robVoteDrag.lastClientX = null;
+  robVoteDrag.lastClientY = null;
+  robVoteDrag.sourceEl = null;
+  robVoteDrag.fromTargetUid = null;
+  robVoteDrag.voterUid = null;
+  robVoteDrag.sourceRect = null;
+}
+
+/* =========================
    ★ 投票：チップドラッグ → swarea へドロップ
    ========================= */
 const voteDrag = {
@@ -8884,6 +9226,13 @@ function syncFloatingDragPositions(){
     voteDrag.ghost.style.left = `${x}px`;
     voteDrag.ghost.style.top  = `${y}px`;
     updateSwareaHint(voteDrag.lastClientX, voteDrag.lastClientY);
+  }
+
+  if(robVoteDrag.active && robVoteDrag.ghost && robVoteDrag.lastClientX !== null && robVoteDrag.lastClientY !== null){
+    const x = robVoteDrag.lastClientX - robVoteDrag.offsetX;
+    const y = robVoteDrag.lastClientY - robVoteDrag.offsetY;
+    robVoteDrag.ghost.style.left = `${x}px`;
+    robVoteDrag.ghost.style.top  = `${y}px`;
   }
 }
 
