@@ -9566,9 +9566,7 @@ async function acquireSweetsCard(cardObj){
 
   sweetsPanelLocked = false;
   btnSweetsClose.disabled = false;
-  sweetsBackdrop.classList.add('hidden');
-  setSweetsPanelMode(SWEETS_PANEL_MODE.PICK);
-  setSweetsDeckFocus(false);
+  closeSweetsPicker();
 
   await endTurn('drawSweets');
 
@@ -9604,9 +9602,7 @@ async function acquireExcludedSweetsCard(cardObj){
 
   sweetsPanelLocked = false;
   btnSweetsClose.disabled = false;
-  sweetsBackdrop.classList.add('hidden');
-  setSweetsPanelMode(SWEETS_PANEL_MODE.PICK);
-  setSweetsDeckFocus(false);
+  closeSweetsPicker();
 
   if(fromRect && toRect){
     requestAnimationFrame(() => {
