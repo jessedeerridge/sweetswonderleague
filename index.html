@@ -2413,6 +2413,7 @@ let lastRoundNo = null;
 let actionSelection = null;
 let mySweetsSelectHandlersBound = false;
 let sweetsDeckMoveRaf = null;
+let localSweetsPickingState = null;
 const ADVERTISE_PULSE_DURATION_MS = 1400;
 const advertisedPulseUids = new Set();
 const advertisedStarReadyUids = new Set();
@@ -2870,7 +2871,9 @@ function clearSweetsDeckMove(){
 
 function updateSweetsDeckMove(){
   if(!sweetsDeckUI) return;
-  const targetUid = state.game?.sweetsPicking;
+  const targetUid = localSweetsPickingState === false
+    ? null
+    : (localSweetsPickingState === true ? state.userId : state.game?.sweetsPicking);
   if(!targetUid || targetUid === state.userId || sweetsDeckUI.classList.contains('hidden')){
     clearSweetsDeckMove();
     return;
@@ -3137,6 +3140,9 @@ function subscribeGame(){
     const prevLeaderSeat = state.turn?.leaderSeat ?? null;
     state.game = snap.val() || {};
     state.turn = state.game.turn || null;
+    if(localSweetsPickingState === false && !state.game?.sweetsPicking){
+      localSweetsPickingState = null;
+    }
     state.turnEnding = false;
     const nextRoundNo = (typeof state.game?.roundNo === 'number') ? state.game.roundNo : null;
     const nextSessionId = state.game?.sessionId || null;
@@ -9231,12 +9237,14 @@ function canStartSweetsDrag(source){
 async function setSweetsPickingState(active){
   if(!state.roomCode) return;
   if(active && state.game?.sweetsPicking && state.game.sweetsPicking !== state.userId) return;
+  localSweetsPickingState = active;
   const gameRef = ref(db, `rooms/${state.roomCode}/game`);
   await update(gameRef, { sweetsPicking: active ? state.userId : null });
 }
 
 async function clearSweetsPickingStateIfMine(){
   if(state.game?.sweetsPicking !== state.userId) return;
+  localSweetsPickingState = false;
   await setSweetsPickingState(false);
 }
 
