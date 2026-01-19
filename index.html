@@ -2876,21 +2876,21 @@ function updateSweetsDeckRelocation(){
   if(!sweetsDeckMover || !sweetsDeckUI) return;
   if(sweetsDeckUI.classList.contains('hidden')){
     sweetsDeckMover.classList.remove('relocating');
-    sweetsDeckMover.style.transform = 'translate(0px, 0px)';
+    setSweetsDeckMoverTransform('translate(0px, 0px)');
     return;
   }
   const focus = getSweetsDeckFocus();
   const shouldRelocate = !!(focus && focus.uid && focus.uid !== state.userId);
   if(!shouldRelocate){
     sweetsDeckMover.classList.remove('relocating');
-    sweetsDeckMover.style.transform = 'translate(0px, 0px)';
+    setSweetsDeckMoverTransform('translate(0px, 0px)');
     return;
   }
 
   const tagEl = document.querySelector(`.player-tag[data-uid="${focus.uid}"]`);
   if(!tagEl){
     sweetsDeckMover.classList.remove('relocating');
-    sweetsDeckMover.style.transform = 'translate(0px, 0px)';
+    setSweetsDeckMoverTransform('translate(0px, 0px)');
     return;
   }
 
@@ -2908,7 +2908,16 @@ function updateSweetsDeckRelocation(){
   const moveY = targetY - deckCenterY;
 
   sweetsDeckMover.classList.add('relocating');
-  sweetsDeckMover.style.transform = `translate(${moveX}px, ${moveY}px)`;
+  setSweetsDeckMoverTransform(`translate(${moveX}px, ${moveY}px)`);
+}
+
+function setSweetsDeckMoverTransform(value){
+  if(!sweetsDeckMover) return;
+  if(sweetsDeckMover.style.transform === value) return;
+  requestAnimationFrame(() => {
+    if(sweetsDeckMover.style.transform === value) return;
+    sweetsDeckMover.style.transform = value;
+  });
 }
 
 function getRequiredSweetsCount(){
