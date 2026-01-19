@@ -437,7 +437,10 @@ display:none;
     outline:none;
     font-weight:800;
   }
-  .player-tag.in-othercircle.active-turn{
+  .player-tag .name-text{
+    display:inline-block;
+  }
+  .player-tag .name-text.active-turn{
     animation:nametagpuls1 1.05s ease-in-out infinite;
     transform-origin:center;
     will-change:transform;
@@ -6836,7 +6839,10 @@ circle.style.setProperty('--rotDeg', `${rotDeg}deg`);
 const tag = document.createElement('div');
 tag.className = 'player-tag in-othercircle';
 
-tag.textContent = p.name;
+const nameText = document.createElement('span');
+nameText.className = 'name-text';
+nameText.textContent = p.name;
+tag.appendChild(nameText);
 tag.dataset.seat = String(p.seatIndex);
 tag.dataset.uid = p.id;
 applyTagChipStyle(tag, p.tagChipStyle);
@@ -6889,7 +6895,10 @@ if(scoutSelectable){
   tag.onclick = (e) => { e.stopPropagation(); onKick(); };
 }
 
-if(activeSeat === p.seatIndex && p.id !== state.userId) tag.classList.add('active-turn');
+if(activeSeat === p.seatIndex && p.id !== state.userId){
+  tag.classList.add('active-turn');
+  nameText.classList.add('active-turn');
+}
 
 circle.appendChild(tag);
 
