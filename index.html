@@ -4000,6 +4000,18 @@ function canVoteNow(options = {}){
   }
   return owners.length >= 1;
 }
+
+function getTotalVoteChipsOnField(votesObj = state.room?.votes){
+  if(!votesObj || typeof votesObj !== 'object') return 0;
+  return Object.values(votesObj).reduce((sum, voters) => {
+    if(!voters || typeof voters !== 'object') return sum;
+    const total = Object.values(voters).reduce((innerSum, count) => {
+      if(typeof count !== 'number') return innerSum + 1;
+      return innerSum + count;
+    }, 0);
+    return sum + total;
+  }, 0);
+}
 function renderMyVoteChip(){
   const started = !!state.room?.gameStarted;
   applyTagChipStyle(myVoteChipEl, getTagChipStyleByUid(state.userId));
@@ -4889,6 +4901,23 @@ function updateActionSelectionUI(){
       }
     }
   }
+}
+
+let actionBlockedTimer = null;
+function showActionBlockedMessage(message){
+  if(!actionExplainPop) return;
+  if(actionConfirmPop) actionConfirmPop.classList.add('hidden');
+  actionExplainPop.textContent = message;
+  actionExplainPop.classList.remove('hidden');
+  if(actionBlockedTimer){
+    clearTimeout(actionBlockedTimer);
+  }
+  actionBlockedTimer = setTimeout(() => {
+    if(!isActionSelectionActive()){
+      actionExplainPop.classList.add('hidden');
+    }
+    actionBlockedTimer = null;
+  }, 1600);
 }
 
 function setActionSelection(next){
@@ -8109,7 +8138,11 @@ async function onDragEnd(e){
     const ok = canUseOnPlayCircle(cardObj);
     if(!ok){ snapBack(); return; }
 
-    await playCardToCircle(cardObj);
+    const played = await playCardToCircle(cardObj);
+    if(!played){
+      snapBack();
+      return;
+    }
     cleanupDrag();
     return;
   }
@@ -8117,7 +8150,11 @@ async function onDragEnd(e){
   if(drop.type === 'otherCircle'){
     if(cardObj.kind !== 'instruction'){ snapBack(); return; }
     if(!canUseOnOtherPlayer(cardObj)){ snapBack(); return; }
-    await giveInstructionToPlayer(cardObj, drop.seat, drop.uid);
+    const sent = await giveInstructionToPlayer(cardObj, drop.seat, drop.uid);
+    if(!sent){
+      snapBack();
+      return;
+    }
     cleanupDrag();
     return;
   }
@@ -8127,7 +8164,11 @@ async function onDragEnd(e){
     if(cardObj.kind !== 'instruction'){ snapBack(); return; }
     if(isSelf && !INSTRUCTION_CAN_SELF.has(cardObj.name)){ snapBack(); return; }
     if(isSelf){
-      await playCardToCircle(cardObj);
+      const played = await playCardToCircle(cardObj);
+      if(!played){
+        snapBack();
+        return;
+      }
       cleanupDrag();
       return;
     }
@@ -8199,12 +8240,27 @@ async function discardReceivedInstructionsForTurn(){
   await set(disRef, [...discard, ...rec]);
 }
 
+function getActionBlockReason(cardObj){
+  if(!cardObj) return null;
+  const sweetsOwners = getSweetsOwners();
+  if(cardObj.name === '宣伝' || cardObj.name === '事故' || cardObj.name === '激推し'){
+    if(sweetsOwners.length === 0) return '場にスイーツがありません。';
+  }
+  if(cardObj.name === '交換'){
+    if(sweetsOwners.length <= 1) return '場に交換できるスイーツがありません。';
+  }
+  if(cardObj.name === '強奪'){
+    if(getTotalVoteChipsOnField() <= 0) return '場に投票チップがありません。';
+  }
+  return null;
+}
+
 /* =========================
    カード使用：プレイサークル
    ========================= */
 async function playCardToCircle(cardObj){
-  if(!state.roomCode) return;
-  if(!isMyTurn()) return;
+  if(!state.roomCode) return false;
+  if(!isMyTurn()) return false;
 
   const receivedExists = hasReceivedInstruction();
   const isIgnore = (cardObj.kind === 'instruction' && cardObj.name === '無視');
@@ -8223,7 +8279,13 @@ async function playCardToCircle(cardObj){
     updateSweetsDeckUI();
     renderMyVoteChip();
     updatePassRoundBtn();
-    return;
+    return true;
+  }
+
+  const blockReason = getActionBlockReason(cardObj);
+  if(blockReason){
+    showActionBlockedMessage(blockReason);
+    return false;
   }
 
   const myRef = ref(db, `rooms/${state.roomCode}/hands/${state.userId}`);
@@ -8247,7 +8309,7 @@ async function playCardToCircle(cardObj){
     updateSweetsDeckUI();
     renderMyVoteChip();
     updatePassRoundBtn();
-    return;
+    return true;
   }
 
   const shouldEndTurn = await runActionCardEffect(cardObj);
@@ -8258,6 +8320,7 @@ async function playCardToCircle(cardObj){
   updateSweetsDeckUI();
   renderMyVoteChip();
   updatePassRoundBtn();
+  return true;
 }
 
 async function runActionCardEffect(cardObj){
@@ -8695,11 +8758,16 @@ async function showScoutReveal(targetUid){
    指示カード：他プレイヤーへ渡す
    ========================= */
 async function giveInstructionToPlayer(cardObj, targetSeat, targetUid){
-  if(!state.roomCode) return;
-  if(!isMyTurn()) return;
+  if(!state.roomCode) return false;
+  if(!isMyTurn()) return false;
 
   if(!canUseOnOtherPlayer(cardObj)){
-    return;
+    return false;
+  }
+
+  if(cardObj?.name === '賄賂' && !hasSweets()){
+    showActionBlockedMessage('自分のスイーツがありません。');
+    return false;
   }
 
   const myRef = ref(db, `rooms/${state.roomCode}/hands/${state.userId}`);
@@ -8727,6 +8795,7 @@ async function giveInstructionToPlayer(cardObj, targetSeat, targetUid){
   updateSweetsDeckUI();
   renderMyVoteChip();
   updatePassRoundBtn();
+  return true;
 }
 async function runInstructionCardEffect(cardObj, targetUid){
   return;
