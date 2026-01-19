@@ -826,6 +826,9 @@ display:none;
     opacity:0;
     visibility:hidden;
   }
+  .my-sweets.empty{
+    background:transparent;
+  }
   .my-sweets.hidden{display:none;}  .my-sweets img{
     width:100%;
     height:100%;
@@ -1495,6 +1498,13 @@ left:-260px;
   transition:transform .6s ease;
   --decidedMoveX: 0px;
   --decidedMoveY: 0px;
+}
+.sweets-wrap .action-card{
+  position:absolute;
+  right:-10px;
+  bottom:-10px;
+  z-index:6;
+  pointer-events:none;
 }
 
 .sweets-wrap.empty{
@@ -3800,6 +3810,7 @@ async function hostFinalizeReturnSweetsToDeck(revealedCards = []){
     'game/leaderPick': leaderPickPayload,
     'game/actionDealKey': null,
     'game/advertisedSweets': {},
+    'game/confinedSweets': {},
     /* ✅ 追加：ここから勝敗判定→roundchip→round+1 */
     ...( (() => {
       const playerCount = Array.isArray(gameNow.seatOrder) ? gameNow.seatOrder.length : (latestPlayers?.length || 0);
@@ -4145,6 +4156,11 @@ function renderMySweets(){
         handleAdvertiseCandidate(state.userId);
         return;
       }
+      if(actionSelection.type === 'confinement' && actionSelection.phase === 'select'){
+        e.stopPropagation();
+        handleConfinementCandidate(state.userId);
+        return;
+      }
       if(actionSelection.type === 'accident' && actionSelection.phase === 'select'){
         e.stopPropagation();
         handleAccidentCandidate(state.userId);
@@ -4160,12 +4176,19 @@ function renderMySweets(){
   mySweetsEl.classList.remove('swap-selectable','swap-selected','advertise-selectable','accident-selectable');
   const c = getMySweetsCard();
   if(!c){
-    mySweetsEl.classList.add('hidden');
+    const hasVotes = getVoteCountFor(state.userId) > 0;
+    mySweetsEl.classList.toggle('hidden', !hasVotes);
+    mySweetsEl.classList.toggle('empty', hasVotes);
+    if(hasVotes){
+      mySweetsEl.dataset.sweetsUid = state.userId;
+      renderMySweetsVoteStack();
+    }
     updateRoundPickUI();
     lastMySweetsSnapshot = null;
     mySweetsFlyAnimatedFor = null;
     return;
   }
+  mySweetsEl.classList.remove('empty');
   if(collectedSweetsHidden.has(state.userId)){
     mySweetsEl.classList.add('hidden');
     mySweetsEl.innerHTML = '';
@@ -4222,6 +4245,16 @@ function renderMySweets(){
     : null;
   if(accidentSelection){
     const isSelectable = accidentSelection.phase === 'select';
+    mySweetsEl.classList.toggle('accident-selectable', isSelectable);
+    if(isSelectable){
+      mySweetsEl.style.cursor = 'pointer';
+    }
+  }
+  const confinementSelection = actionSelection?.type === 'confinement'
+    ? actionSelection
+    : null;
+  if(confinementSelection){
+    const isSelectable = confinementSelection.phase === 'select';
     mySweetsEl.classList.toggle('accident-selectable', isSelectable);
     if(isSelectable){
       mySweetsEl.style.cursor = 'pointer';
@@ -4485,6 +4518,21 @@ function updateActionSelectionUI(){
       if(actionConfirmPop) actionConfirmPop.classList.remove('hidden');
     }
   }
+  if(actionSelection.type === 'confinement'){
+    if(actionSelection.phase === 'select'){
+      if(actionExplainPop){
+        actionExplainPop.textContent = '監禁：対象のスイーツを選択してください。';
+        actionExplainPop.classList.remove('hidden');
+      }
+    }
+    if(actionSelection.phase === 'confirm'){
+      const target = getPlayerByUid(actionSelection.targetUid);
+      if(actionConfirmText){
+        actionConfirmText.textContent = `「${target?.name ?? 'プレイヤー'}」のスイーツを監禁しますか。`;
+      }
+      if(actionConfirmPop) actionConfirmPop.classList.remove('hidden');
+    }
+  }
   if(actionSelection.type === 'accident'){
     if(actionSelection.phase === 'select'){
       if(actionExplainPop){
@@ -4587,6 +4635,18 @@ function beginAccidentSelection(){
     });
   });
 }
+function beginConfinementSelection(){
+  const candidates = getSweetsOwners();
+  if(candidates.length < 1) return Promise.resolve(null);
+  return new Promise(resolve => {
+    setActionSelection({
+      type:'confinement',
+      phase:'select',
+      targetUid:null,
+      resolve,
+    });
+  });
+}
 function beginInspirationSelection(){
   const excluded = state.room?.decks?.sweetsExcluded;
   if(!Array.isArray(excluded) || !excluded.length) return Promise.resolve(null);
@@ -4646,6 +4706,16 @@ function handleExchangeCandidate(uid){
 }
 function handleAdvertiseCandidate(uid){
   if(!actionSelection || actionSelection.type !== 'advertise') return;
+  if(actionSelection.phase !== 'select') return;
+  if(!getSweetsCardByUid(uid)) return;
+  setActionSelection({
+    ...actionSelection,
+    phase: 'confirm',
+    targetUid: uid,
+  });
+}
+function handleConfinementCandidate(uid){
+  if(!actionSelection || actionSelection.type !== 'confinement') return;
   if(actionSelection.phase !== 'select') return;
   if(!getSweetsCardByUid(uid)) return;
   setActionSelection({
@@ -4781,10 +4851,8 @@ let isRenderingSeatTabs = false;
 
 function renderMySweetsVoteStack(){
   // スイーツ未所持なら何もしない（＆残骸があれば消す）
-  const c = getMySweetsCard();
   const old = mySweetsEl.querySelector('.vote-stack');
   if(old) old.remove();
-  if(!c) return;
 
   const voterIds = getVoteVoterIds(state.userId);
   if(!voterIds.length) return;
@@ -5554,6 +5622,7 @@ function renderPlayerCircle(players){
     ? roundPick.candidates
     : [];
   const roundPickCanSelect = roundPickActive && roundPick?.leaderId === state.userId;
+  const confinedSweets = getConfinedSweetsMap();
   const leaderPick = getLeaderPick();
   const leaderPickActive = leaderPick?.phase === 'choose';
   const leaderPickCandidates = leaderPickActive && Array.isArray(leaderPick.candidates)
@@ -5605,13 +5674,6 @@ function renderPlayerCircle(players){
         tag.appendChild(chip);
       }
     if(voteHoldActive && !decidedUids.includes(state.userId)){
-        const voteStack = buildVoteStackEl(state.userId);
-        if(voteStack){
-          tag.appendChild(voteStack);
-        }
-      }
-      const mySweetsCard = getSweetsCardByUid(state.userId);
-      if(!mySweetsCard && getVoteCountFor(state.userId) > 0){
         const voteStack = buildVoteStackEl(state.userId);
         if(voteStack){
           tag.appendChild(voteStack);
@@ -5893,10 +5955,28 @@ if(started && roleAssigned){
         sweetsWrap.onclick = onAccident;
       }
     }
+    const confinementSelection = actionSelection?.type === 'confinement'
+      ? actionSelection
+      : null;
+    const confinementSelectable = confinementSelection?.phase === 'select';
+    if(confinementSelection && hasTheirSweets){
+      sweetsWrap.classList.toggle('accident-selectable', confinementSelectable);
+      if(confinementSelectable){
+        const onConfinement = (e) => {
+          e.stopPropagation();
+          handleConfinementCandidate(p.id);
+        };
+        sweetsWrap.addEventListener('pointerdown', onConfinement);
+        sweetsWrap.onclick = onConfinement;
+      }
+    }
     if(collectedSweetsHidden.has(p.id)){
       sweetsWrap.classList.add('collect-hidden');
     }
-    if(roundPickCanSelect && roundPickCandidates.includes(p.id)){
+    const canRoundPickSelect = roundPickCanSelect
+      && roundPickCandidates.includes(p.id)
+      && !confinedSweets?.[p.id];
+    if(canRoundPickSelect){
       sweetsWrap.classList.add('roundpick-candidate');
       sweetsWrap.classList.add('roundpick-selectable');
       sweetsWrap.addEventListener('pointerdown', (e) => {
@@ -6222,6 +6302,15 @@ function getRoundPick(){
 }
 function getLeaderPick(){
   return state.game?.leaderPick || null;
+}
+function getConfinedSweetsMap(){
+  const map = state.game?.confinedSweets;
+  return (map && typeof map === 'object') ? map : {};
+}
+function isSweetsConfined(uid){
+  if(!uid) return false;
+  const map = getConfinedSweetsMap();
+  return !!map[uid];
 }
 function shouldHoldVoteChips(){
   const lp = getLeaderPick();
@@ -6600,7 +6689,11 @@ const roundPickDrag = {
 function canLeaderDragPick(uid){
   const rp = getRoundPick();
   const candidates = rp && Array.isArray(rp.candidates) ? rp.candidates : [];
-  return !!rp && rp.phase === 'choose' && rp.leaderId === state.userId && candidates.includes(uid);
+  return !!rp
+    && rp.phase === 'choose'
+    && rp.leaderId === state.userId
+    && candidates.includes(uid)
+    && !isSweetsConfined(uid);
 }
 
 function startRoundPickDrag(e, uid){
@@ -6707,7 +6800,9 @@ function updateRoundPickUI(){
   const roundPickActive = !!rp && rp.phase === 'choose';
   const candidates = roundPickActive && Array.isArray(rp.candidates) ? rp.candidates : [];
   const leaderCanSelect = roundPickActive && rp.leaderId === state.userId;
-  const meIsCandidate = leaderCanSelect && candidates.includes(state.userId);
+  const meIsCandidate = leaderCanSelect
+    && candidates.includes(state.userId)
+    && !isSweetsConfined(state.userId);
   const meCanSelect = leaderCanSelect && meIsCandidate;
 
   mySweetsEl.classList.toggle('roundpick-candidate', meIsCandidate);
@@ -6745,6 +6840,7 @@ async function leaderPickOne(uid){
   const candidates = Array.isArray(rp.candidates) ? rp.candidates : [];
 
   if(!candidates.includes(uid)) return;
+  if(isSweetsConfined(uid)) return;
 
   const nextSelected = [...baseSelected, uid];
   const nextCandidates = candidates.filter(x=>x !== uid);
@@ -7772,6 +7868,10 @@ async function runActionCardEffect(cardObj){
     await runAdvertiseEffect();
     return true;
   }
+  if(cardObj?.name === '監禁'){
+    await runConfinementEffect();
+    return true;
+  }
   if(cardObj?.name === '交換'){
     await runExchangeEffect();
     return true;
@@ -7859,6 +7959,19 @@ async function runAdvertiseEffect(){
   const targetUid = await beginAdvertiseSelection();
   if(!targetUid) return;
   await revealAdvertisedSweets(targetUid);
+}
+
+async function runConfinementEffect(){
+  if(!state.room?.gameStarted) return;
+  if(!state.roomCode) return;
+  const candidates = getSweetsOwners();
+  if(!candidates.length) return;
+  const targetUid = await beginConfinementSelection();
+  if(!targetUid) return;
+  await set(ref(db, `rooms/${state.roomCode}/game/confinedSweets/${targetUid}`), {
+    byUid: state.userId,
+    at: Date.now(),
+  });
 }
 
 async function runExchangeEffect(){
