@@ -2887,20 +2887,21 @@ function updateSweetsDeckRelocation(){
     return;
   }
 
-  const tagEl = document.querySelector(`.player-tag[data-uid="${focus.uid}"]`);
-  if(!tagEl){
+  const sweetsWrap = document.querySelector(`.sweets-wrap[data-sweets-uid="${focus.uid}"]`);
+  const fallbackTag = document.querySelector(`.player-tag[data-uid="${focus.uid}"]`);
+  const targetEl = sweetsWrap || fallbackTag;
+  if(!targetEl){
     sweetsDeckMover.classList.remove('relocating');
     setSweetsDeckMoverTransform('translate(0px, 0px)');
     return;
   }
 
   const baseRect = sweetsDeckMover.parentElement?.getBoundingClientRect?.();
-  const deckRect = sweetsDeckUI.getBoundingClientRect();
-  const tagRect = tagEl.getBoundingClientRect();
-  if(!baseRect || !baseRect.width || !baseRect.height || !tagRect.width || !tagRect.height) return;
+  const targetRect = targetEl.getBoundingClientRect();
+  if(!baseRect || !baseRect.width || !baseRect.height || !targetRect.width || !targetRect.height) return;
 
-  const targetX = tagRect.left + tagRect.width / 2;
-  const targetY = tagRect.bottom + 8;
+  const targetX = targetRect.left + targetRect.width / 2;
+  const targetY = targetRect.top + targetRect.height / 2;
   const deckCenterX = baseRect.left + baseRect.width / 2;
   const deckCenterY = baseRect.top + baseRect.height / 2;
 
