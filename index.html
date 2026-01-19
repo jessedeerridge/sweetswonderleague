@@ -9227,12 +9227,14 @@ function cleanupRobVoteDrag(){
    ========================= */
 const voteDrag = {
   active:false,
-  ghost:null,
   offsetX:0,
   offsetY:0,
   lastClientX:null,
   lastClientY:null,
   sourceEl:null,
+  sourceParent:null,
+  sourceNextSibling:null,
+  sourceStyle:'',
   showAllHints:false,
   useBonus:false,
 };
@@ -9305,6 +9307,9 @@ function startDragVoteChip(e, options = {}){
   const r = sourceEl.getBoundingClientRect();
   voteDrag.active = true;
   voteDrag.sourceEl = sourceEl;
+  voteDrag.sourceParent = sourceEl.parentElement;
+  voteDrag.sourceNextSibling = sourceEl.nextSibling;
+  voteDrag.sourceStyle = sourceEl.getAttribute('style') || '';
   voteDrag.offsetX = e.clientX - r.left;
   voteDrag.offsetY = e.clientY - r.top;
   voteDrag.lastClientX = e.clientX;
@@ -9314,32 +9319,29 @@ function startDragVoteChip(e, options = {}){
   voteDrag.showAllHints = true;
   setAllSweetsWrapHints(true, { useBonus });
 
-  const ghost = sourceEl.cloneNode(true);
-  ghost.classList.remove('hidden');
-  ghost.classList.add('vote-dragging');
-  ghost.style.visibility = 'visible';
-  ghost.style.left = `${r.left}px`;
-  ghost.style.top  = `${r.top}px`;
-  ghost.style.width = `${r.width}px`;
-  ghost.style.height = `${r.height}px`;
-  document.body.appendChild(ghost);
-  voteDrag.ghost = ghost;
-  voteDrag.sourceEl.style.visibility = 'hidden';
+  sourceEl.classList.remove('hidden');
+  sourceEl.classList.add('vote-dragging');
+  sourceEl.style.visibility = 'visible';
+  sourceEl.style.left = `${r.left}px`;
+  sourceEl.style.top  = `${r.top}px`;
+  sourceEl.style.width = `${r.width}px`;
+  sourceEl.style.height = `${r.height}px`;
+  document.body.appendChild(sourceEl);
 
-  ghost.setPointerCapture(e.pointerId);
-  ghost.addEventListener('pointermove', onVoteDragMove);
-  ghost.addEventListener('pointerup', onVoteDragEnd);
-  ghost.addEventListener('pointercancel', onVoteDragEnd);
+  sourceEl.setPointerCapture(e.pointerId);
+  sourceEl.addEventListener('pointermove', onVoteDragMove);
+  sourceEl.addEventListener('pointerup', onVoteDragEnd);
+  sourceEl.addEventListener('pointercancel', onVoteDragEnd);
 }
 
 function onVoteDragMove(e){
-  if(!voteDrag.active || !voteDrag.ghost) return;
+  if(!voteDrag.active || !voteDrag.sourceEl) return;
   const x = e.clientX - voteDrag.offsetX;
   const y = e.clientY - voteDrag.offsetY;
   voteDrag.lastClientX = e.clientX;
   voteDrag.lastClientY = e.clientY;
-  voteDrag.ghost.style.left = `${x}px`;
-  voteDrag.ghost.style.top  = `${y}px`;
+  voteDrag.sourceEl.style.left = `${x}px`;
+  voteDrag.sourceEl.style.top  = `${y}px`;
   updateSwareaHint(e.clientX, e.clientY);
 }
 
@@ -9349,7 +9351,6 @@ function onVoteDragEnd(e){
   const drop = getVoteDropTarget(e.clientX, e.clientY, { useBonus: voteDrag.useBonus });
   clearSwareaHint();
   const shouldCast = drop.type === 'swwrap' && drop.ok;   // ★変更
-  const ghost = voteDrag.ghost;
   const targetRect = shouldCast ? getVoteChipTargetRectForMove(drop.uid) : null;
 
   const finish = () => {
@@ -9359,11 +9360,11 @@ function onVoteDragEnd(e){
     }
   };
 
-  if(ghost && targetRect){
-    const sourceRect = ghost.getBoundingClientRect();
+  if(voteDrag.sourceEl && targetRect){
+    const sourceRect = voteDrag.sourceEl.getBoundingClientRect();
     const dx = targetRect.left - sourceRect.left;
     const dy = targetRect.top - sourceRect.top;
-    ghost.animate([
+    voteDrag.sourceEl.animate([
       { transform: 'translate(0px, 0px) scale(1)' },
       { transform: `translate(${dx}px, ${dy}px) scale(1)` },
     ], {
@@ -9378,25 +9379,36 @@ function onVoteDragEnd(e){
 }
 
 function cleanupVoteDrag(){
-  if(voteDrag.ghost){
-    voteDrag.ghost.removeEventListener('pointermove', onVoteDragMove);
-    voteDrag.ghost.removeEventListener('pointerup', onVoteDragEnd);
-    voteDrag.ghost.removeEventListener('pointercancel', onVoteDragEnd);
-    voteDrag.ghost.remove();
-  }
-if(voteDrag.sourceEl){
-    voteDrag.sourceEl.style.visibility = '';
+  if(voteDrag.sourceEl){
+    voteDrag.sourceEl.removeEventListener('pointermove', onVoteDragMove);
+    voteDrag.sourceEl.removeEventListener('pointerup', onVoteDragEnd);
+    voteDrag.sourceEl.removeEventListener('pointercancel', onVoteDragEnd);
+    voteDrag.sourceEl.classList.remove('vote-dragging');
+    if(voteDrag.sourceParent){
+      if(voteDrag.sourceNextSibling && voteDrag.sourceNextSibling.parentElement === voteDrag.sourceParent){
+        voteDrag.sourceParent.insertBefore(voteDrag.sourceEl, voteDrag.sourceNextSibling);
+      }else{
+        voteDrag.sourceParent.appendChild(voteDrag.sourceEl);
+      }
+    }
+    if(voteDrag.sourceStyle){
+      voteDrag.sourceEl.setAttribute('style', voteDrag.sourceStyle);
+    }else{
+      voteDrag.sourceEl.removeAttribute('style');
+    }
   }
   voteDrag.active = false;
   voteDrag.showAllHints = false;
   setAllSweetsWrapHints(false);
   clearSwareaHint();
-  voteDrag.ghost = null;
   voteDrag.offsetX = 0;
   voteDrag.offsetY = 0;
   voteDrag.lastClientX = null;
   voteDrag.lastClientY = null;
   voteDrag.sourceEl = null;
+  voteDrag.sourceParent = null;
+  voteDrag.sourceNextSibling = null;
+  voteDrag.sourceStyle = '';
   voteDrag.useBonus = false;
 }
 
@@ -9416,11 +9428,11 @@ function syncFloatingDragPositions(){
     sweetsDrag.ghost.style.top  = `${y}px`;
   }
 
-  if(voteDrag.active && voteDrag.ghost && voteDrag.lastClientX !== null && voteDrag.lastClientY !== null){
+  if(voteDrag.active && voteDrag.sourceEl && voteDrag.lastClientX !== null && voteDrag.lastClientY !== null){
     const x = voteDrag.lastClientX - voteDrag.offsetX;
     const y = voteDrag.lastClientY - voteDrag.offsetY;
-    voteDrag.ghost.style.left = `${x}px`;
-    voteDrag.ghost.style.top  = `${y}px`;
+    voteDrag.sourceEl.style.left = `${x}px`;
+    voteDrag.sourceEl.style.top  = `${y}px`;
     updateSwareaHint(voteDrag.lastClientX, voteDrag.lastClientY);
   }
 
