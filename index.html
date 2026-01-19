@@ -1378,7 +1378,8 @@ border-radius:0px;
     color:#0ea5e9;
     background:rgba(224,242,254,.65);
     margin-top:28px;
-    width:min(760px, calc(100% - 32px));
+    width:min(520px, calc(100% - 32px));
+    justify-content:center;
   }
   .sweets-drop-zone.active{
     border-color:transparent;
@@ -5409,15 +5410,17 @@ if(actionConfirmYes){
 
       const sourceRect = actionSelection.sourceRect;
       const target = await getExcludedDeckTargetRectForTrial();
-      if(sourceRect && target){
-        await animateOneCardToDeck(sourceRect, target, { rotateFrom: 0, rotateTo: 90 });
-      }
 
       clearTrialDropPreview({ restoreSource: false });
       sweetsPanelLocked = false;
       btnSweetsClose.disabled = false;
       sweetsBackdrop.classList.add('hidden');
       setSweetsPanelMode(SWEETS_PANEL_MODE.PICK);
+
+      if(sourceRect && target){
+        await new Promise(resolve => requestAnimationFrame(() => resolve()));
+        await animateOneCardToDeck(sourceRect, target, { rotateFrom: 0, rotateTo: 90 });
+      }
 
       clearActionSelection();
       if(resolve) resolve(true);
