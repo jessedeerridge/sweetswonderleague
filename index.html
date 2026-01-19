@@ -381,7 +381,7 @@ display:none;
 }
 @keyframes pulseSweetsDeckTrial {
   0%   { transform: scale(1); }
-  50%  { transform: scale(1.6); }
+  50%  { transform: scale(1.4); }
   100% { transform: scale(1); }
 }
   .sweets-deck.pulsing{ animation:pulseSweetsDeck 1.05s ease-in-out infinite; }
@@ -543,7 +543,7 @@ display:none;
   border-radius:14px;
   border:2px solid #f59e0b;
   box-shadow:0 14px 30px rgba(0,0,0,.25);
-  z-index:280;
+  z-index:720;
   white-space:nowrap;
 }
 .leader-pick-pop.hidden{display:none;}
@@ -1338,13 +1338,16 @@ border-radius:0px;
     transform:translateX(-50%);
     font-size:10px;
     font-weight:800;
-    color:#0369a1;
-    background:rgba(224,242,254,.92);
+    color:#fff;
+    background:#38bdf8;
     border:1px solid #7dd3fc;
     border-radius:999px;
     padding:2px 6px;
     text-align:center;
-    white-space:nowrap;
+    white-space:normal;
+    line-height:1.2;
+    max-width:96%;
+    overflow-wrap:break-word;
     z-index:2;
   }
 
@@ -1374,7 +1377,8 @@ border-radius:0px;
     border:2px dashed #7dd3fc;
     color:#0369a1;
     background:rgba(224,242,254,.65);
-    margin-top:20px;
+    margin-top:0;
+    width:min(760px, calc(100% - 32px));
   }
   .sweets-drop-zone.active{
     border-color:transparent;
@@ -1385,6 +1389,24 @@ border-radius:0px;
     border-color:#38bdf8;
     color:#0369a1;
     background:rgba(186,230,253,.9);
+  }
+  .sweets-drop-zone .trial-drop-preview{
+    width:90px;
+    height:135px;
+    border-radius:12px;
+    border:2px solid #7dd3fc;
+    background:#fff;
+    box-shadow:0 10px 24px rgba(0,0,0,.18);
+    display:flex;
+    align-items:center;
+    justify-content:center;
+    overflow:hidden;
+  }
+  .sweets-drop-zone .trial-drop-preview img{
+    width:100%;
+    height:100%;
+    object-fit:cover;
+    display:block;
   }
 
   /* =========================
@@ -2808,7 +2830,7 @@ function updateSweetsDeckUI(){
 
   const instructionNames = getActiveInstructionNames();
   const sweetsAllowed = instructionNames.has('応援') || instructionNames.has('脅迫') || instructionNames.size === 0;
-  const trialActive = actionSelection?.type === 'trial' && (actionSelection.phase === 'draw' || actionSelection.phase === 'ready');
+  const trialActive = actionSelection?.type === 'trial' && actionSelection.phase === 'draw';
   const pulsing = isMyTurn() && !hasSweets() && sweetsAllowed && !isActionSelectionActive();
   sweetsDeckUI.classList.toggle('pulsing', pulsing && !trialActive);
   sweetsDeckUI.classList.toggle('trial-pulsing', trialActive);
@@ -5035,12 +5057,6 @@ function updateActionSelectionUI(){
         actionExplainPop.classList.remove('hidden');
       }
     }
-    if(actionSelection.phase === 'ready'){
-      if(actionExplainPop){
-        actionExplainPop.textContent = '試行錯誤：もう一度スイーツ山札をクリックして、除外するカードを選んでください。';
-        actionExplainPop.classList.remove('hidden');
-      }
-    }
     if(actionSelection.phase === 'select'){
       if(actionExplainPop){
         actionExplainPop.textContent = '試行錯誤：除外したいカードを下の除外エリアへドラッグしてください。';
@@ -5398,6 +5414,7 @@ if(actionConfirmYes){
         await animateOneCardToDeck(sourceRect, target, { rotateFrom: 0, rotateTo: 90 });
       }
 
+      clearTrialDropPreview({ restoreSource: false });
       sweetsPanelLocked = false;
       btnSweetsClose.disabled = false;
       sweetsBackdrop.classList.add('hidden');
@@ -5435,6 +5452,7 @@ if(actionConfirmNo){
       return;
     }
     if(actionSelection.type === 'trial'){
+      clearTrialDropPreview();
       setActionSelection({
         ...actionSelection,
         phase:'select',
@@ -9041,6 +9059,8 @@ const SWEETS_PICK_SOURCE = {
   EXCLUDED: 'excluded',
 };
 let sweetsPickSource = SWEETS_PICK_SOURCE.MAIN;
+let trialDropPreviewEl = null;
+let trialPendingSourceEl = null;
 
 function setSweetsPanelMode(mode){
   sweetsPanelMode = mode;
@@ -9056,6 +9076,32 @@ function setSweetsPanelMode(mode){
   sweetsDropZone.textContent = sweetsDropZoneDefaultText;
   sweetsDropZone.setAttribute('aria-label', 'スイーツ獲得エリア');
   sweetsDropZone.classList.remove('trial');
+}
+
+function clearTrialDropPreview(options = {}){
+  const { restoreSource = true } = options;
+  if(trialDropPreviewEl){
+    trialDropPreviewEl.remove();
+    trialDropPreviewEl = null;
+  }
+  if(restoreSource && trialPendingSourceEl){
+    trialPendingSourceEl.style.visibility = '';
+  }
+  trialPendingSourceEl = null;
+}
+
+function showTrialDropPreview(cardObj){
+  if(!sweetsDropZone || !cardObj) return;
+  clearTrialDropPreview({ restoreSource: false });
+  const preview = document.createElement('div');
+  preview.className = 'trial-drop-preview';
+  const img = document.createElement('img');
+  img.src = cardObj.img;
+  img.alt = `sweets ${cardObj.value ?? ''}`;
+  img.onerror = () => { if(cardObj.fallback) img.src = cardObj.fallback; };
+  preview.appendChild(img);
+  sweetsDropZone.appendChild(preview);
+  trialDropPreviewEl = preview;
 }
 
 function canOpenSweetsPicker(){
@@ -9177,6 +9223,7 @@ function getTrialAddedIds(){
 
 function openTrialSweetsPicker(){
   const highlightedIds = getTrialAddedIds();
+  clearTrialDropPreview();
   openSweetsPicker({
     source: SWEETS_PICK_SOURCE.MAIN,
     mode: SWEETS_PANEL_MODE.TRIAL,
@@ -9241,15 +9288,8 @@ async function handleTrialSweetsDeckClick(){
       : [moved.id];
     setActionSelection({
       ...actionSelection,
-      phase: 'ready',
-      addedIds: nextAdded,
-    });
-    return;
-  }
-  if(actionSelection.phase === 'ready'){
-    setActionSelection({
-      ...actionSelection,
       phase: 'select',
+      addedIds: nextAdded,
     });
     openTrialSweetsPicker();
   }
@@ -9350,6 +9390,8 @@ async function onSweetsDragEnd(e){
     if(sweetsPanelMode === SWEETS_PANEL_MODE.TRIAL){
       if(actionSelection?.type === 'trial' && actionSelection.phase === 'select'){
         const srcRect = sweetsDrag.srcEl?.getBoundingClientRect();
+        trialPendingSourceEl = sweetsDrag.srcEl;
+        showTrialDropPreview(sweetsDrag.card);
         setActionSelection({
           ...actionSelection,
           phase: 'confirm',
@@ -9359,7 +9401,7 @@ async function onSweetsDragEnd(e){
             : null,
         });
       }
-      cleanupSweetsDrag();
+      cleanupSweetsDrag({ restoreSource: false });
       return;
     }
     if(sweetsDrag.source === SWEETS_PICK_SOURCE.EXCLUDED){
@@ -9374,14 +9416,15 @@ async function onSweetsDragEnd(e){
   cleanupSweetsDrag();
 }
 
-function cleanupSweetsDrag(){
+function cleanupSweetsDrag(options = {}){
+  const { restoreSource = true } = options;
   if(sweetsDrag.ghost){
     sweetsDrag.ghost.removeEventListener('pointermove', onSweetsDragMove);
     sweetsDrag.ghost.removeEventListener('pointerup', onSweetsDragEnd);
     sweetsDrag.ghost.removeEventListener('pointercancel', onSweetsDragEnd);
     sweetsDrag.ghost.remove();
   }
-  if(sweetsDrag.srcEl){
+  if(restoreSource && sweetsDrag.srcEl){
     sweetsDrag.srcEl.style.visibility = '';
   }
   sweetsDropZone?.classList.remove('active');
