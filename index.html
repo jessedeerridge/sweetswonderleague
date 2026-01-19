@@ -1375,9 +1375,9 @@ border-radius:0px;
   }
   .sweets-drop-zone.trial{
     border:2px dashed #7dd3fc;
-    color:#0369a1;
+    color:#0ea5e9;
     background:rgba(224,242,254,.65);
-    margin-top:0;
+    margin-top:28px;
     width:min(760px, calc(100% - 32px));
   }
   .sweets-drop-zone.active{
@@ -1407,6 +1407,9 @@ border-radius:0px;
     height:100%;
     object-fit:cover;
     display:block;
+  }
+  .sweets-backdrop.trial .sweets-panel{
+    top:80px;
   }
 
   /* =========================
@@ -5058,10 +5061,6 @@ function updateActionSelectionUI(){
       }
     }
     if(actionSelection.phase === 'select'){
-      if(actionExplainPop){
-        actionExplainPop.textContent = '試行錯誤：除外したいカードを下の除外エリアへドラッグしてください。';
-        actionExplainPop.classList.remove('hidden');
-      }
     }
     if(actionSelection.phase === 'confirm'){
       if(actionConfirmText){
@@ -5459,6 +5458,7 @@ if(actionConfirmNo){
         pendingCard: null,
         sourceRect: null,
       });
+      openTrialSweetsPicker();
       return;
     }
     actionSelection.phase = 'select';
@@ -9067,15 +9067,17 @@ function setSweetsPanelMode(mode){
   if(!sweetsPanelTitleEl || !sweetsDropZone) return;
   if(mode === SWEETS_PANEL_MODE.TRIAL){
     sweetsPanelTitleEl.textContent = 'スイーツ（除外エリアにドラッグ）';
-    sweetsDropZone.textContent = '除外エリア（ここにドラッグすると除外）';
+    sweetsDropZone.textContent = '除外したいカードを下の除外エリアへドラッグしてください。';
     sweetsDropZone.setAttribute('aria-label', 'スイーツ除外エリア');
     sweetsDropZone.classList.add('trial');
+    sweetsBackdrop?.classList.add('trial');
     return;
   }
   sweetsPanelTitleEl.textContent = sweetsPanelDefaultTitle;
   sweetsDropZone.textContent = sweetsDropZoneDefaultText;
   sweetsDropZone.setAttribute('aria-label', 'スイーツ獲得エリア');
   sweetsDropZone.classList.remove('trial');
+  sweetsBackdrop?.classList.remove('trial');
 }
 
 function clearTrialDropPreview(options = {}){
