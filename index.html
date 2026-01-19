@@ -232,10 +232,16 @@ display:none;
    line-height:1.1;
     pointer-events:none;
   }
-  .sweets-exclude-deck{
+  .sweets-excluded-deck-mover{
     position:absolute;
     right:-43px;
-    top:0px;
+    top:0;
+    width:28px;
+    height:40px;
+  }
+  .sweets-exclude-deck{
+    position:absolute;
+    inset:0;
     width:28px;
     height:40px;
     pointer-events:none;
@@ -3082,9 +3088,9 @@ function updateSweetsExcludedDeckRelocation(){
     return;
   }
 
-  const sweetsWrap = document.querySelector(`.sweets-wrap[data-sweets-uid="${focus.uid}"]`);
-  const fallbackTag = document.querySelector(`.player-tag[data-uid="${focus.uid}"]`);
-  const targetEl = sweetsWrap || fallbackTag;
+  const targetEl = (focus.uid === state.userId)
+    ? mySweetsEl
+    : document.querySelector(`.sweets-wrap[data-sweets-uid="${focus.uid}"] .sweets-mini`);
   if(!targetEl){
     sweetsExcludedDeckMover.classList.remove('relocating');
     setSweetsExcludedDeckMoverTransform('translate(0px, 0px)');
@@ -9196,7 +9202,6 @@ async function runScoutEffect(){
   const toSeat = getSeatByUid(targetUid);
   const arrowId = `scout-${state.userId}-${Date.now()}`;
   if(fromSeat !== null && toSeat !== null){
-    showWiretapArrow(fromSeat, toSeat, { key: arrowId, persist: true });
     await emitEvent({
       type:'scoutArrowStart',
       fromSeat,
@@ -9768,6 +9773,7 @@ function adjustSweetsPanelHeight(){
   const panelRect = panelEl.getBoundingClientRect();
   const availableHeight = Math.max(0, window.innerHeight - panelRect.top - 24);
   const contentHeight = rows * cardHeight + Math.max(0, rows - 1) * gapValue;
+  const pulseBuffer = Math.ceil(cardHeight * 0.16);
   if(!availableHeight){
     sweetsPanelBodyEl.style.maxHeight = '';
     return;
@@ -9775,7 +9781,8 @@ function adjustSweetsPanelHeight(){
   const maxRows = Math.max(1, Math.floor((availableHeight + gapValue) / (cardHeight + gapValue)));
   const visibleRows = Math.min(rows, maxRows);
   const targetHeight = visibleRows * cardHeight + Math.max(0, visibleRows - 1) * gapValue;
-  sweetsPanelBodyEl.style.maxHeight = `${Math.min(contentHeight, targetHeight)}px`;
+  const maxHeight = Math.min(contentHeight, availableHeight);
+  sweetsPanelBodyEl.style.maxHeight = `${Math.min(maxHeight, targetHeight + pulseBuffer)}px`;
 }
 
 async function setSweetsDeckFocus(active){
