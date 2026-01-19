@@ -4767,6 +4767,45 @@ function isActionSelectionActive(){
   return !!actionSelection;
 }
 
+let actionExplainHideTimer = null;
+function showActionBlockedMessage(message){
+  if(!actionExplainPop) return;
+  if(actionExplainHideTimer){
+    clearTimeout(actionExplainHideTimer);
+    actionExplainHideTimer = null;
+  }
+  actionExplainPop.textContent = message;
+  actionExplainPop.classList.remove('hidden');
+  actionExplainHideTimer = setTimeout(() => {
+    if(!isActionSelectionActive()){
+      actionExplainPop.classList.add('hidden');
+    }
+  }, 1600);
+}
+
+function getActionCardRestriction(cardObj){
+  if(!cardObj) return null;
+  const sweetsOwnerCount = getSweetsOwners().length;
+  if(cardObj.name === '宣伝' || cardObj.name === '事故' || cardObj.name === '激推し'){
+    if(sweetsOwnerCount === 0) return '場にスイーツがありません。';
+  }
+  if(cardObj.name === '交換'){
+    if(sweetsOwnerCount <= 1) return '場に交換できるスイーツがありません。';
+  }
+  if(cardObj.name === '強奪'){
+    if(getTotalBoardVoteChips() <= 0) return '場に投票チップがありません。';
+  }
+  return null;
+}
+
+function getInstructionCardRestriction(cardObj){
+  if(!cardObj) return null;
+  if(cardObj.name === '賄賂' && !hasSweets()){
+    return '自分のスイーツがありません。';
+  }
+  return null;
+}
+
 function updateActionSelectionUI(){
   if(actionExplainPop) actionExplainPop.classList.add('hidden');
   if(actionConfirmPop) actionConfirmPop.classList.add('hidden');
@@ -5266,6 +5305,16 @@ function getVoteCountFor(targetUid){
   return Object.values(obj).reduce((sum, count) => {
     if(typeof count !== 'number') return sum + 1;
     return sum + count;
+  }, 0);
+}
+function getTotalBoardVoteChips(votesObj = state.room?.votes){
+  if(!votesObj || typeof votesObj !== 'object') return 0;
+  return Object.values(votesObj).reduce((sum, targetVotes) => {
+    if(!targetVotes || typeof targetVotes !== 'object') return sum;
+    return sum + Object.values(targetVotes).reduce((innerSum, count) => {
+      if(typeof count !== 'number') return innerSum + 1;
+      return innerSum + count;
+    }, 0);
   }, 0);
 }
 function getImprisonedUid(){
@@ -8206,6 +8255,12 @@ async function playCardToCircle(cardObj){
   if(!state.roomCode) return;
   if(!isMyTurn()) return;
 
+  const restriction = getActionCardRestriction(cardObj);
+  if(restriction){
+    showActionBlockedMessage(restriction);
+    return;
+  }
+
   const receivedExists = hasReceivedInstruction();
   const isIgnore = (cardObj.kind === 'instruction' && cardObj.name === '無視');
 
@@ -8697,6 +8752,12 @@ async function showScoutReveal(targetUid){
 async function giveInstructionToPlayer(cardObj, targetSeat, targetUid){
   if(!state.roomCode) return;
   if(!isMyTurn()) return;
+
+  const restriction = getInstructionCardRestriction(cardObj);
+  if(restriction){
+    showActionBlockedMessage(restriction);
+    return;
+  }
 
   if(!canUseOnOtherPlayer(cardObj)){
     return;
