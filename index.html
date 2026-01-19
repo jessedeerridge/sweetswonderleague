@@ -435,8 +435,16 @@ display:none;
   /* ★ 手番の青枠：ネームタグ輪郭の外側 */
   .player-tag.active-turn{
     outline:none;
-    animation:nametagpuls1 1.05s ease-in-out infinite;
     font-weight:800;
+  }
+  .player-tag.active-turn::after{
+    content:'';
+    position:absolute;
+    inset:-2px;
+    border-radius:999px;
+    border:2px solid rgba(59,130,246,.35);
+    animation:nametagpuls1 1.05s ease-in-out infinite;
+    pointer-events:none;
   }
 
   /* otherplayerscircle 内のタグは「中央配置」扱い */
