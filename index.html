@@ -2863,6 +2863,7 @@ function updateSweetsDeckUI(){
   const excludedPulse = inspirationActive && excludedCount > 0;
   sweetsExcludedDeckUI.classList.toggle('pulsing', excludedPulse);
   sweetsExcludedDeckUI.classList.toggle('selectable', excludedPulse);
+  updateSweetsDeckMovePosition();
 }
 
 function getRequiredSweetsCount(){
@@ -3182,6 +3183,14 @@ function subscribeEvents(){
     }
     if(ev.type === 'trialSweetsToExcluded'){
       await animateTrialSweetsToExcluded();
+    }
+    if(ev.type === 'sweetsPickerOpen'){
+      if(ev.uid){
+        moveSweetsDeckToTag(ev.uid);
+      }
+    }
+    if(ev.type === 'sweetsPickerClose'){
+      resetSweetsDeckPosition();
     }
 
     // ★ ラウンド終了演出（全員）
@@ -4955,6 +4964,7 @@ function renderHands(){
   updateSweetsDeckUI();
   renderMyVoteChip();
   if (latestPlayers.length) renderPlayerCircle(latestPlayers);
+  updateSweetsDeckMovePosition();
   updatePassRoundBtn();
 }
 
@@ -9190,11 +9200,13 @@ function canStartSweetsDrag(source){
 
 const sweetsDeckMoveState = {
   active: false,
+  uid: null,
 };
 
-function moveSweetsDeckToMyTag(){
+function moveSweetsDeckToTag(uid){
   if(!sweetsDeckMover || sweetsDeckUI.classList.contains('hidden')) return;
-  const tag = document.querySelector('.player-tag.me');
+  if(!uid) return;
+  const tag = document.querySelector(`.player-tag[data-uid="${uid}"]`);
   if(!tag) return;
   const deckRect = sweetsDeckMover.getBoundingClientRect();
   if(!deckRect.width || !deckRect.height) return;
@@ -9207,6 +9219,12 @@ function moveSweetsDeckToMyTag(){
   sweetsDeckMover.style.setProperty('--sweetsDeckMoveY', `${targetY - deckY}px`);
   sweetsDeckMover.classList.add('moving');
   sweetsDeckMoveState.active = true;
+  sweetsDeckMoveState.uid = uid;
+}
+
+function updateSweetsDeckMovePosition(){
+  if(!sweetsDeckMoveState.active || !sweetsDeckMoveState.uid) return;
+  moveSweetsDeckToTag(sweetsDeckMoveState.uid);
 }
 
 function resetSweetsDeckPosition(){
@@ -9215,6 +9233,7 @@ function resetSweetsDeckPosition(){
   sweetsDeckMover.style.setProperty('--sweetsDeckMoveY', '0px');
   sweetsDeckMover.classList.remove('moving');
   sweetsDeckMoveState.active = false;
+  sweetsDeckMoveState.uid = null;
 }
 
 function openSweetsPicker(options = {}){
@@ -9269,8 +9288,9 @@ function openSweetsPicker(options = {}){
   sweetsBackdrop.classList.remove('hidden');
   if(source === SWEETS_PICK_SOURCE.MAIN && mode === SWEETS_PANEL_MODE.PICK){
     requestAnimationFrame(() => {
-      moveSweetsDeckToMyTag();
+      moveSweetsDeckToTag(state.userId);
     });
+    emitEvent({ type:'sweetsPickerOpen', uid: state.userId });
   }else{
     resetSweetsDeckPosition();
   }
@@ -9281,6 +9301,7 @@ function closeSweetsPicker(){
   sweetsBackdrop.classList.add('hidden');
   setSweetsPanelMode(SWEETS_PANEL_MODE.PICK);
   resetSweetsDeckPosition();
+  emitEvent({ type:'sweetsPickerClose', uid: state.userId });
 }
 
 function getTrialAddedIds(){
@@ -9543,6 +9564,8 @@ async function acquireSweetsCard(cardObj){
   btnSweetsClose.disabled = false;
   sweetsBackdrop.classList.add('hidden');
   setSweetsPanelMode(SWEETS_PANEL_MODE.PICK);
+  emitEvent({ type:'sweetsPickerClose', uid: state.userId });
+  resetSweetsDeckPosition();
 
   await endTurn('drawSweets');
 
