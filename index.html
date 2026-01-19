@@ -188,6 +188,14 @@ display:none;
     position:relative;
     width:28px;
     height:40px;
+    transform:translate(0,0);
+    transition:transform .55s ease;
+    will-change:transform;
+  }
+  .sweets-deck-wrap.moving-to-tag{
+    transform:translate(var(--sweetsDeckMoveX, 0px), var(--sweetsDeckMoveY, 0px));
+    z-index:12;
+    pointer-events:none;
   }
   .sweets-deck-wrap .sweets-deck{
     position:absolute;
@@ -2155,7 +2163,7 @@ display:none;
             <div id="actionDeckCount" class="count">0</div>
           </div>
 
-         <div class="sweets-deck-wrap">
+         <div id="sweetsDeckWrap" class="sweets-deck-wrap">
             <div id="sweetsDeckUI" class="sweets-deck hidden" aria-label="スイーツ山札">
               <div class="stack" aria-hidden="true">
                 <div class="card c5"></div>
@@ -2405,6 +2413,7 @@ let lastLeaderSeat = null;
 let lastRoundNo = null;
 let actionSelection = null;
 let mySweetsSelectHandlersBound = false;
+let sweetsDeckMoveRaf = null;
 const ADVERTISE_PULSE_DURATION_MS = 1400;
 const advertisedPulseUids = new Set();
 const advertisedStarReadyUids = new Set();
@@ -2469,6 +2478,7 @@ const roundChipImgEls = Array.from(document.querySelectorAll('#roundChips .round
 const actionDeckUI = document.getElementById('actionDeckUI');
 const actionDeckCountEl = document.getElementById('actionDeckCount');
 const sweetsDeckUI = document.getElementById('sweetsDeckUI');
+const sweetsDeckWrap = document.getElementById('sweetsDeckWrap');
 const sweetsDeckCountEl = document.getElementById('sweetsDeckCount');
 const sweetsExcludedDeckUI = document.getElementById('sweetsExcludedDeckUI');
 const sweetsExcludedDeckCountEl = document.getElementById('sweetsExcludedDeckCount');
@@ -2850,7 +2860,53 @@ function updateSweetsDeckUI(){
   const excludedPulse = inspirationActive && excludedCount > 0;
   sweetsExcludedDeckUI.classList.toggle('pulsing', excludedPulse);
   sweetsExcludedDeckUI.classList.toggle('selectable', excludedPulse);
+  queueSweetsDeckMoveUpdate();
 }
+
+function clearSweetsDeckMove(){
+  if(!sweetsDeckWrap) return;
+  sweetsDeckWrap.classList.remove('moving-to-tag');
+  sweetsDeckWrap.style.removeProperty('--sweetsDeckMoveX');
+  sweetsDeckWrap.style.removeProperty('--sweetsDeckMoveY');
+}
+
+function updateSweetsDeckMove(){
+  if(!sweetsDeckWrap || !sweetsDeckUI) return;
+  const targetUid = state.game?.sweetsPicking;
+  if(!targetUid || targetUid === state.userId || sweetsDeckUI.classList.contains('hidden')){
+    clearSweetsDeckMove();
+    return;
+  }
+  const tag = document.querySelector(`.player-tag[data-uid="${targetUid}"]`);
+  if(!tag){
+    clearSweetsDeckMove();
+    return;
+  }
+  const wrapRect = sweetsDeckWrap.getBoundingClientRect();
+  const tagRect = tag.getBoundingClientRect();
+  const targetX = tagRect.left + tagRect.width / 2 - wrapRect.width / 2;
+  const targetY = tagRect.bottom + 6;
+  const moveX = targetX - wrapRect.left;
+  const moveY = targetY - wrapRect.top;
+  sweetsDeckWrap.style.setProperty('--sweetsDeckMoveX', `${moveX}px`);
+  sweetsDeckWrap.style.setProperty('--sweetsDeckMoveY', `${moveY}px`);
+  sweetsDeckWrap.classList.add('moving-to-tag');
+}
+
+function queueSweetsDeckMoveUpdate(){
+  if(!sweetsDeckWrap) return;
+  if(sweetsDeckMoveRaf){
+    cancelAnimationFrame(sweetsDeckMoveRaf);
+  }
+  sweetsDeckMoveRaf = requestAnimationFrame(() => {
+    sweetsDeckMoveRaf = null;
+    updateSweetsDeckMove();
+  });
+}
+
+window.addEventListener('resize', () => {
+  queueSweetsDeckMoveUpdate();
+});
 
 function getRequiredSweetsCount(){
   const nPlayers = latestPlayers.length;
@@ -9174,6 +9230,18 @@ function canStartSweetsDrag(source){
   return canOpenSweetsPicker();
 }
 
+async function setSweetsPickingState(active){
+  if(!state.roomCode) return;
+  if(active && state.game?.sweetsPicking && state.game.sweetsPicking !== state.userId) return;
+  const gameRef = ref(db, `rooms/${state.roomCode}/game`);
+  await update(gameRef, { sweetsPicking: active ? state.userId : null });
+}
+
+async function clearSweetsPickingStateIfMine(){
+  if(state.game?.sweetsPicking !== state.userId) return;
+  await setSweetsPickingState(false);
+}
+
 function openSweetsPicker(options = {}){
   const source = options.source ?? SWEETS_PICK_SOURCE.MAIN;
   const mode = options.mode ?? SWEETS_PANEL_MODE.PICK;
@@ -9224,12 +9292,14 @@ function openSweetsPicker(options = {}){
   });
 
   sweetsBackdrop.classList.remove('hidden');
+  setSweetsPickingState(true);
 }
 
 function closeSweetsPicker(){
   if(sweetsPanelLocked) return;
   sweetsBackdrop.classList.add('hidden');
   setSweetsPanelMode(SWEETS_PANEL_MODE.PICK);
+  clearSweetsPickingStateIfMine();
 }
 
 function getTrialAddedIds(){
@@ -9492,6 +9562,7 @@ async function acquireSweetsCard(cardObj){
   btnSweetsClose.disabled = false;
   sweetsBackdrop.classList.add('hidden');
   setSweetsPanelMode(SWEETS_PANEL_MODE.PICK);
+  await clearSweetsPickingStateIfMine();
 
   await endTurn('drawSweets');
 
@@ -9529,6 +9600,7 @@ async function acquireExcludedSweetsCard(cardObj){
   btnSweetsClose.disabled = false;
   sweetsBackdrop.classList.add('hidden');
   setSweetsPanelMode(SWEETS_PANEL_MODE.PICK);
+  await clearSweetsPickingStateIfMine();
 
   if(fromRect && toRect){
     requestAnimationFrame(() => {
