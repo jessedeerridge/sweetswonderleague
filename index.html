@@ -4247,6 +4247,65 @@ function getVoteChipSourceRectForMove(voterUid, targetUid){
     height: rect.height,
   };
 }
+const FLOATING_VOTE_CHIP_STYLES = [
+  'position',
+  'left',
+  'top',
+  'width',
+  'height',
+  'margin',
+  'zIndex',
+  'pointerEvents',
+  'willChange',
+  'transform',
+];
+function floatVoteChipElement(el, rect, options = {}){
+  const { className = '', zIndex = '999' } = options;
+  const styles = {};
+  FLOATING_VOTE_CHIP_STYLES.forEach((prop) => {
+    styles[prop] = el.style[prop];
+  });
+  const restore = {
+    parent: el.parentElement,
+    nextSibling: el.nextSibling,
+    styles,
+    className,
+    classAdded: false,
+  };
+  if(className && !el.classList.contains(className)){
+    el.classList.add(className);
+    restore.classAdded = true;
+  }
+  el.style.position = 'fixed';
+  el.style.left = `${rect.left}px`;
+  el.style.top = `${rect.top}px`;
+  el.style.width = `${rect.width}px`;
+  el.style.height = `${rect.height}px`;
+  el.style.margin = '0';
+  el.style.zIndex = zIndex;
+  el.style.pointerEvents = 'none';
+  el.style.willChange = 'transform';
+  el.style.transform = 'none';
+  document.body.appendChild(el);
+  return restore;
+}
+function restoreFloatedVoteChipElement(el, restore, options = {}){
+  if(!el || !restore) return;
+  const { parent = restore.parent, nextSibling = restore.nextSibling, className = restore.className } = options;
+  if(restore.classAdded && className){
+    el.classList.remove(className);
+  }
+  FLOATING_VOTE_CHIP_STYLES.forEach((prop) => {
+    el.style[prop] = restore.styles[prop] ?? '';
+  });
+  if(parent){
+    if(nextSibling && parent.contains(nextSibling)){
+      parent.insertBefore(el, nextSibling);
+    } else {
+      parent.appendChild(el);
+    }
+  }
+}
 function animateVoteChipRelocate({ voterUid, sourceRect, targetUid }){
   const source = sourceRect;
   const target = getVoteChipTargetRectForMove(targetUid);
@@ -4325,22 +4384,11 @@ function moveVoteChipElement({ voterUid, fromTargetUid, toTargetUid, sourceRect,
     return;
   }
 
-  const flyEl = sourceEl.cloneNode(true);
-  flyEl.style.position = 'fixed';
-  flyEl.style.left = `${moveSourceRect.left}px`;
-  flyEl.style.top = `${moveSourceRect.top}px`;
-  flyEl.style.width = `${moveSourceRect.width}px`;
-  flyEl.style.height = `${moveSourceRect.height}px`;
-  flyEl.style.margin = '0';
-  flyEl.style.zIndex = '999';
-  flyEl.style.pointerEvents = 'none';
-  flyEl.style.willChange = 'transform';
-  document.body.appendChild(flyEl);
-  sourceEl.remove();
+  const sourceRestore = floatVoteChipElement(sourceEl, moveSourceRect, { className: 'vote-chip-fly', zIndex: '999' });
 
   const dx = targetRect.left - moveSourceRect.left;
   const dy = targetRect.top - moveSourceRect.top;
-  flyEl.animate([
+  sourceEl.animate([
     { transform: 'translate(0px, 0px) scale(1)' },
     { transform: `translate(${dx}px, ${dy}px) scale(1)` },
   ], {
@@ -4351,12 +4399,12 @@ function moveVoteChipElement({ voterUid, fromTargetUid, toTargetUid, sourceRect,
     const targetStack = document.querySelector(`.vote-stack[data-target-uid="${toTargetUid}"]`);
     if(targetStack){
       sourceEl.dataset.targetUid = toTargetUid;
-      targetStack.appendChild(sourceEl);
+      restoreFloatedVoteChipElement(sourceEl, sourceRestore, { parent: targetStack, nextSibling: null });
     } else {
+      sourceEl.remove();
       if(latestPlayers.length) renderPlayerCircle(latestPlayers);
       renderMySweetsVoteStack();
     }
-    flyEl.remove();
     removeMovingVoteChip(movingKey);
 
     if(!targetStack){
@@ -9195,12 +9243,12 @@ function cleanupRobVoteDrag(){
    ========================= */
 const voteDrag = {
   active:false,
-  ghost:null,
   offsetX:0,
   offsetY:0,
   lastClientX:null,
   lastClientY:null,
   sourceEl:null,
+  sourceRestore:null,
   showAllHints:false,
   useBonus:false,
 };
@@ -9282,32 +9330,21 @@ function startDragVoteChip(e, options = {}){
   voteDrag.showAllHints = true;
   setAllSweetsWrapHints(true, { useBonus });
 
-  const ghost = sourceEl.cloneNode(true);
-  ghost.classList.remove('hidden');
-  ghost.classList.add('vote-dragging');
-  ghost.style.visibility = 'visible';
-  ghost.style.left = `${r.left}px`;
-  ghost.style.top  = `${r.top}px`;
-  ghost.style.width = `${r.width}px`;
-  ghost.style.height = `${r.height}px`;
-  document.body.appendChild(ghost);
-  voteDrag.ghost = ghost;
-  voteDrag.sourceEl.style.visibility = 'hidden';
-
-  ghost.setPointerCapture(e.pointerId);
-  ghost.addEventListener('pointermove', onVoteDragMove);
-  ghost.addEventListener('pointerup', onVoteDragEnd);
-  ghost.addEventListener('pointercancel', onVoteDragEnd);
+  voteDrag.sourceRestore = floatVoteChipElement(sourceEl, r, { className: 'vote-dragging' });
+  sourceEl.setPointerCapture(e.pointerId);
+  sourceEl.addEventListener('pointermove', onVoteDragMove);
+  sourceEl.addEventListener('pointerup', onVoteDragEnd);
+  sourceEl.addEventListener('pointercancel', onVoteDragEnd);
 }
 
 function onVoteDragMove(e){
-  if(!voteDrag.active || !voteDrag.ghost) return;
+  if(!voteDrag.active || !voteDrag.sourceEl) return;
   const x = e.clientX - voteDrag.offsetX;
   const y = e.clientY - voteDrag.offsetY;
   voteDrag.lastClientX = e.clientX;
   voteDrag.lastClientY = e.clientY;
-  voteDrag.ghost.style.left = `${x}px`;
-  voteDrag.ghost.style.top  = `${y}px`;
+  voteDrag.sourceEl.style.left = `${x}px`;
+  voteDrag.sourceEl.style.top  = `${y}px`;
   updateSwareaHint(e.clientX, e.clientY);
 }
 
@@ -9325,25 +9362,22 @@ async function onVoteDragEnd(e){
 }
 
 function cleanupVoteDrag(){
-  if(voteDrag.ghost){
-    voteDrag.ghost.removeEventListener('pointermove', onVoteDragMove);
-    voteDrag.ghost.removeEventListener('pointerup', onVoteDragEnd);
-    voteDrag.ghost.removeEventListener('pointercancel', onVoteDragEnd);
-    voteDrag.ghost.remove();
-  }
-if(voteDrag.sourceEl){
-    voteDrag.sourceEl.style.visibility = '';
+  if(voteDrag.sourceEl){
+    voteDrag.sourceEl.removeEventListener('pointermove', onVoteDragMove);
+    voteDrag.sourceEl.removeEventListener('pointerup', onVoteDragEnd);
+    voteDrag.sourceEl.removeEventListener('pointercancel', onVoteDragEnd);
+    restoreFloatedVoteChipElement(voteDrag.sourceEl, voteDrag.sourceRestore);
   }
   voteDrag.active = false;
   voteDrag.showAllHints = false;
   setAllSweetsWrapHints(false);
   clearSwareaHint();
-  voteDrag.ghost = null;
   voteDrag.offsetX = 0;
   voteDrag.offsetY = 0;
   voteDrag.lastClientX = null;
   voteDrag.lastClientY = null;
   voteDrag.sourceEl = null;
+  voteDrag.sourceRestore = null;
   voteDrag.useBonus = false;
 }
 
@@ -9363,11 +9397,11 @@ function syncFloatingDragPositions(){
     sweetsDrag.ghost.style.top  = `${y}px`;
   }
 
-  if(voteDrag.active && voteDrag.ghost && voteDrag.lastClientX !== null && voteDrag.lastClientY !== null){
+  if(voteDrag.active && voteDrag.sourceEl && voteDrag.lastClientX !== null && voteDrag.lastClientY !== null){
     const x = voteDrag.lastClientX - voteDrag.offsetX;
     const y = voteDrag.lastClientY - voteDrag.offsetY;
-    voteDrag.ghost.style.left = `${x}px`;
-    voteDrag.ghost.style.top  = `${y}px`;
+    voteDrag.sourceEl.style.left = `${x}px`;
+    voteDrag.sourceEl.style.top  = `${y}px`;
     updateSwareaHint(voteDrag.lastClientX, voteDrag.lastClientY);
   }
 
