@@ -4024,6 +4024,8 @@ function renderMyVoteChip(){
 }
 
 let lastVoteSnapshot = null;
+const VOTE_CHIP_MOVE_DURATION = 600;
+const movingVoteChips = new Map();
 
 function getVoteSnapshot(votesObj){
   const snapshot = new Map();
@@ -4039,23 +4041,58 @@ function getVoteSnapshot(votesObj){
   });
   return snapshot;
 }
-function getNewVotes(prev, next){
-  const diffs = [];
-  if(!prev) return diffs;
-  next.forEach((voters, targetUid) => {
-    voters.forEach((count, voterUid) => {
-      const prevMap = prev.get(targetUid);
-      const prevCount = prevMap?.get(voterUid) ?? 0;
-      const nextCount = (typeof count === 'number') ? count : 1;
+function getVoteAnimations(prev, next){
+  const moves = [];
+  const additions = [];
+  if(!prev) return { moves, additions };
+
+  const voterDeltas = new Map();
+  const targetUids = new Set([...prev.keys(), ...next.keys()]);
+
+  targetUids.forEach((targetUid) => {
+    const prevMap = prev.get(targetUid) || new Map();
+    const nextMap = next.get(targetUid) || new Map();
+    const voterUids = new Set([...prevMap.keys(), ...nextMap.keys()]);
+    voterUids.forEach((voterUid) => {
+      const prevCount = prevMap.get(voterUid) ?? 0;
+      const nextCount = nextMap.get(voterUid) ?? 0;
       const diff = nextCount - prevCount;
+      if(!diff) return;
+      if(!voterDeltas.has(voterUid)){
+        voterDeltas.set(voterUid, { from: [], to: [] });
+      }
+      const entry = voterDeltas.get(voterUid);
       if(diff > 0){
-        for(let i = 0; i < diff; i++){
-          diffs.push({ voterUid, targetUid });
-        }
+        entry.to.push({ targetUid, count: diff });
+      }else{
+        entry.from.push({ targetUid, count: Math.abs(diff) });
       }
     });
   });
-  return diffs;
+
+  voterDeltas.forEach((entry, voterUid) => {
+    let fromIndex = 0;
+    let toIndex = 0;
+    while(fromIndex < entry.from.length && toIndex < entry.to.length){
+      const from = entry.from[fromIndex];
+      const to = entry.to[toIndex];
+      const moveCount = Math.min(from.count, to.count);
+      for(let i = 0; i < moveCount; i++){
+        moves.push({ voterUid, fromTargetUid: from.targetUid, toTargetUid: to.targetUid });
+      }
+      from.count -= moveCount;
+      to.count -= moveCount;
+      if(from.count === 0) fromIndex += 1;
+      if(to.count === 0) toIndex += 1;
+    }
+    entry.to.forEach((to) => {
+      for(let i = 0; i < to.count; i++){
+        additions.push({ voterUid, targetUid: to.targetUid });
+      }
+    });
+  });
+
+  return { moves, additions };
 }
 function getVoteChipSizePx(){
   const size = parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--voteMiniSize'));
@@ -4067,7 +4104,17 @@ function buildVoteStackEl(targetUid){
   const voteStack = document.createElement('div');
   voteStack.className = 'vote-stack';
   voteStack.dataset.targetUid = targetUid;
+  const moveCounts = new Map();
   voterIds.forEach((voterUid) => {
+    const key = `${voterUid}:${targetUid}`;
+    if(!moveCounts.has(key)){
+      moveCounts.set(key, movingVoteChips.get(key) || 0);
+    }
+    const skipCount = moveCounts.get(key) || 0;
+    if(skipCount > 0){
+      moveCounts.set(key, skipCount - 1);
+      return;
+    }
     const v = document.createElement('div');
     v.className = 'vote-mini';
     v.dataset.voterUid = voterUid;
@@ -4159,11 +4206,14 @@ function scheduleVoteChipAnimations(){
     lastVoteSnapshot = current;
     return;
   }
-  const newVotes = getNewVotes(lastVoteSnapshot, current);
+  const { moves, additions } = getVoteAnimations(lastVoteSnapshot, current);
   lastVoteSnapshot = current;
-  if(!newVotes.length) return;
+  if(!moves.length && !additions.length) return;
   requestAnimationFrame(() => {
-    newVotes.forEach(({ voterUid, targetUid }) => {
+    moves.forEach(({ voterUid, fromTargetUid, toTargetUid }) => {
+      moveVoteChipElement({ voterUid, fromTargetUid, toTargetUid });
+    });
+    additions.forEach(({ voterUid, targetUid }) => {
       animateVoteChipFly(voterUid, targetUid);
     });
   });
@@ -4218,11 +4268,91 @@ function animateVoteChipRelocate({ voterUid, sourceRect, targetUid }){
     { transform: 'translate(0px, 0px) scale(1)' },
     { transform: `translate(${dx}px, ${dy}px) scale(1)` },
   ], {
-    duration: 600,
+    duration: VOTE_CHIP_MOVE_DURATION,
     easing: 'ease-in-out',
     fill: 'forwards',
   }).onfinish = () => {
     fly.remove();
+  };
+}
+function addMovingVoteChip(key){
+  const count = movingVoteChips.get(key) || 0;
+  movingVoteChips.set(key, count + 1);
+}
+function removeMovingVoteChip(key){
+  const count = movingVoteChips.get(key) || 0;
+  if(count <= 1){
+    movingVoteChips.delete(key);
+    return;
+  }
+  movingVoteChips.set(key, count - 1);
+}
+function moveVoteChipElement({ voterUid, fromTargetUid, toTargetUid, sourceRect }){
+  const movingKey = `${voterUid}:${toTargetUid}`;
+  const sourceEl = document.querySelector(
+    `.vote-mini[data-voter-uid="${voterUid}"][data-target-uid="${fromTargetUid}"]`
+  );
+  const moveSourceRect = sourceRect
+    || sourceEl?.getBoundingClientRect()
+    || getVoteChipSourceRectForMove(voterUid, fromTargetUid);
+  const targetRect = getVoteChipTargetRectForMove(toTargetUid);
+  if(!moveSourceRect || !targetRect) return;
+
+  addMovingVoteChip(movingKey);
+  const existingTargetStack = document.querySelector(`.vote-stack[data-target-uid="${toTargetUid}"]`);
+  if(existingTargetStack){
+    const duplicate = existingTargetStack.querySelector(`.vote-mini[data-voter-uid="${voterUid}"]`);
+    duplicate?.remove();
+  }
+
+  if(!sourceEl){
+    animateVoteChipRelocate({ voterUid, sourceRect: moveSourceRect, targetUid: toTargetUid });
+    setTimeout(() => {
+      removeMovingVoteChip(movingKey);
+      if(latestPlayers.length) renderPlayerCircle(latestPlayers);
+      renderMySweetsVoteStack();
+    }, VOTE_CHIP_MOVE_DURATION);
+    return;
+  }
+
+  const flyEl = sourceEl.cloneNode(true);
+  flyEl.style.position = 'fixed';
+  flyEl.style.left = `${moveSourceRect.left}px`;
+  flyEl.style.top = `${moveSourceRect.top}px`;
+  flyEl.style.width = `${moveSourceRect.width}px`;
+  flyEl.style.height = `${moveSourceRect.height}px`;
+  flyEl.style.margin = '0';
+  flyEl.style.zIndex = '999';
+  flyEl.style.pointerEvents = 'none';
+  flyEl.style.willChange = 'transform';
+  document.body.appendChild(flyEl);
+  sourceEl.remove();
+
+  const dx = targetRect.left - moveSourceRect.left;
+  const dy = targetRect.top - moveSourceRect.top;
+  flyEl.animate([
+    { transform: 'translate(0px, 0px) scale(1)' },
+    { transform: `translate(${dx}px, ${dy}px) scale(1)` },
+  ], {
+    duration: VOTE_CHIP_MOVE_DURATION,
+    easing: 'ease-in-out',
+    fill: 'forwards',
+  }).onfinish = () => {
+    const targetStack = document.querySelector(`.vote-stack[data-target-uid="${toTargetUid}"]`);
+    if(targetStack){
+      sourceEl.dataset.targetUid = toTargetUid;
+      targetStack.appendChild(sourceEl);
+    } else {
+      if(latestPlayers.length) renderPlayerCircle(latestPlayers);
+      renderMySweetsVoteStack();
+    }
+    flyEl.remove();
+    removeMovingVoteChip(movingKey);
+
+    if(!targetStack){
+      if(latestPlayers.length) renderPlayerCircle(latestPlayers);
+      renderMySweetsVoteStack();
+    }
   };
 }
 async function moveVoteChipBetweenTargets(fromTargetUid, toTargetUid, voterUid, options = {}){
@@ -4230,12 +4360,14 @@ async function moveVoteChipBetweenTargets(fromTargetUid, toTargetUid, voterUid, 
   if(!fromTargetUid || !toTargetUid || !voterUid) return false;
   if(fromTargetUid === toTargetUid) return false;
 
-  const sourceRect = options.sourceRect || getVoteChipSourceRectForMove(voterUid, fromTargetUid);
-  if(sourceRect){
-    requestAnimationFrame(() => {
-      animateVoteChipRelocate({ voterUid, sourceRect, targetUid: toTargetUid });
+  requestAnimationFrame(() => {
+    moveVoteChipElement({
+      voterUid,
+      fromTargetUid,
+      toTargetUid,
+      sourceRect: options.sourceRect || null,
     });
-  }
+  });
 
   const base = `rooms/${state.roomCode}/votes`;
   const [fromSnap, toSnap] = await Promise.all([
@@ -5101,8 +5233,18 @@ function renderMySweetsVoteStack(){
   const voteStack = document.createElement('div');
   voteStack.className = 'vote-stack';
   voteStack.dataset.targetUid = state.userId;
+  const moveCounts = new Map();
 
   voterIds.forEach((voterUid) => {
+    const key = `${voterUid}:${state.userId}`;
+    if(!moveCounts.has(key)){
+      moveCounts.set(key, movingVoteChips.get(key) || 0);
+    }
+    const skipCount = moveCounts.get(key) || 0;
+    if(skipCount > 0){
+      moveCounts.set(key, skipCount - 1);
+      return;
+    }
     const v = document.createElement('div');
     v.className = 'vote-mini';
     v.dataset.voterUid = voterUid;
