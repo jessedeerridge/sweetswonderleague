@@ -2485,6 +2485,7 @@ const sweetsDeckUI = document.getElementById('sweetsDeckUI');
 const sweetsDeckCountEl = document.getElementById('sweetsDeckCount');
 const sweetsExcludedDeckUI = document.getElementById('sweetsExcludedDeckUI');
 const sweetsExcludedDeckCountEl = document.getElementById('sweetsExcludedDeckCount');
+let sweetsDeckReturnPending = false;
 
 
 /* スイーツ一覧（ローカル） */
@@ -2874,13 +2875,21 @@ function getSweetsDeckFocus(){
 
 function updateSweetsDeckRelocation(){
   if(!sweetsDeckMover || !sweetsDeckUI) return;
+  const focus = getSweetsDeckFocus();
+  const shouldRelocate = !!(focus && focus.uid && focus.uid !== state.userId);
   if(sweetsDeckUI.classList.contains('hidden')){
+    sweetsDeckMover.classList.toggle('relocating', shouldRelocate);
+    if(!shouldRelocate){
+      sweetsDeckReturnPending = true;
+    }
+    return;
+  }
+  if(sweetsDeckReturnPending && !shouldRelocate){
+    sweetsDeckReturnPending = false;
     sweetsDeckMover.classList.remove('relocating');
     setSweetsDeckMoverTransform('translate(0px, 0px)');
     return;
   }
-  const focus = getSweetsDeckFocus();
-  const shouldRelocate = !!(focus && focus.uid && focus.uid !== state.userId);
   if(!shouldRelocate){
     sweetsDeckMover.classList.remove('relocating');
     setSweetsDeckMoverTransform('translate(0px, 0px)');
