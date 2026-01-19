@@ -189,6 +189,16 @@ display:none;
     width:28px;
     height:40px;
   }
+  .sweets-deck-mover{
+    position:absolute;
+    inset:0;
+    transform:translate(var(--sweetsDeckMoveX, 0px), var(--sweetsDeckMoveY, 0px));
+    transition:transform .42s cubic-bezier(.22,.84,.44,1);
+    will-change:transform;
+  }
+  .sweets-deck-mover.moving{
+    z-index:620;
+  }
   .sweets-deck-wrap .sweets-deck{
     position:absolute;
     inset:0;
@@ -2156,15 +2166,17 @@ display:none;
           </div>
 
          <div class="sweets-deck-wrap">
-            <div id="sweetsDeckUI" class="sweets-deck hidden" aria-label="スイーツ山札">
-              <div class="stack" aria-hidden="true">
-                <div class="card c5"></div>
-                <div class="card c4"></div>
-                <div class="card c3"></div>
-                <div class="card c2"></div>
-                <div class="card c1"></div>
+            <div id="sweetsDeckMover" class="sweets-deck-mover">
+              <div id="sweetsDeckUI" class="sweets-deck hidden" aria-label="スイーツ山札">
+                <div class="stack" aria-hidden="true">
+                  <div class="card c5"></div>
+                  <div class="card c4"></div>
+                  <div class="card c3"></div>
+                  <div class="card c2"></div>
+                  <div class="card c1"></div>
+                </div>
+                <div id="sweetsDeckCount" class="count">0</div>
               </div>
-              <div id="sweetsDeckCount" class="count">0</div>
             </div>
             <div id="sweetsExcludedDeckUI" class="sweets-exclude-deck hidden" aria-label="スイーツ除外山札">
               <div class="stack" aria-hidden="true">
@@ -2468,6 +2480,7 @@ const roundChipImgEls = Array.from(document.querySelectorAll('#roundChips .round
 /* 中央の山札UI */
 const actionDeckUI = document.getElementById('actionDeckUI');
 const actionDeckCountEl = document.getElementById('actionDeckCount');
+const sweetsDeckMover = document.getElementById('sweetsDeckMover');
 const sweetsDeckUI = document.getElementById('sweetsDeckUI');
 const sweetsDeckCountEl = document.getElementById('sweetsDeckCount');
 const sweetsExcludedDeckUI = document.getElementById('sweetsExcludedDeckUI');
@@ -3339,6 +3352,7 @@ async function endTurn(reason){
 
   state.turnEnding = true;
   updatePassRoundBtn();
+  resetSweetsDeckPosition();
 
   await clearBonusVoteChipsForTurn();
   await discardReceivedInstructionsForTurn();
@@ -9174,6 +9188,35 @@ function canStartSweetsDrag(source){
   return canOpenSweetsPicker();
 }
 
+const sweetsDeckMoveState = {
+  active: false,
+};
+
+function moveSweetsDeckToMyTag(){
+  if(!sweetsDeckMover || sweetsDeckUI.classList.contains('hidden')) return;
+  const tag = document.querySelector('.player-tag.me');
+  if(!tag) return;
+  const deckRect = sweetsDeckMover.getBoundingClientRect();
+  if(!deckRect.width || !deckRect.height) return;
+  const tagRect = tag.getBoundingClientRect();
+  const targetX = tagRect.left + tagRect.width / 2;
+  const targetY = tagRect.bottom + 10 + deckRect.height / 2;
+  const deckX = deckRect.left + deckRect.width / 2;
+  const deckY = deckRect.top + deckRect.height / 2;
+  sweetsDeckMover.style.setProperty('--sweetsDeckMoveX', `${targetX - deckX}px`);
+  sweetsDeckMover.style.setProperty('--sweetsDeckMoveY', `${targetY - deckY}px`);
+  sweetsDeckMover.classList.add('moving');
+  sweetsDeckMoveState.active = true;
+}
+
+function resetSweetsDeckPosition(){
+  if(!sweetsDeckMover || !sweetsDeckMoveState.active) return;
+  sweetsDeckMover.style.setProperty('--sweetsDeckMoveX', '0px');
+  sweetsDeckMover.style.setProperty('--sweetsDeckMoveY', '0px');
+  sweetsDeckMover.classList.remove('moving');
+  sweetsDeckMoveState.active = false;
+}
+
 function openSweetsPicker(options = {}){
   const source = options.source ?? SWEETS_PICK_SOURCE.MAIN;
   const mode = options.mode ?? SWEETS_PANEL_MODE.PICK;
@@ -9224,12 +9267,20 @@ function openSweetsPicker(options = {}){
   });
 
   sweetsBackdrop.classList.remove('hidden');
+  if(source === SWEETS_PICK_SOURCE.MAIN && mode === SWEETS_PANEL_MODE.PICK){
+    requestAnimationFrame(() => {
+      moveSweetsDeckToMyTag();
+    });
+  }else{
+    resetSweetsDeckPosition();
+  }
 }
 
 function closeSweetsPicker(){
   if(sweetsPanelLocked) return;
   sweetsBackdrop.classList.add('hidden');
   setSweetsPanelMode(SWEETS_PANEL_MODE.PICK);
+  resetSweetsDeckPosition();
 }
 
 function getTrialAddedIds(){
