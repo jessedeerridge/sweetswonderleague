@@ -3364,7 +3364,7 @@ function subscribeEvents(){
       }
     }
     if(ev.type === 'sweetsPeekArrow'){
-      if(ev.fromSeat !== null && ev.targetUid){
+      if(ev.fromUid !== state.userId && ev.fromSeat !== null && ev.targetUid){
         showSweetsPeekArrow(ev.fromSeat, ev.targetUid);
       }
     }
@@ -5216,6 +5216,13 @@ function updateActionSelectionUI(){
         actionExplainPop.classList.remove('hidden');
       }
     }
+    if(actionSelection.phase === 'confirm'){
+      const target = getPlayerByUid(actionSelection.targetUid);
+      if(actionConfirmText){
+        actionConfirmText.textContent = `「${target?.name ?? 'プレイヤー'}」のスイーツを見ますか。`;
+      }
+      if(actionConfirmPop) actionConfirmPop.classList.remove('hidden');
+    }
   }
   if(actionSelection.type === 'exchange'){
     const selectedUids = Array.isArray(actionSelection.selectedUids)
@@ -5533,7 +5540,7 @@ function handleAccidentCandidate(uid){
   });
 }
 
-async function handleSweetsPeekCandidate(uid){
+function handleSweetsPeekCandidate(uid){
   if(!actionSelection || actionSelection.type !== 'sweetsPeek') return;
   if(actionSelection.phase !== 'select') return;
   if(uid === state.userId) return;
@@ -5542,29 +5549,9 @@ async function handleSweetsPeekCandidate(uid){
 
   setActionSelection({
     ...actionSelection,
-    phase: 'reveal',
+    phase: 'confirm',
     targetUid: uid,
   });
-
-  const fromSeat = state.turn?.activeSeat ?? state.seatedTable ?? null;
-  if(fromSeat !== null){
-    await emitEvent({
-      type:'sweetsPeekArrow',
-      fromSeat,
-      targetUid: uid,
-      fromUid: state.userId,
-    });
-  }
-
-  const shouldEnd = await showSweetsPeekReveal(sweetsCard);
-  if(shouldEnd){
-    clearActionSelection();
-    await endTurn('sweetsPeek');
-    updateActionDeckUI();
-    updateSweetsDeckUI();
-    renderMyVoteChip();
-    updatePassRoundBtn();
-  }
 }
 
 function triggerWiretapZoom(uid){
@@ -5758,6 +5745,35 @@ if(actionConfirmYes){
       if(resolve) resolve(true);
       return;
     }
+    if(actionSelection.type === 'sweetsPeek'){
+      const targetUid = actionSelection.targetUid;
+      if(!targetUid) return;
+      const sweetsCard = getSweetsCardByUid(targetUid);
+      if(!sweetsCard) return;
+      setActionSelection({
+        ...actionSelection,
+        phase: 'reveal',
+      });
+      const fromSeat = state.turn?.activeSeat ?? state.seatedTable ?? null;
+      if(fromSeat !== null){
+        await emitEvent({
+          type:'sweetsPeekArrow',
+          fromSeat,
+          targetUid,
+          fromUid: state.userId,
+        });
+      }
+      const shouldEnd = await showSweetsPeekReveal(sweetsCard);
+      if(shouldEnd){
+        clearActionSelection();
+        await endTurn('sweetsPeek');
+        updateActionDeckUI();
+        updateSweetsDeckUI();
+        renderMyVoteChip();
+        updatePassRoundBtn();
+      }
+      return;
+    }
     clearActionSelection();
     if(resolve) resolve(targetUid);
   });
@@ -5794,6 +5810,14 @@ if(actionConfirmNo){
         sourceRect: null,
       });
       openTrialSweetsPicker();
+      return;
+    }
+    if(actionSelection.type === 'sweetsPeek'){
+      setActionSelection({
+        ...actionSelection,
+        phase:'select',
+        targetUid: null,
+      });
       return;
     }
     actionSelection.phase = 'select';
