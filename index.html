@@ -2486,6 +2486,7 @@ const sweetsDeckCountEl = document.getElementById('sweetsDeckCount');
 const sweetsExcludedDeckUI = document.getElementById('sweetsExcludedDeckUI');
 const sweetsExcludedDeckCountEl = document.getElementById('sweetsExcludedDeckCount');
 let sweetsDeckReturnPending = false;
+let sweetsDeckReturnRaf = null;
 
 
 /* スイーツ一覧（ローカル） */
@@ -2877,6 +2878,10 @@ function updateSweetsDeckRelocation(){
   if(!sweetsDeckMover || !sweetsDeckUI) return;
   const focus = getSweetsDeckFocus();
   const shouldRelocate = !!(focus && focus.uid && focus.uid !== state.userId);
+  if(shouldRelocate){
+    sweetsDeckReturnPending = false;
+    cancelSweetsDeckReturn();
+  }
   if(sweetsDeckUI.classList.contains('hidden')){
     sweetsDeckMover.classList.toggle('relocating', shouldRelocate);
     if(!shouldRelocate){
@@ -2887,12 +2892,12 @@ function updateSweetsDeckRelocation(){
   if(sweetsDeckReturnPending && !shouldRelocate){
     sweetsDeckReturnPending = false;
     sweetsDeckMover.classList.remove('relocating');
-    setSweetsDeckMoverTransform('translate(0px, 0px)');
+    scheduleSweetsDeckReturn();
     return;
   }
   if(!shouldRelocate){
     sweetsDeckMover.classList.remove('relocating');
-    setSweetsDeckMoverTransform('translate(0px, 0px)');
+    scheduleSweetsDeckReturn();
     return;
   }
 
@@ -2928,6 +2933,25 @@ function setSweetsDeckMoverTransform(value){
     if(sweetsDeckMover.style.transform === value) return;
     sweetsDeckMover.style.transform = value;
   });
+}
+
+function scheduleSweetsDeckReturn(){
+  if(!sweetsDeckMover) return;
+  if(sweetsDeckReturnRaf) return;
+  sweetsDeckReturnRaf = requestAnimationFrame(() => {
+    sweetsDeckReturnRaf = requestAnimationFrame(() => {
+      sweetsDeckReturnRaf = null;
+      const value = 'translate(0px, 0px)';
+      if(sweetsDeckMover.style.transform === value) return;
+      sweetsDeckMover.style.transform = value;
+    });
+  });
+}
+
+function cancelSweetsDeckReturn(){
+  if(!sweetsDeckReturnRaf) return;
+  cancelAnimationFrame(sweetsDeckReturnRaf);
+  sweetsDeckReturnRaf = null;
 }
 
 function getRequiredSweetsCount(){
