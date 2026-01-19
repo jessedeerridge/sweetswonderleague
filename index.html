@@ -2325,7 +2325,6 @@ display:none;
   <div class="action-pop-text">閉じてもいいですか。</div>
   <div class="action-pop-actions">
     <button id="sweetsPeekCloseYes" class="btn primary">はい</button>
-    <button id="sweetsPeekCloseNo" class="btn">いいえ</button>
   </div>
 </div>
 
@@ -2549,7 +2548,6 @@ const sweetsPeekCard = document.getElementById('sweetsPeekCard');
 const sweetsPeekImg = document.getElementById('sweetsPeekImg');
 const sweetsPeekCloseConfirmPop = document.getElementById('sweetsPeekCloseConfirmPop');
 const sweetsPeekCloseYes = document.getElementById('sweetsPeekCloseYes');
-const sweetsPeekCloseNo = document.getElementById('sweetsPeekCloseNo');
 
 const seatPop = document.getElementById('seatPop');
 const seatTabs = document.getElementById('seatTabs');
@@ -5624,7 +5622,9 @@ function showWiretapArrow(fromSeat, toSeat){
 
 function showSweetsPeekArrow(fromSeat, targetUid){
   const fromTag = document.querySelector(`.player-tag[data-seat="${fromSeat}"]`);
-  const sweetsMini = document.querySelector(`.sweets-wrap[data-sweets-uid="${targetUid}"] .sweets-mini`);
+  const sweetsMini = (targetUid === state.userId)
+    ? mySweetsEl
+    : document.querySelector(`.sweets-wrap[data-sweets-uid="${targetUid}"] .sweets-mini`);
   if(!fromTag || !sweetsMini) return;
 
   const fromRect = fromTag.getBoundingClientRect();
@@ -9455,36 +9455,18 @@ function showSweetsPeekReveal(cardObj){
   sweetsPeekImg.src = cardObj?.img || '';
   sweetsPeekImg.alt = `sweets ${cardObj?.value ?? ''}`;
   sweetsPeekImg.onerror = () => { if(cardObj?.fallback) sweetsPeekImg.src = cardObj.fallback; };
-  if(sweetsPeekCloseConfirmPop) sweetsPeekCloseConfirmPop.classList.add('hidden');
+  if(sweetsPeekCloseConfirmPop) sweetsPeekCloseConfirmPop.classList.remove('hidden');
   sweetsPeekOverlay.classList.remove('hidden');
 
   return new Promise(resolve => {
-    const showConfirm = () => {
-      if(sweetsPeekCloseConfirmPop) sweetsPeekCloseConfirmPop.classList.remove('hidden');
-    };
     const closeOverlay = (shouldEnd) => {
       sweetsPeekOverlay.classList.add('hidden');
       if(sweetsPeekCloseConfirmPop) sweetsPeekCloseConfirmPop.classList.add('hidden');
-      sweetsPeekOverlay.removeEventListener('click', onOverlayClick);
-      sweetsPeekCard.removeEventListener('click', onCardClick);
       sweetsPeekCloseYes?.removeEventListener('click', onCloseYes);
-      sweetsPeekCloseNo?.removeEventListener('click', onCloseNo);
       resolve(shouldEnd);
     };
-    const onOverlayClick = (e) => {
-      if(e.target !== sweetsPeekOverlay) return;
-      showConfirm();
-    };
-    const onCardClick = () => showConfirm();
     const onCloseYes = () => closeOverlay(true);
-    const onCloseNo = () => {
-      if(sweetsPeekCloseConfirmPop) sweetsPeekCloseConfirmPop.classList.add('hidden');
-    };
-
-    sweetsPeekOverlay.addEventListener('click', onOverlayClick);
-    sweetsPeekCard.addEventListener('click', onCardClick);
     sweetsPeekCloseYes?.addEventListener('click', onCloseYes);
-    sweetsPeekCloseNo?.addEventListener('click', onCloseNo);
   });
 }
 
