@@ -1551,7 +1551,7 @@ body.rob-active .vote-mini:hover{
     position:fixed;
     width:90px;
     height:135px;
-    border-radius:7px;
+    border-radius:12px;
     border:1px solid rgba(255,255,255,.25);
     background:url('swsweetsura.jpg') center/cover no-repeat;
     z-index:610;
@@ -3128,7 +3128,7 @@ function subscribeEvents(){
     }
     if(!expectedSessionId && !currentGameSessionId) return;
    const isStaleEvent = typeof ev.at === 'number' && eventsSubscribedAt && ev.at < eventsSubscribedAt;
-    if(isStaleEvent && ['miniSweetsShuffleStart','roundRevealSweets','revealCard','flyBackCard','wiretapArrow','sweetsReturn'].includes(ev.type)) return;
+    if(isStaleEvent && ['miniSweetsShuffleStart','roundRevealSweets','revealCard','flyBackCard','wiretapArrow','sweetsReturn','trialExcludedToSweets','trialSweetsToExcluded'].includes(ev.type)) return;
     if(ev.type === 'revealCard'){
       showReveal(ev.card);
     }
@@ -3153,6 +3153,12 @@ function subscribeEvents(){
     }
     if(ev.type === 'sweetsReturn'){
       await animateSweetsReturnToDeck(ev.uid);
+    }
+    if(ev.type === 'trialExcludedToSweets'){
+      await animateTrialExcludedToSweets();
+    }
+    if(ev.type === 'trialSweetsToExcluded'){
+      await animateTrialSweetsToExcluded();
     }
 
     // ★ ラウンド終了演出（全員）
@@ -5408,19 +5414,14 @@ if(actionConfirmYes){
 
       updateSweetsDeckUI();
 
-      const sourceRect = actionSelection.sourceRect;
-      const target = await getExcludedDeckTargetRectForTrial();
-
       clearTrialDropPreview({ restoreSource: false });
       sweetsPanelLocked = false;
       btnSweetsClose.disabled = false;
       sweetsBackdrop.classList.add('hidden');
       setSweetsPanelMode(SWEETS_PANEL_MODE.PICK);
 
-      if(sourceRect && target){
-        await new Promise(resolve => requestAnimationFrame(() => resolve()));
-        await animateOneCardToDeck(sourceRect, target, { rotateFrom: 0, rotateTo: 90 });
-      }
+      await new Promise(resolve => requestAnimationFrame(() => resolve()));
+      await emitEvent({ type:'trialSweetsToExcluded' });
 
       clearActionSelection();
       if(resolve) resolve(true);
@@ -9266,18 +9267,29 @@ async function moveTopExcludedToSweetsDeckForTrial(){
   ]);
 
   updateSweetsDeckUI();
-
-  const fromRect = await getSweetsExcludedDeckRectForMiniShuffle();
-  const target = getSweetsDeckTargetRect();
-  if(fromRect && target){
-    await animateOneCardToDeck(fromRect, target, { rotateFrom: 90, rotateTo: 0 });
-  }
+  await emitEvent({ type:'trialExcludedToSweets' });
   return movedCard;
 }
 
 async function getExcludedDeckTargetRectForTrial(){
   const rect = await getSweetsExcludedDeckRectForMiniShuffle();
   return buildDeckTargetFromRect(rect);
+}
+
+async function animateTrialExcludedToSweets(){
+  const fromRect = await getSweetsExcludedDeckRectForMiniShuffle();
+  const target = getSweetsDeckTargetRect();
+  if(fromRect && target){
+    await animateOneCardToDeck(fromRect, target, { rotateFrom: 90, rotateTo: 0 });
+  }
+}
+
+async function animateTrialSweetsToExcluded(){
+  const fromRect = await getSweetsDeckRectForMiniShuffle();
+  const target = await getExcludedDeckTargetRectForTrial();
+  if(fromRect && target){
+    await animateOneCardToDeck(fromRect, target, { rotateFrom: 0, rotateTo: 90 });
+  }
 }
 
 async function handleTrialSweetsDeckClick(){
