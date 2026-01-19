@@ -183,11 +183,18 @@ display:none;
     cursor:pointer;
     user-select:none;
     touch-action:none;
+    transition:transform .55s ease;
+    will-change:transform;
   }
   .sweets-deck-wrap{
     position:relative;
     width:28px;
     height:40px;
+  }
+  .sweets-deck.moving-to-tag{
+    transform:translate(var(--sweetsDeckMoveX, 0px), var(--sweetsDeckMoveY, 0px));
+    z-index:12;
+    pointer-events:none;
   }
   .sweets-deck-wrap .sweets-deck{
     position:absolute;
@@ -2155,7 +2162,7 @@ display:none;
             <div id="actionDeckCount" class="count">0</div>
           </div>
 
-         <div class="sweets-deck-wrap">
+         <div id="sweetsDeckWrap" class="sweets-deck-wrap">
             <div id="sweetsDeckUI" class="sweets-deck hidden" aria-label="スイーツ山札">
               <div class="stack" aria-hidden="true">
                 <div class="card c5"></div>
@@ -2405,6 +2412,7 @@ let lastLeaderSeat = null;
 let lastRoundNo = null;
 let actionSelection = null;
 let mySweetsSelectHandlersBound = false;
+let sweetsDeckMoveTargetUid = null;
 const ADVERTISE_PULSE_DURATION_MS = 1400;
 const advertisedPulseUids = new Set();
 const advertisedStarReadyUids = new Set();
@@ -2851,6 +2859,47 @@ function updateSweetsDeckUI(){
   sweetsExcludedDeckUI.classList.toggle('pulsing', excludedPulse);
   sweetsExcludedDeckUI.classList.toggle('selectable', excludedPulse);
 }
+
+function clearSweetsDeckMove(){
+  if(!sweetsDeckUI) return;
+  sweetsDeckUI.classList.remove('moving-to-tag');
+  sweetsDeckUI.style.removeProperty('--sweetsDeckMoveX');
+  sweetsDeckUI.style.removeProperty('--sweetsDeckMoveY');
+}
+
+function refreshSweetsDeckMove(){
+  if(!sweetsDeckUI) return;
+  if(!sweetsDeckMoveTargetUid || sweetsDeckMoveTargetUid === state.userId || sweetsDeckUI.classList.contains('hidden')){
+    clearSweetsDeckMove();
+    return;
+  }
+  const tag = document.querySelector(`.player-tag[data-uid="${sweetsDeckMoveTargetUid}"]`);
+  if(!tag){
+    clearSweetsDeckMove();
+    return;
+  }
+  const wrapRect = sweetsDeckUI.getBoundingClientRect();
+  const tagRect = tag.getBoundingClientRect();
+  const targetX = tagRect.left + tagRect.width / 2 - wrapRect.width / 2;
+  const targetY = tagRect.bottom + 6;
+  const moveX = targetX - wrapRect.left;
+  const moveY = targetY - wrapRect.top;
+  sweetsDeckUI.style.setProperty('--sweetsDeckMoveX', `${moveX}px`);
+  sweetsDeckUI.style.setProperty('--sweetsDeckMoveY', `${moveY}px`);
+  sweetsDeckUI.classList.add('moving-to-tag');
+}
+
+function setSweetsDeckMoveTarget(uid, options = {}){
+  const { force = false } = options;
+  const nextUid = uid || null;
+  if(!force && nextUid === sweetsDeckMoveTargetUid) return;
+  sweetsDeckMoveTargetUid = nextUid;
+  refreshSweetsDeckMove();
+}
+
+window.addEventListener('resize', () => {
+  refreshSweetsDeckMove();
+});
 
 function getRequiredSweetsCount(){
   const nPlayers = latestPlayers.length;
@@ -6790,6 +6839,7 @@ if(leaderSeat !== null && leaderSeat === p.seatIndex){
       triggerWiretapZoom(uid);
     });
   }
+  setSweetsDeckMoveTarget(state.game?.sweetsPicking || null, { force: true });
 }
 
 /* =========================
@@ -9174,6 +9224,18 @@ function canStartSweetsDrag(source){
   return canOpenSweetsPicker();
 }
 
+async function setSweetsPickingState(active){
+  if(!state.roomCode) return;
+  if(active && state.game?.sweetsPicking && state.game.sweetsPicking !== state.userId) return;
+  const gameRef = ref(db, `rooms/${state.roomCode}/game`);
+  await update(gameRef, { sweetsPicking: active ? state.userId : null });
+}
+
+async function clearSweetsPickingStateIfMine(){
+  if(state.game?.sweetsPicking !== state.userId) return;
+  await setSweetsPickingState(false);
+}
+
 function openSweetsPicker(options = {}){
   const source = options.source ?? SWEETS_PICK_SOURCE.MAIN;
   const mode = options.mode ?? SWEETS_PANEL_MODE.PICK;
@@ -9224,12 +9286,14 @@ function openSweetsPicker(options = {}){
   });
 
   sweetsBackdrop.classList.remove('hidden');
+  setSweetsPickingState(true);
 }
 
 function closeSweetsPicker(){
   if(sweetsPanelLocked) return;
   sweetsBackdrop.classList.add('hidden');
   setSweetsPanelMode(SWEETS_PANEL_MODE.PICK);
+  clearSweetsPickingStateIfMine();
 }
 
 function getTrialAddedIds(){
@@ -9492,6 +9556,7 @@ async function acquireSweetsCard(cardObj){
   btnSweetsClose.disabled = false;
   sweetsBackdrop.classList.add('hidden');
   setSweetsPanelMode(SWEETS_PANEL_MODE.PICK);
+  await clearSweetsPickingStateIfMine();
 
   await endTurn('drawSweets');
 
@@ -9529,6 +9594,7 @@ async function acquireExcludedSweetsCard(cardObj){
   btnSweetsClose.disabled = false;
   sweetsBackdrop.classList.add('hidden');
   setSweetsPanelMode(SWEETS_PANEL_MODE.PICK);
+  await clearSweetsPickingStateIfMine();
 
   if(fromRect && toRect){
     requestAnimationFrame(() => {
