@@ -627,7 +627,7 @@ display:none;
   .player-tag .other-role-mini.wiretap-selectable{
   pointer-events:auto;
   cursor:pointer;
-  animation:scoutPulse 1.05s ease-in-out infinite;
+  animation:pulseRoleMiniWiretap 1.05s ease-in-out infinite;
   transform-origin:center;
 }
   .player-tag .other-role-mini.imprison-selectable{
@@ -644,6 +644,11 @@ display:none;
 @keyframes pulseRoleMiniImprison{
   0%{ transform:translate(var(--roleMiniX), var(--roleMiniY)) scale(1); }
   50%{ transform:translate(var(--roleMiniX), var(--roleMiniY)) scale(1.5); }
+  100%{ transform:translate(var(--roleMiniX), var(--roleMiniY)) scale(1); }
+}
+@keyframes pulseRoleMiniWiretap{
+  0%{ transform:translate(var(--roleMiniX), var(--roleMiniY)) scale(1); }
+  50%{ transform:translate(var(--roleMiniX), var(--roleMiniY)) scale(1.6); }
   100%{ transform:translate(var(--roleMiniX), var(--roleMiniY)) scale(1); }
 }
 .my-role.imprison-selectable{
@@ -1064,12 +1069,12 @@ border-radius:0px;
     position:fixed;inset:0;background:rgba(0,0,0,.35);
     display:flex;align-items:flex-end;justify-content:center;
     z-index:310;
-    padding:16px;
+    padding:20px 16px 44px;
   }
   .help-pop-backdrop.hidden{display:none;}
   .help-pop{
     width:min(520px, calc(100% - 0px));
-    max-height:min(70vh, 640px);
+    max-height:min(76vh, 700px);
     background:#fff;border:1px solid #ddd;border-radius:16px;
     box-shadow:0 18px 40px rgba(0,0,0,.35);
     overflow:hidden;
@@ -1079,7 +1084,17 @@ border-radius:0px;
     padding:10px 12px;border-bottom:1px solid #eee;
   }
   .help-pop-title{font-weight:800;font-size:14px;}
-  .help-pop-body{padding:12px;overflow:auto;max-height:calc(70vh - 48px);}
+  .help-pop-body{padding:12px 12px 36px;overflow:auto;max-height:calc(70vh - 48px);}
+  .help-divider{
+    height:1px;
+    background:#eee;
+    margin:12px 0;
+  }
+  .help-section-title{
+    font-weight:900;
+    font-size:13px;
+    margin:4px 0 10px;
+  }
   .role-row{
     display:flex;gap:12px;align-items:flex-start;
     padding:10px 0;
@@ -1093,9 +1108,29 @@ border-radius:0px;
     overflow:hidden;
   }
   .role-card img{width:100%;height:100%;object-fit:cover;display:block;}
-  .role-desc{flex:1 1 auto;}
+ .role-desc{flex:1 1 auto;}
   .role-desc .name{font-weight:900;margin-bottom:4px;}
   .role-desc .text{font-size:13px;line-height:1.55;color:#222;white-space:pre-wrap;}
+  .help-action-grid{
+    display:grid;
+    grid-template-columns:repeat(4, minmax(0, 1fr));
+    gap:10px;
+  }
+  .help-action-grid .action-card{
+    width:100%;
+    height:auto;
+    aspect-ratio:2 / 3;
+    cursor:default;
+    touch-action:auto;
+  }
+  .help-action-grid .action-card .effect-frame{
+    top:66%;
+    padding:3px;
+  }
+  .help-action-grid .action-card .effect-text{
+    font-size:10px;
+    line-height:1.25;
+  }
 
   /* =========================
      ★ ターン操作バー
@@ -2147,7 +2182,7 @@ display:none;
 <div id="helpBackdrop" class="help-pop-backdrop hidden">
   <div class="help-pop" role="dialog" aria-modal="true" aria-label="正体カード一覧">
     <div class="help-pop-header">
-      <div class="help-pop-title">正体カード</div>
+      <div class="help-pop-title">正体カード・アクションカード</div>
       <button id="btnHelpClose" class="btn ghost" style="padding:2px 6px;font-size:12px;">×</button>
     </div>
     <div class="help-pop-body" id="helpBody"></div>
@@ -2799,11 +2834,60 @@ function renderHelpList(){
       <div class="text">${r.text}</div>
     `;
 
-    row.appendChild(card);
+   row.appendChild(card);
     row.appendChild(desc);
     helpBody.appendChild(row);
   });
+
+  const divider = document.createElement('div');
+  divider.className = 'help-divider';
+  helpBody.appendChild(divider);
+
+  const actionTitle = document.createElement('div');
+  actionTitle.className = 'help-section-title';
+  actionTitle.textContent = 'アクションカード';
+  helpBody.appendChild(actionTitle);
+
+  const actionGrid = document.createElement('div');
+  actionGrid.className = 'help-action-grid';
+  const actionNames = [
+    '監禁',
+    '盗聴',
+    '世代交代',
+    '宣伝',
+    '強奪',
+    '偵察',
+    'ひらめき',
+    '仕込み',
+    '交換',
+    '試行錯誤',
+    '事故',
+    '激推し',
+  ];
+  actionNames.forEach((name) => {
+    const card = document.createElement('div');
+    card.className = 'action-card';
+
+    const img = document.createElement('img');
+    img.className = 'card-img';
+    img.src = cardNameToImg(name);
+    img.alt = name;
+
+    const effectFrame = document.createElement('div');
+    effectFrame.className = 'effect-frame';
+
+    const effectText = document.createElement('div');
+    effectText.className = 'effect-text';
+    effectText.textContent = getActionEffectText(name);
+
+    effectFrame.appendChild(effectText);
+    card.appendChild(img);
+    card.appendChild(effectFrame);
+    actionGrid.appendChild(card);
+  });
+  helpBody.appendChild(actionGrid);
 }
+
 function openHelp(){
   renderHelpList();
   helpBackdrop.classList.remove('hidden');
@@ -3203,11 +3287,11 @@ async function clearBonusVoteChipsForTurn(){
    ========================= */
 const ACTION_COUNTS_BASE = [
   { name:'監禁', count:1, kind:'normal' },
-  { name:'盗聴', count:1, kind:'normal' },
+  { name:'盗聴', count:100, kind:'normal' },
   { name:'世代交代', count:1, kind:'normal' },
-  { name:'宣伝', count:1, kind:'normal' },
+  { name:'宣伝', count:100, kind:'normal' },
 
-  { name:'強奪', count:200, kind:'normal' },
+  { name:'強奪', count:2, kind:'normal' },
   { name:'偵察', count:2, kind:'normal' },
   { name:'ひらめき', count:2, kind:'normal' },
   { name:'仕込み', count:2, kind:'normal' },
@@ -3999,6 +4083,18 @@ function canVoteNow(options = {}){
     return owners.some(uid => uid !== state.userId);
   }
   return owners.length >= 1;
+}
+
+function getTotalVoteChipsOnField(votesObj = state.room?.votes){
+  if(!votesObj || typeof votesObj !== 'object') return 0;
+  return Object.values(votesObj).reduce((sum, voters) => {
+    if(!voters || typeof voters !== 'object') return sum;
+    const total = Object.values(voters).reduce((innerSum, count) => {
+      if(typeof count !== 'number') return innerSum + 1;
+      return innerSum + count;
+    }, 0);
+    return sum + total;
+  }, 0);
 }
 function renderMyVoteChip(){
   const started = !!state.room?.gameStarted;
@@ -4889,6 +4985,23 @@ function updateActionSelectionUI(){
       }
     }
   }
+}
+
+let actionBlockedTimer = null;
+function showActionBlockedMessage(message){
+  if(!actionExplainPop) return;
+  if(actionConfirmPop) actionConfirmPop.classList.add('hidden');
+  actionExplainPop.textContent = message;
+  actionExplainPop.classList.remove('hidden');
+  if(actionBlockedTimer){
+    clearTimeout(actionBlockedTimer);
+  }
+  actionBlockedTimer = setTimeout(() => {
+    if(!isActionSelectionActive()){
+      actionExplainPop.classList.add('hidden');
+    }
+    actionBlockedTimer = null;
+  }, 1600);
 }
 
 function setActionSelection(next){
@@ -8109,7 +8222,11 @@ async function onDragEnd(e){
     const ok = canUseOnPlayCircle(cardObj);
     if(!ok){ snapBack(); return; }
 
-    await playCardToCircle(cardObj);
+    const played = await playCardToCircle(cardObj);
+    if(!played){
+      snapBack();
+      return;
+    }
     cleanupDrag();
     return;
   }
@@ -8117,7 +8234,11 @@ async function onDragEnd(e){
   if(drop.type === 'otherCircle'){
     if(cardObj.kind !== 'instruction'){ snapBack(); return; }
     if(!canUseOnOtherPlayer(cardObj)){ snapBack(); return; }
-    await giveInstructionToPlayer(cardObj, drop.seat, drop.uid);
+    const sent = await giveInstructionToPlayer(cardObj, drop.seat, drop.uid);
+    if(!sent){
+      snapBack();
+      return;
+    }
     cleanupDrag();
     return;
   }
@@ -8127,7 +8248,11 @@ async function onDragEnd(e){
     if(cardObj.kind !== 'instruction'){ snapBack(); return; }
     if(isSelf && !INSTRUCTION_CAN_SELF.has(cardObj.name)){ snapBack(); return; }
     if(isSelf){
-      await playCardToCircle(cardObj);
+      const played = await playCardToCircle(cardObj);
+      if(!played){
+        snapBack();
+        return;
+      }
       cleanupDrag();
       return;
     }
@@ -8199,12 +8324,27 @@ async function discardReceivedInstructionsForTurn(){
   await set(disRef, [...discard, ...rec]);
 }
 
+function getActionBlockReason(cardObj){
+  if(!cardObj) return null;
+  const sweetsOwners = getSweetsOwners();
+  if(cardObj.name === '宣伝' || cardObj.name === '事故' || cardObj.name === '激推し'){
+    if(sweetsOwners.length === 0) return '場にスイーツがありません。';
+  }
+  if(cardObj.name === '交換'){
+    if(sweetsOwners.length <= 1) return '場に交換できるスイーツがありません。';
+  }
+  if(cardObj.name === '強奪'){
+    if(getTotalVoteChipsOnField() <= 0) return '場に投票チップがありません。';
+  }
+  return null;
+}
+
 /* =========================
    カード使用：プレイサークル
    ========================= */
 async function playCardToCircle(cardObj){
-  if(!state.roomCode) return;
-  if(!isMyTurn()) return;
+  if(!state.roomCode) return false;
+  if(!isMyTurn()) return false;
 
   const receivedExists = hasReceivedInstruction();
   const isIgnore = (cardObj.kind === 'instruction' && cardObj.name === '無視');
@@ -8223,7 +8363,13 @@ async function playCardToCircle(cardObj){
     updateSweetsDeckUI();
     renderMyVoteChip();
     updatePassRoundBtn();
-    return;
+    return true;
+  }
+
+  const blockReason = getActionBlockReason(cardObj);
+  if(blockReason){
+    showActionBlockedMessage(blockReason);
+    return false;
   }
 
   const myRef = ref(db, `rooms/${state.roomCode}/hands/${state.userId}`);
@@ -8247,7 +8393,7 @@ async function playCardToCircle(cardObj){
     updateSweetsDeckUI();
     renderMyVoteChip();
     updatePassRoundBtn();
-    return;
+    return true;
   }
 
   const shouldEndTurn = await runActionCardEffect(cardObj);
@@ -8258,6 +8404,7 @@ async function playCardToCircle(cardObj){
   updateSweetsDeckUI();
   renderMyVoteChip();
   updatePassRoundBtn();
+  return true;
 }
 
 async function runActionCardEffect(cardObj){
@@ -8695,11 +8842,16 @@ async function showScoutReveal(targetUid){
    指示カード：他プレイヤーへ渡す
    ========================= */
 async function giveInstructionToPlayer(cardObj, targetSeat, targetUid){
-  if(!state.roomCode) return;
-  if(!isMyTurn()) return;
+  if(!state.roomCode) return false;
+  if(!isMyTurn()) return false;
 
   if(!canUseOnOtherPlayer(cardObj)){
-    return;
+    return false;
+  }
+
+  if(cardObj?.name === '賄賂' && !hasSweets()){
+    showActionBlockedMessage('自分のスイーツがありません。');
+    return false;
   }
 
   const myRef = ref(db, `rooms/${state.roomCode}/hands/${state.userId}`);
@@ -8727,6 +8879,7 @@ async function giveInstructionToPlayer(cardObj, targetSeat, targetUid){
   updateSweetsDeckUI();
   renderMyVoteChip();
   updatePassRoundBtn();
+  return true;
 }
 async function runInstructionCardEffect(cardObj, targetUid){
   return;
