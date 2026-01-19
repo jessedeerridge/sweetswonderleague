@@ -9552,7 +9552,7 @@ async function acquireExcludedSweetsCard(cardObj){
    ========================= */
 const robVoteDrag = {
   active:false,
-  ghost:null,
+  dragEl:null,
   offsetX:0,
   offsetY:0,
   lastClientX:null,
@@ -9561,6 +9561,9 @@ const robVoteDrag = {
   fromTargetUid:null,
   voterUid:null,
   sourceRect:null,
+  originalParent:null,
+  originalNextSibling:null,
+  originalStyle:'',
 };
 function shouldEnableRobVoteDrag(){
   return actionSelection?.type === 'rob' && actionSelection.phase === 'select';
@@ -9623,33 +9626,34 @@ function startRobVoteDrag(e, sourceEl){
     width: r.width,
     height: r.height,
   };
+  robVoteDrag.originalParent = sourceEl.parentElement;
+  robVoteDrag.originalNextSibling = sourceEl.nextSibling;
+  robVoteDrag.originalStyle = sourceEl.style.cssText || '';
 
   setRobSweetsWrapHints(true, { fromUid: fromTargetUid });
 
-  const ghost = sourceEl.cloneNode(true);
-  ghost.classList.add('vote-dragging');
-  ghost.style.visibility = 'visible';
-  ghost.style.left = `${r.left}px`;
-  ghost.style.top  = `${r.top}px`;
-  ghost.style.width = `${r.width}px`;
-  ghost.style.height = `${r.height}px`;
-  document.body.appendChild(ghost);
-  robVoteDrag.ghost = ghost;
-  robVoteDrag.sourceEl.style.visibility = 'hidden';
+  sourceEl.classList.add('vote-dragging');
+  sourceEl.style.visibility = 'visible';
+  sourceEl.style.left = `${r.left}px`;
+  sourceEl.style.top  = `${r.top}px`;
+  sourceEl.style.width = `${r.width}px`;
+  sourceEl.style.height = `${r.height}px`;
+  document.body.appendChild(sourceEl);
+  robVoteDrag.dragEl = sourceEl;
 
-  ghost.setPointerCapture(e.pointerId);
-  ghost.addEventListener('pointermove', onRobVoteDragMove);
-  ghost.addEventListener('pointerup', onRobVoteDragEnd);
-  ghost.addEventListener('pointercancel', onRobVoteDragEnd);
+  sourceEl.setPointerCapture(e.pointerId);
+  sourceEl.addEventListener('pointermove', onRobVoteDragMove);
+  sourceEl.addEventListener('pointerup', onRobVoteDragEnd);
+  sourceEl.addEventListener('pointercancel', onRobVoteDragEnd);
 }
 function onRobVoteDragMove(e){
-  if(!robVoteDrag.active || !robVoteDrag.ghost) return;
+  if(!robVoteDrag.active || !robVoteDrag.dragEl) return;
   const x = e.clientX - robVoteDrag.offsetX;
   const y = e.clientY - robVoteDrag.offsetY;
   robVoteDrag.lastClientX = e.clientX;
   robVoteDrag.lastClientY = e.clientY;
-  robVoteDrag.ghost.style.left = `${x}px`;
-  robVoteDrag.ghost.style.top  = `${y}px`;
+  robVoteDrag.dragEl.style.left = `${x}px`;
+  robVoteDrag.dragEl.style.top  = `${y}px`;
 }
 function onRobVoteDragEnd(e){
   if(!robVoteDrag.active) return;
@@ -9675,18 +9679,23 @@ function onRobVoteDragEnd(e){
   });
 }
 function cleanupRobVoteDrag(){
-  if(robVoteDrag.ghost){
-    robVoteDrag.ghost.removeEventListener('pointermove', onRobVoteDragMove);
-    robVoteDrag.ghost.removeEventListener('pointerup', onRobVoteDragEnd);
-    robVoteDrag.ghost.removeEventListener('pointercancel', onRobVoteDragEnd);
-    robVoteDrag.ghost.remove();
-  }
-  if(robVoteDrag.sourceEl){
-    robVoteDrag.sourceEl.style.visibility = '';
+  if(robVoteDrag.dragEl){
+    robVoteDrag.dragEl.removeEventListener('pointermove', onRobVoteDragMove);
+    robVoteDrag.dragEl.removeEventListener('pointerup', onRobVoteDragEnd);
+    robVoteDrag.dragEl.removeEventListener('pointercancel', onRobVoteDragEnd);
+    robVoteDrag.dragEl.classList.remove('vote-dragging');
+    robVoteDrag.dragEl.style.cssText = robVoteDrag.originalStyle;
+    if(robVoteDrag.originalParent){
+      if(robVoteDrag.originalNextSibling && robVoteDrag.originalParent.contains(robVoteDrag.originalNextSibling)){
+        robVoteDrag.originalParent.insertBefore(robVoteDrag.dragEl, robVoteDrag.originalNextSibling);
+      }else{
+        robVoteDrag.originalParent.appendChild(robVoteDrag.dragEl);
+      }
+    }
   }
   setRobSweetsWrapHints(false);
   robVoteDrag.active = false;
-  robVoteDrag.ghost = null;
+  robVoteDrag.dragEl = null;
   robVoteDrag.offsetX = 0;
   robVoteDrag.offsetY = 0;
   robVoteDrag.lastClientX = null;
@@ -9695,6 +9704,9 @@ function cleanupRobVoteDrag(){
   robVoteDrag.fromTargetUid = null;
   robVoteDrag.voterUid = null;
   robVoteDrag.sourceRect = null;
+  robVoteDrag.originalParent = null;
+  robVoteDrag.originalNextSibling = null;
+  robVoteDrag.originalStyle = '';
 }
 
 /* =========================
@@ -9878,11 +9890,11 @@ function syncFloatingDragPositions(){
     updateSwareaHint(voteDrag.lastClientX, voteDrag.lastClientY);
   }
 
-  if(robVoteDrag.active && robVoteDrag.ghost && robVoteDrag.lastClientX !== null && robVoteDrag.lastClientY !== null){
+  if(robVoteDrag.active && robVoteDrag.dragEl && robVoteDrag.lastClientX !== null && robVoteDrag.lastClientY !== null){
     const x = robVoteDrag.lastClientX - robVoteDrag.offsetX;
     const y = robVoteDrag.lastClientY - robVoteDrag.offsetY;
-    robVoteDrag.ghost.style.left = `${x}px`;
-    robVoteDrag.ghost.style.top  = `${y}px`;
+    robVoteDrag.dragEl.style.left = `${x}px`;
+    robVoteDrag.dragEl.style.top  = `${y}px`;
   }
 }
 
