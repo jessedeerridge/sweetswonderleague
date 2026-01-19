@@ -389,7 +389,12 @@ display:none;
   50%  { transform: scale(1.4); } /* ← 強さ（例：1.06〜1.14） */
   100% { transform: scale(1); }
 }
-@keyframes pulseSweetsDeckTrial {
+  @keyframes pulseSweetsDeckTrial {
+  0%   { transform: scale(1); }
+  50%  { transform: scale(1.4); }
+  100% { transform: scale(1); }
+}
+@keyframes nametagpuls1 {
   0%   { transform: scale(1); }
   50%  { transform: scale(1.4); }
   100% { transform: scale(1); }
@@ -417,11 +422,6 @@ display:none;
   .otherplayerscircle.hint-ok{ border-color:rgba(34,197,94,.75); }
   .otherplayerscircle.hint-ng{ border-color:rgba(239,68,68,.75); }
 
-  /* ★★ 手番：プレイヤーサークルを青く表示 */
-  .otherplayerscircle.active-turn{
-    border-color:rgba(59,130,246,.65);
-    background:transparent;
-  }
   .player-tag{
     position:absolute;transform:translate(-50%,-50%);
     padding:4px 8px;border-radius:999px;background:var(--tagFill, #f8f8f8);
@@ -435,6 +435,8 @@ display:none;
   /* ★ 手番の青枠：ネームタグ輪郭の外側 */
   .player-tag.active-turn{
     outline:none;
+    animation:nametagpuls1 1.05s ease-in-out infinite;
+    font-weight:800;
   }
 
   /* otherplayerscircle 内のタグは「中央配置」扱い */
@@ -6883,7 +6885,7 @@ if(scoutSelectable){
   tag.onclick = (e) => { e.stopPropagation(); onKick(); };
 }
 
-if(activeSeat === p.seatIndex) circle.classList.add('active-turn');
+if(activeSeat === p.seatIndex && p.id !== state.userId) tag.classList.add('active-turn');
 
 circle.appendChild(tag);
 
