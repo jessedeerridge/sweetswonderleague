@@ -6369,6 +6369,7 @@ function renderPlayerCircle(players){
     ? leaderPick.candidates
     : [];
   const leaderPickCanSelect = leaderPickActive && leaderPick?.leaderId === state.userId;
+  const sweetsFocusUid = getSweetsDeckFocus()?.uid ?? null;
   const voteHoldActive = shouldHoldVoteChips();
   const decidedUids = getDecidedSweetsUids();
   const started = !!state.room?.gameStarted;
@@ -6672,7 +6673,8 @@ if(started && roleAssigned){
   const showVoteHold = (!hasTheirSweets && getVoteCountFor(p.id) > 0) || (voteHoldActive && getVoteCountFor(p.id) > 0);
   const sweetsCard = getSweetsCardByUid(p.id);
 
-  if(hasTheirSweets || showVoteHold){
+  const showSweetsSlot = hasTheirSweets || showVoteHold || sweetsFocusUid === p.id;
+  if(showSweetsSlot){
     const cardsRow = document.createElement('div');
     cardsRow.className = 'other-cards-row';
 
