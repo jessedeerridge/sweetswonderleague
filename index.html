@@ -5690,12 +5690,11 @@ function showSweetsPeekArrow(fromSeat, targetUid){
 }
 
 function showDiscardedActionCard(cardObj){
-  if(!cardObj?.img) return;
   const preview = document.createElement('div');
   preview.className = 'discard-action-preview';
   const img = document.createElement('img');
-  img.src = cardObj.img;
-  img.alt = cardObj.name || 'action';
+  img.src = 'swactionura.jpg';
+  img.alt = 'action back';
   preview.appendChild(img);
   document.body.appendChild(preview);
   setTimeout(() => {
