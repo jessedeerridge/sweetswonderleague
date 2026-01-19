@@ -183,6 +183,8 @@ display:none;
     cursor:pointer;
     user-select:none;
     touch-action:none;
+    transition:transform .55s ease;
+    will-change:transform;
   }
   .sweets-deck-wrap{
     position:relative;
@@ -191,8 +193,6 @@ display:none;
   }
   .sweets-deck.moving-to-tag{
     transform:translate(var(--sweetsDeckMoveX, 0px), var(--sweetsDeckMoveY, 0px));
-    transition:transform .55s ease;
-    will-change:transform;
     z-index:12;
     pointer-events:none;
   }
