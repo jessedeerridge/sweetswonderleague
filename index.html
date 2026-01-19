@@ -4370,15 +4370,6 @@ async function moveVoteChipBetweenTargets(fromTargetUid, toTargetUid, voterUid, 
   if(!fromTargetUid || !toTargetUid || !voterUid) return false;
   if(fromTargetUid === toTargetUid) return false;
 
-  requestAnimationFrame(() => {
-    moveVoteChipElement({
-      voterUid,
-      fromTargetUid,
-      toTargetUid,
-      sourceRect: options.sourceRect || null,
-    });
-  });
-
   const base = `rooms/${state.roomCode}/votes`;
   const [fromSnap, toSnap] = await Promise.all([
     get(ref(db, `${base}/${fromTargetUid}/${voterUid}`)),
