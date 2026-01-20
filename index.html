@@ -1781,6 +1781,10 @@ body.rob-active .vote-mini:hover{
   background:transparent;
   opacity:1;
 }
+.my-sweets.empty{
+  border-color:transparent;
+  background:transparent;
+}
 .sweets-wrap.hint-ok{
   border-color:transparent;
   background: rgba(200, 200, 200, 0.3);
@@ -5072,6 +5076,17 @@ function renderMySweets(){
   mySweetsEl.classList.remove('swap-selectable','swap-selected','advertise-selectable','accident-selectable');
   const c = getMySweetsCard();
   if(!c){
+    const voteStack = buildVoteStackEl(state.userId);
+    if(voteStack){
+      mySweetsEl.classList.remove('hidden');
+      mySweetsEl.classList.add('empty');
+      mySweetsEl.innerHTML = '';
+      mySweetsEl.appendChild(voteStack);
+      updateRoundPickUI();
+      lastMySweetsSnapshot = null;
+      mySweetsFlyAnimatedFor = null;
+      return;
+    }
     mySweetsEl.classList.add('hidden');
     updateRoundPickUI();
     lastMySweetsSnapshot = null;
@@ -5093,6 +5108,7 @@ function renderMySweets(){
   }
   mySweetsFlyAnimatedFor = null;
   mySweetsEl.classList.remove('hidden');
+  mySweetsEl.classList.remove('empty');
   mySweetsEl.classList.toggle('swap-hidden', swapHiddenUids.has(state.userId));
   mySweetsEl.dataset.sweetsUid = state.userId;
   const img = document.createElement('img');
@@ -10054,6 +10070,10 @@ sweetsDeckUI.addEventListener('click', async () => {
 });
 sweetsExcludedDeckUI.addEventListener('click', () => {
   if(!canOpenExcludedSweetsPicker()) return;
+  if(actionSelection?.type === 'inspiration'){
+    sweetsExcludedFocusActive = true;
+    setSweetsExcludedDeckFocus(true);
+  }
   openSweetsPicker({ source: SWEETS_PICK_SOURCE.EXCLUDED });
 });
 
