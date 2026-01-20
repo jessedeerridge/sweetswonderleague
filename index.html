@@ -5083,6 +5083,7 @@ function renderMySweets(){
     mySweetsEl.classList.remove('hidden');
     mySweetsEl.classList.add('empty');
     mySweetsEl.innerHTML = '';
+    mySweetsEl.style.visibility = '';
     mySweetsEl.appendChild(voteStack);
     updateRoundPickUI();
     lastMySweetsSnapshot = null;
