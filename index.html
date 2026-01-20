@@ -12,7 +12,7 @@
   }
   html, body{height:100%; overflow:hidden;}
   body{margin:0;font-family:system-ui,-apple-system,Segoe UI,Roboto,sans-serif;background:#fff;color:#111;}
-  header{display:flex;justify-content:space-between;align-items:center;padding:10px 12px;border-bottom:1px solid #eee; position:sticky; top:0; z-index:400; background:#fff;}
+  header{display:flex;justify-content:space-between;align-items:center;padding:10px 12px;border-bottom:1px solid #eee; position:sticky; top:0; z-index:40; background:#fff;}
   h1{margin:0;font-size:18px;}
   .small{font-size:12px;opacity:.75;}
   .join-box{display:flex;gap:6px;flex-wrap:wrap;align-items:center;padding:12px; position:relative; z-index:2;}
@@ -43,7 +43,7 @@
     position:fixed;left:50%;bottom:10px;transform:translateX(-50%);
     background:orange;border:1px solid #eee;border-radius:12px;
     box-shadow:0 12px 28px rgba(0,0,0,.12);
-    padding:10px;z-index:220;display:flex;flex-direction:column;gap:10px;min-width:280px;
+    padding:10px;z-index:60;display:flex;flex-direction:column;gap:10px;min-width:280px;
   }
   .seat-pop.hidden{display:none;}
   .seat-pop .row{display:flex;gap:8px;align-items:center;}
@@ -60,7 +60,7 @@
     background:rgba(20,20,20,.92);color:#fff;
     padding:12px 16px;border-radius:14px;
     box-shadow:0 18px 40px rgba(0,0,0,.35);
-    z-index:225;font-weight:800;white-space:nowrap;
+    z-index:62;font-weight:800;white-space:nowrap;
     pointer-events:none;
   }
   .host-selecting-pop.hidden{display:none;}
@@ -193,15 +193,17 @@ display:none;
     position:absolute;
     inset:0;
   }
-  .sweets-deck-mover{
+  .sweets-deck-mover,
+  .sweets-excluded-deck-mover{
     position:absolute;
     inset:0;
     transition:transform .65s cubic-bezier(.22,.84,.44,1);
     will-change:transform;
     z-index:4;
   }
-  .sweets-deck-mover.relocating{
-    z-index:520;
+  .sweets-deck-mover.relocating,
+  .sweets-excluded-deck-mover.relocating{
+    z-index:70;
   }
   .sweets-deck.hidden{display:none;}
   .sweets-deck .stack{position:absolute; inset:0;}
@@ -230,10 +232,17 @@ display:none;
    line-height:1.1;
     pointer-events:none;
   }
+  .sweets-excluded-deck-mover{
+    position:absolute;
+    inset:auto;
+    right:-43px;
+    top:0;
+    width:28px;
+    height:40px;
+  }
   .sweets-exclude-deck{
     position:absolute;
-    right:-43px;
-    top:0px;
+    inset:0;
     width:28px;
     height:40px;
     pointer-events:none;
@@ -366,7 +375,7 @@ display:none;
     border:1px solid rgba(0,0,0,.18);
     background:url('swsweetsura.jpg') center/cover no-repeat;
     box-shadow:0 8px 18px rgba(0,0,0,.2);
-    z-index:620;
+    z-index:70;
     pointer-events:none;
     will-change:transform;
   }
@@ -536,7 +545,7 @@ display:none;
 }
 .leader-chip-fly{
   position:fixed;
-  z-index:720;
+  z-index:70;
   pointer-events:none;
 }
 .leader-chip-hidden{
@@ -544,11 +553,11 @@ display:none;
 }
 
 @keyframes leaderPickPulse{
-  0%{ scale:1; }
-  50%{ scale:1.12; }
-  100%{ scale:1; }
+  0%{ transform:scale(1); }
+  50%{ transform:scale(1.5); }
+  100%{ transform:scale(1); }
 }
-.leader-pick-candidate{
+.leader-pick-candidate .name-pill{
   animation:leaderPickPulse 1.1s ease-in-out infinite;
   transform-origin:center;
 }
@@ -568,7 +577,7 @@ display:none;
   border-radius:14px;
   border:2px solid #f59e0b;
   box-shadow:0 14px 30px rgba(0,0,0,.25);
-  z-index:720;
+  z-index:97
   white-space:nowrap;
 }
 .leader-pick-pop.hidden{display:none;}
@@ -596,7 +605,7 @@ display:none;
   display:flex;
   align-items:center;
   justify-content:center;
-  z-index:260;
+  z-index:80;
 }
 .scout-reveal-overlay.hidden{display:none;}
 .scout-reveal-grid{
@@ -627,7 +636,7 @@ display:none;
   display:flex;
   align-items:center;
   justify-content:center;
-  z-index:260;
+  z-index:80;
 }
 .sweets-peek-overlay.hidden{display:none;}
 .sweets-peek-card{
@@ -658,7 +667,7 @@ display:none;
   background:#fff;
   box-shadow:0 16px 36px rgba(0,0,0,.28);
   overflow:hidden;
-  z-index:960;
+  z-index:88;
 }
 .discard-action-preview img{
   width:100%;
@@ -776,7 +785,7 @@ display:none;
   border-radius:7px;
   box-shadow:0 10px 24px rgba(0,0,0,.18);
   pointer-events:none;
-  z-index:720;
+  z-index:70;
   will-change:transform;
 }
   /* ★★ 他プレイヤー：ミニスイーツ（裏）＋周りを円で囲む＝swarea */
@@ -901,7 +910,7 @@ display:none;
     background:var(--voteChipFill);
     box-shadow:0 12px 28px rgba(0,0,0,.25);
     pointer-events:none;
-    z-index:999;
+    z-index:75;
     will-change:transform;
   }
   .vote-stack.animating{
@@ -911,7 +920,7 @@ display:none;
     position:fixed;
     inset:0;
     pointer-events:none;
-    z-index:950;
+    z-index:80;
   }
   .wiretap-arrow svg{
     width:100%;
@@ -1082,7 +1091,7 @@ border-radius:0px;
   /* ★ ドラッグ中の見た目 */
   .dragging{
     position:fixed !important;
-    z-index:9999 !important;
+    z-index:85 !important;
     margin:0 !important;
     animation:none !important;
     pointer-events:none;
@@ -1091,7 +1100,7 @@ border-radius:0px;
   /* ★ 追い出し確認ダイアログ */
   .dialog-backdrop{
     position:fixed;inset:0;background:rgba(0,0,0,.35);
-    display:flex;align-items:center;justify-content:center;z-index:300;
+    display:flex;align-items:center;justify-content:center;z-index:70;
   }
   .dialog-backdrop.hidden{display:none;}
   .dialog-box{
@@ -1106,7 +1115,7 @@ border-radius:0px;
   .host-settings-btn{
     position:fixed;right:16px;bottom:16px;width:44px;height:44px;border-radius:50%;
     border:1px solid #ddd;background:#fff;box-shadow:0 8px 20px rgba(0,0,0,.18);
-    display:none;align-items:center;justify-content:center;font-size:22px;cursor:pointer;z-index:230;
+    display:none;align-items:center;justify-content:center;font-size:22px;cursor:pointer;z-index:30;
   }
   .host-settings-btn.visible{display:flex;}
   .action-discard-zone{
@@ -1114,7 +1123,7 @@ border-radius:0px;
     border:1px solid rgba(255,255,255,.65);
     background:rgba(255,255,255,.35);
     display:flex;align-items:center;justify-content:center;
-    font-size:20px;cursor:grab;z-index:231;
+    font-size:20px;cursor:grab;z-index:45;
     box-shadow:0 8px 20px rgba(0,0,0,.18);
     animation:pulseDiscardZone 1.3s ease-in-out infinite;
     backdrop-filter:blur(4px);
@@ -1133,7 +1142,7 @@ border-radius:0px;
   /* ★ 設定ポップ（ホスト専用パネル） */
   .start-pop{
     position:fixed;right:16px;bottom:72px;background:#fff;border:1px solid #ddd;border-radius:12px;
-    box-shadow:0 12px 28px rgba(0,0,0,.16);padding:10px 12px;z-index:240;min-width:260px;
+    box-shadow:0 12px 28px rgba(0,0,0,.16);padding:10px 12px;z-index:50;min-width:260px;
     display:flex;flex-direction:column;gap:8px;
   }
   .start-pop.hidden{display:none;}
@@ -1157,7 +1166,7 @@ border-radius:0px;
     border:1px solid #111;background:#111;color:#fff;
     box-shadow:0 8px 20px rgba(0,0,0,.18);
     display:none;align-items:center;justify-content:center;
-    font-size:22px;font-weight:800;cursor:pointer;z-index:230;
+    font-size:22px;font-weight:800;cursor:pointer;z-index:35;
   }
   .help-btn.visible{display:flex;}
 
@@ -1165,7 +1174,7 @@ border-radius:0px;
   .help-pop-backdrop{
     position:fixed;inset:0;background:rgba(0,0,0,.35);
     display:flex;align-items:flex-end;justify-content:center;
-    z-index:310;
+    z-index:70;
     padding:20px 16px 44px;
   }
   .help-pop-backdrop.hidden{display:none;}
@@ -1234,7 +1243,7 @@ border-radius:0px;
      ========================= */
   .turn-bar{
     position:fixed; left:50%; bottom:14px; transform:translateX(-50%);
-    z-index:228;
+    z-index:30;
     display:flex; gap:8px; align-items:center; justify-content:center;
     background:rgba(255,255,255,.85);
     border:1px solid #ddd;
@@ -1256,9 +1265,10 @@ border-radius:0px;
     position:fixed; inset:0;
     background:rgba(0,0,0,.35);
     display:flex; align-items:center; justify-content:center;
-    z-index:500;
+    z-index:90;
   }
   .reveal-overlay.hidden{display:none;}
+  .action-zoom-overlay{z-index:95;}
  .reveal-card,
   .action-zoom-card{
     width:min(calc(var(--myCardW) * 4), 78vw);
@@ -1315,7 +1325,7 @@ border-radius:0px;
     border:1px solid rgba(0,0,0,.2);
     background:url('swactionura.jpg') center/cover no-repeat;
     box-shadow:0 8px 18px rgba(0,0,0,.25);
-    z-index:520;
+    z-index:60;
     pointer-events:none;
   }
   .sweets-fly-card{
@@ -1325,7 +1335,7 @@ border-radius:0px;
     box-shadow:0 10px 24px rgba(0,0,0,.22);
     background:#fff;
     overflow:hidden;
-    z-index:540;
+    z-index:65;
     pointer-events:none;
     transform-origin:center center;
   }
@@ -1355,7 +1365,7 @@ border-radius:0px;
     background:rgba(0,0,0,.35);
     display:flex; flex-direction:column;
     align-items:center; justify-content:flex-start;
-    z-index:560;
+    z-index:60;
     padding:16px;
     gap:12px;
     overflow:auto;
@@ -1416,6 +1426,8 @@ border-radius:0px;
     width:100%; height:100%;
     object-fit:cover;
     display:block;
+    touch-action:none;
+    pointer-events:none;
   }
   .sweets-pick-card.trial-added{
     border:2px solid #7dd3fc;
@@ -1445,7 +1457,7 @@ border-radius:0px;
   /* ★ スイーツドラッグ中の見た目 */
  .sweets-dragging{
     position:fixed !important;
-    z-index:99999 !important;
+    z-index:85 !important;
     pointer-events:none;
     animation:none !important;
   }
@@ -1600,14 +1612,14 @@ body.rob-active .vote-mini:hover{
 
   .vote-dragging{
     position:fixed !important;
-    z-index:999999 !important;
+    z-index:85 !important;
     pointer-events:none;
     animation:none !important;
   }
 
   .roundpick-dragging{
     position:fixed !important;
-    z-index:999999 !important;
+    z-index:85 !important;
     pointer-events:none;
     border-radius:12px;
     border:1px solid rgba(255,255,255,.35);
@@ -1636,7 +1648,7 @@ body.rob-active .vote-mini:hover{
     letter-spacing:.06em;
     box-shadow:0 14px 34px rgba(0,0,0,.25);
     cursor:pointer;
-    z-index:235;                  /* hostSettingsBtnより上でもOK */
+    z-index:40;                  /* hostSettingsBtnより上でもOK */
     display:none;
     user-select:none;
   }
@@ -1652,7 +1664,7 @@ body.rob-active .vote-mini:hover{
     border-radius:12px;
     border:1px solid rgba(255,255,255,.25);
     background:url('swsweetsura.jpg') center/cover no-repeat;
-    z-index:610;
+    z-index:65;
     pointer-events:none;
     transform-origin:center;
   }
@@ -1664,7 +1676,7 @@ body.rob-active .vote-mini:hover{
     top:50%;
     transform:translate(-50%, -50%);
     background:transparent;
-    z-index:620;
+    z-index:70;
     display:flex;
     align-items:center;
     justify-content:center;
@@ -1764,8 +1776,10 @@ body.rob-active .vote-mini:hover{
 }
 
 .sweets-wrap.empty{
-  border-style:dashed;
-  opacity:.35;
+  border-style:solid;
+  border-color:transparent;
+  background:transparent;
+  opacity:1;
 }
 .sweets-wrap.hint-ok{
   border-color:transparent;
@@ -2088,7 +2102,7 @@ body.imprison-active .my-sweets.roundpick-selectable:hover{
   transform:translate(-50%,-50%);
   width:160px;
   height:220px;
-  z-index:615;
+  z-index:70;
   pointer-events:none;
 }
 .sweets-shuffle-card{
@@ -2273,15 +2287,17 @@ display:none;
                 <div id="sweetsDeckCount" class="count">0</div>
               </div>
             </div>
-            <div id="sweetsExcludedDeckUI" class="sweets-exclude-deck hidden" aria-label="スイーツ除外山札">
-              <div class="stack" aria-hidden="true">
-                <div class="card c5"></div>
-                <div class="card c4"></div>
-                <div class="card c3"></div>
-                <div class="card c2"></div>
-                <div class="card c1"></div>
+            <div id="sweetsExcludedDeckMover" class="sweets-excluded-deck-mover">
+              <div id="sweetsExcludedDeckUI" class="sweets-exclude-deck hidden" aria-label="スイーツ除外山札">
+                <div class="stack" aria-hidden="true">
+                  <div class="card c5"></div>
+                  <div class="card c4"></div>
+                  <div class="card c3"></div>
+                  <div class="card c2"></div>
+                  <div class="card c1"></div>
+                </div>
+                <div id="sweetsExcludedDeckCount" class="count">0</div>
               </div>
-              <div id="sweetsExcludedDeckCount" class="count">0</div>
             </div>
           </div>
         </div>
@@ -2329,17 +2345,27 @@ display:none;
     <img id="sweetsPeekImg" alt="sweets peek" />
   </div>
 </div>
+<div id="rolePeekOverlay" class="sweets-peek-overlay hidden">
+  <div id="rolePeekCard" class="sweets-peek-card">
+    <img id="rolePeekImg" alt="role peek" />
+  </div>
+</div>
 <div id="scoutCloseConfirmPop" class="leader-pick-pop action-pop hidden">
   <div class="action-pop-text">閉じてもいいですか。</div>
   <div class="action-pop-actions">
     <button id="scoutCloseYes" class="btn primary">はい</button>
-    <button id="scoutCloseNo" class="btn">いいえ</button>
   </div>
 </div>
 <div id="sweetsPeekCloseConfirmPop" class="leader-pick-pop action-pop hidden">
   <div class="action-pop-text">閉じてもいいですか。</div>
   <div class="action-pop-actions">
     <button id="sweetsPeekCloseYes" class="btn primary">はい</button>
+  </div>
+</div>
+<div id="rolePeekCloseConfirmPop" class="leader-pick-pop action-pop hidden">
+  <div class="action-pop-text">閉じてもいいですか。</div>
+  <div class="action-pop-actions">
+    <button id="rolePeekCloseYes" class="btn primary">はい</button>
   </div>
 </div>
 
@@ -2523,6 +2549,8 @@ let leaderPickApplyKey = null;
 let lastLeaderSeat = null;
 let lastRoundNo = null;
 let actionSelection = null;
+let sweetsExcludedFocusActive = null;
+let sweetsGridCols = 0;
 let mySweetsSelectHandlersBound = false;
 const ADVERTISE_PULSE_DURATION_MS = 1400;
 const advertisedPulseUids = new Set();
@@ -2531,8 +2559,7 @@ const advertisedStarHiddenUids = new Set();
 const advertisedPulseTimers = new Map();
 const advertisedStarHideTimers = new Map();
 const advertisedKeyByUid = new Map();
-const revealedRoleUids = new Set();
-let pendingWiretapZoomUid = null;
+const activeWiretapArrows = new Map();
 /* =========================
    DOM
    ========================= */
@@ -2557,12 +2584,16 @@ const scoutRevealOverlay = document.getElementById('scoutRevealOverlay');
 const scoutRevealGrid = document.getElementById('scoutRevealGrid');
 const scoutCloseConfirmPop = document.getElementById('scoutCloseConfirmPop');
 const scoutCloseYes = document.getElementById('scoutCloseYes');
-const scoutCloseNo = document.getElementById('scoutCloseNo');
 const sweetsPeekOverlay = document.getElementById('sweetsPeekOverlay');
 const sweetsPeekCard = document.getElementById('sweetsPeekCard');
 const sweetsPeekImg = document.getElementById('sweetsPeekImg');
 const sweetsPeekCloseConfirmPop = document.getElementById('sweetsPeekCloseConfirmPop');
 const sweetsPeekCloseYes = document.getElementById('sweetsPeekCloseYes');
+const rolePeekOverlay = document.getElementById('rolePeekOverlay');
+const rolePeekCard = document.getElementById('rolePeekCard');
+const rolePeekImg = document.getElementById('rolePeekImg');
+const rolePeekCloseConfirmPop = document.getElementById('rolePeekCloseConfirmPop');
+const rolePeekCloseYes = document.getElementById('rolePeekCloseYes');
 
 const seatPop = document.getElementById('seatPop');
 const seatTabs = document.getElementById('seatTabs');
@@ -2596,10 +2627,13 @@ const actionDeckCountEl = document.getElementById('actionDeckCount');
 const sweetsDeckMover = document.getElementById('sweetsDeckMover');
 const sweetsDeckUI = document.getElementById('sweetsDeckUI');
 const sweetsDeckCountEl = document.getElementById('sweetsDeckCount');
+const sweetsExcludedDeckMover = document.getElementById('sweetsExcludedDeckMover');
 const sweetsExcludedDeckUI = document.getElementById('sweetsExcludedDeckUI');
 const sweetsExcludedDeckCountEl = document.getElementById('sweetsExcludedDeckCount');
 let sweetsDeckReturnPending = false;
 let sweetsDeckReturnRaf = null;
+let sweetsExcludedDeckReturnPending = false;
+let sweetsExcludedDeckReturnRaf = null;
 
 
 /* スイーツ一覧（ローカル） */
@@ -2608,6 +2642,7 @@ const sweetsDropZone = document.getElementById('sweetsDropZone');
 const btnSweetsClose = document.getElementById('btnSweetsClose');
 const sweetsGrid = document.getElementById('sweetsGrid');
 const sweetsPanelTitleEl = sweetsBackdrop?.querySelector('.sweets-panel-title');
+const sweetsPanelBodyEl = sweetsBackdrop?.querySelector('.sweets-panel-body');
 const sweetsPanelDefaultTitle = sweetsPanelTitleEl?.textContent?.trim() || 'スイーツ（下にドラッグ）';
 const sweetsDropZoneDefaultText = sweetsDropZone?.textContent?.trim() || 'ここにカードを出すと獲得';
 
@@ -2768,8 +2803,6 @@ function resetLocalGameEffects(){
   revealOverlay.classList.add('hidden');
 
   clearActionSelection();
-  revealedRoleUids.clear();
-  pendingWiretapZoomUid = null;
 
   if(sweetsOverrideClearTimer){
     clearTimeout(sweetsOverrideClearTimer);
@@ -2987,6 +3020,13 @@ function getSweetsDeckFocus(){
   return focus;
 }
 
+function getSweetsExcludedDeckFocus(){
+  const focus = state.game?.sweetsExcludedFocus;
+  if(!focus || typeof focus !== 'object') return null;
+  if(!focus.uid || !focus.active) return null;
+  return focus;
+}
+
 function updateSweetsDeckRelocation(){
   if(!sweetsDeckMover || !sweetsDeckUI) return;
   const focus = getSweetsDeckFocus();
@@ -3039,12 +3079,73 @@ function updateSweetsDeckRelocation(){
   setSweetsDeckMoverTransform(`translate(${moveX}px, ${moveY}px)`);
 }
 
+function updateSweetsExcludedDeckRelocation(){
+  if(!sweetsExcludedDeckMover || !sweetsExcludedDeckUI) return;
+  const focus = getSweetsExcludedDeckFocus();
+  const shouldRelocate = !!(focus && focus.uid && focus.uid !== state.userId);
+  if(shouldRelocate){
+    sweetsExcludedDeckReturnPending = false;
+    cancelSweetsExcludedDeckReturn();
+  }
+  if(sweetsExcludedDeckUI.classList.contains('hidden')){
+    sweetsExcludedDeckMover.classList.toggle('relocating', shouldRelocate);
+    if(!shouldRelocate){
+      sweetsExcludedDeckReturnPending = true;
+    }
+    return;
+  }
+  if(sweetsExcludedDeckReturnPending && !shouldRelocate){
+    sweetsExcludedDeckReturnPending = false;
+    sweetsExcludedDeckMover.classList.remove('relocating');
+    scheduleSweetsExcludedDeckReturn();
+    return;
+  }
+  if(!shouldRelocate){
+    sweetsExcludedDeckMover.classList.remove('relocating');
+    scheduleSweetsExcludedDeckReturn();
+    return;
+  }
+
+  const targetEl = (focus.uid === state.userId)
+    ? mySweetsEl
+    : document.querySelector(`.sweets-wrap[data-sweets-uid="${focus.uid}"] .sweets-mini`);
+  if(!targetEl){
+    sweetsExcludedDeckMover.classList.remove('relocating');
+    setSweetsExcludedDeckMoverTransform('translate(0px, 0px)');
+    return;
+  }
+
+  const baseRect = sweetsExcludedDeckMover.getBoundingClientRect();
+  const targetRect = targetEl.getBoundingClientRect();
+  if(!baseRect || !baseRect.width || !baseRect.height || !targetRect.width || !targetRect.height) return;
+
+  const targetX = targetRect.left + targetRect.width / 2;
+  const targetY = targetRect.top + targetRect.height / 2;
+  const deckCenterX = baseRect.left + baseRect.width / 2;
+  const deckCenterY = baseRect.top + baseRect.height / 2;
+
+  const moveX = targetX - deckCenterX;
+  const moveY = targetY - deckCenterY;
+
+  sweetsExcludedDeckMover.classList.add('relocating');
+  setSweetsExcludedDeckMoverTransform(`translate(${moveX}px, ${moveY}px)`);
+}
+
 function setSweetsDeckMoverTransform(value){
   if(!sweetsDeckMover) return;
   if(sweetsDeckMover.style.transform === value) return;
   requestAnimationFrame(() => {
     if(sweetsDeckMover.style.transform === value) return;
     sweetsDeckMover.style.transform = value;
+  });
+}
+
+function setSweetsExcludedDeckMoverTransform(value){
+  if(!sweetsExcludedDeckMover) return;
+  if(sweetsExcludedDeckMover.style.transform === value) return;
+  requestAnimationFrame(() => {
+    if(sweetsExcludedDeckMover.style.transform === value) return;
+    sweetsExcludedDeckMover.style.transform = value;
   });
 }
 
@@ -3061,10 +3162,29 @@ function scheduleSweetsDeckReturn(){
   });
 }
 
+function scheduleSweetsExcludedDeckReturn(){
+  if(!sweetsExcludedDeckMover) return;
+  if(sweetsExcludedDeckReturnRaf) return;
+  sweetsExcludedDeckReturnRaf = requestAnimationFrame(() => {
+    sweetsExcludedDeckReturnRaf = requestAnimationFrame(() => {
+      sweetsExcludedDeckReturnRaf = null;
+      const value = 'translate(0px, 0px)';
+      if(sweetsExcludedDeckMover.style.transform === value) return;
+      sweetsExcludedDeckMover.style.transform = value;
+    });
+  });
+}
+
 function cancelSweetsDeckReturn(){
   if(!sweetsDeckReturnRaf) return;
   cancelAnimationFrame(sweetsDeckReturnRaf);
   sweetsDeckReturnRaf = null;
+}
+
+function cancelSweetsExcludedDeckReturn(){
+  if(!sweetsExcludedDeckReturnRaf) return;
+  cancelAnimationFrame(sweetsExcludedDeckReturnRaf);
+  sweetsExcludedDeckReturnRaf = null;
 }
 
 function getRequiredSweetsCount(){
@@ -3351,7 +3471,7 @@ function subscribeEvents(){
     }
     if(!expectedSessionId && !currentGameSessionId) return;
    const isStaleEvent = typeof ev.at === 'number' && eventsSubscribedAt && ev.at < eventsSubscribedAt;
-    if(isStaleEvent && ['miniSweetsShuffleStart','roundRevealSweets','revealCard','flyBackCard','wiretapArrow','sweetsReturn','trialExcludedToSweets','trialSweetsToExcluded','actionDiscardPeek','sweetsPeekArrow'].includes(ev.type)) return;
+    if(isStaleEvent && ['miniSweetsShuffleStart','roundRevealSweets','revealCard','flyBackCard','wiretapArrow','wiretapArrowStart','wiretapArrowEnd','scoutArrowStart','scoutArrowEnd','sweetsReturn','trialExcludedToSweets','trialSweetsToExcluded','actionDiscardPeek','sweetsPeekArrow','sweetsPeekArrowStart','sweetsPeekArrowEnd'].includes(ev.type)) return;
     if(ev.type === 'revealCard'){
       showReveal(ev.card);
     }
@@ -3371,6 +3491,26 @@ function subscribeEvents(){
         showWiretapArrow(ev.fromSeat, ev.toSeat);
       }
     }
+    if(ev.type === 'wiretapArrowStart'){
+      if(ev.fromUid !== state.userId && ev.fromSeat !== null && ev.targetUid){
+        showWiretapRoleArrow(ev.fromSeat, ev.targetUid, { key: ev.arrowId, persist: true });
+      }
+    }
+    if(ev.type === 'wiretapArrowEnd'){
+      if(ev.fromUid !== state.userId && ev.arrowId){
+        removeWiretapArrow(ev.arrowId);
+      }
+    }
+    if(ev.type === 'scoutArrowStart'){
+      if(ev.fromUid !== state.userId && ev.fromSeat !== null && ev.toSeat !== null){
+        showWiretapArrow(ev.fromSeat, ev.toSeat, { key: ev.arrowId, persist: true });
+      }
+    }
+    if(ev.type === 'scoutArrowEnd'){
+      if(ev.fromUid !== state.userId && ev.arrowId){
+        removeWiretapArrow(ev.arrowId);
+      }
+    }
     if(ev.type === 'actionDiscardPeek'){
       if(ev.fromUid !== state.userId){
         showDiscardedActionCard(ev.card);
@@ -3379,6 +3519,16 @@ function subscribeEvents(){
     if(ev.type === 'sweetsPeekArrow'){
       if(ev.fromUid !== state.userId && ev.fromSeat !== null && ev.targetUid){
         showSweetsPeekArrow(ev.fromSeat, ev.targetUid);
+      }
+    }
+    if(ev.type === 'sweetsPeekArrowStart'){
+      if(ev.fromUid !== state.userId && ev.fromSeat !== null && ev.targetUid){
+        showSweetsPeekArrow(ev.fromSeat, ev.targetUid, { key: ev.arrowId, persist: true });
+      }
+    }
+    if(ev.type === 'sweetsPeekArrowEnd'){
+      if(ev.fromUid !== state.userId && ev.arrowId){
+        removeWiretapArrow(ev.arrowId);
       }
     }
     if(ev.type === 'sweetsSwap'){
@@ -3597,16 +3747,16 @@ async function clearBonusVoteChipsForTurn(){
    ========================= */
 const ACTION_COUNTS_BASE = [
   { name:'監禁', count:1, kind:'normal' },
-  { name:'盗聴', count:100, kind:'normal' },
+  { name:'盗聴', count:1, kind:'normal' },
   { name:'世代交代', count:1, kind:'normal' },
-  { name:'宣伝', count:100, kind:'normal' },
+  { name:'宣伝', count:1, kind:'normal' },
 
   { name:'強奪', count:2, kind:'normal' },
   { name:'偵察', count:2, kind:'normal' },
   { name:'ひらめき', count:2, kind:'normal' },
   { name:'仕込み', count:2, kind:'normal' },
   { name:'交換', count:2, kind:'normal' },
-  { name:'試行錯誤',     count:2000, kind:'normal' },
+  { name:'試行錯誤',     count:2, kind:'normal' },
   { name:'事故',     count:2, kind:'normal' },
   { name:'激推し',     count:4, kind:'normal' },
   { name:'無視', count:2, kind:'instruction' },
@@ -3970,14 +4120,18 @@ function isInstructionTurnBlocked(){
 function getActiveInstructionNames(){
   return new Set(getActiveInstructionCards().map(card => card?.name));
 }
-function getActiveBribeTargetUid(){
-  const card = getActiveInstructionCards().find(c => c?.name === '賄賂');
-  if(card?.fromUid) return card.fromUid;
-  if(card?.fromSeat != null){
-    const p = getPlayerBySeat(card.fromSeat);
-    return p?.id ?? null;
-  }
-  return null;
+function getActiveBribeTargetUids(){
+  return getActiveInstructionCards()
+    .filter(c => c?.name === '賄賂')
+    .map((card) => {
+      if(card?.fromUid) return card.fromUid;
+      if(card?.fromSeat != null){
+        const p = getPlayerBySeat(card.fromSeat);
+        return p?.id ?? null;
+      }
+      return null;
+    })
+    .filter(Boolean);
 }
 
 
@@ -4380,13 +4534,14 @@ function canVoteNow(options = {}){
     if(normalChips <= 0) return false;
   }
   const activeInstructions = getActiveInstructionCards();
-  const bribeTargetUid = getActiveBribeTargetUid();
-  if(activeInstructions.length && !bribeTargetUid) return false;
-  if(bribeTargetUid){
-    if(bribeTargetUid === state.userId) return false;
-    const targetData = state.hands?.[bribeTargetUid];
-    const hasTargetSweets = !!(targetData && Array.isArray(targetData.sweets) && targetData.sweets.length);
-    return hasTargetSweets;
+  const bribeTargetUids = getActiveBribeTargetUids();
+  if(activeInstructions.length && bribeTargetUids.length === 0) return false;
+  if(bribeTargetUids.length){
+    return bribeTargetUids.some((uid) => {
+      if(uid === state.userId) return false;
+      const targetData = state.hands?.[uid];
+      return !!(targetData && Array.isArray(targetData.sweets) && targetData.sweets.length);
+    });
   }
   const owners = getSweetsOwners();
   if(useBonus){
@@ -5348,6 +5503,7 @@ function showActionBlockedMessage(message){
 function setActionSelection(next){
   actionSelection = next;
   document.body.classList.toggle('rob-active', actionSelection?.type === 'rob' && actionSelection.phase === 'select');
+  syncSweetsExcludedFocus();
   updateActionSelectionUI();
   applyMyTurnClasses();
   renderMyRole();
@@ -5356,6 +5512,14 @@ function setActionSelection(next){
   renderMyVoteChip();
   updatePassRoundBtn();
   if(latestPlayers.length) renderPlayerCircle(latestPlayers);
+}
+
+function syncSweetsExcludedFocus(){
+  const shouldClear = !(actionSelection?.type === 'inspiration' && actionSelection.phase === 'select');
+  if(!shouldClear) return;
+  if(!sweetsExcludedFocusActive) return;
+  sweetsExcludedFocusActive = false;
+  setSweetsExcludedDeckFocus(false);
 }
 
 function clearActionSelection(){
@@ -5567,83 +5731,17 @@ function handleSweetsPeekCandidate(uid){
   });
 }
 
-function triggerWiretapZoom(uid){
-  const roleEl = document.querySelector(`.role-mini[data-uid="${uid}"]`);
-  const img = roleEl?.querySelector('img');
-  if(!img) return;
-  img.animate([
-    { transform:'scale(1)' },
-    { transform:'scale(1.2)' },
-    { transform:'scale(1)' },
-  ], {
-    duration: 1500,
-    easing: 'ease-in-out',
-  });
+function removeWiretapArrow(key){
+  if(!key) return;
+  const existing = activeWiretapArrows.get(key);
+  if(!existing) return;
+  existing.remove();
+  activeWiretapArrows.delete(key);
 }
 
-function showWiretapArrow(fromSeat, toSeat){
-  const fromTag = document.querySelector(`.player-tag[data-seat="${fromSeat}"]`);
-  const toTag = document.querySelector(`.player-tag[data-seat="${toSeat}"]`);
-  if(!fromTag || !toTag) return;
-
-  const fromRect = fromTag.getBoundingClientRect();
-  const toRect = toTag.getBoundingClientRect();
-  const x1 = fromRect.left + fromRect.width / 2;
-  const y1 = fromRect.top + fromRect.height / 2;
-  const x2 = toRect.left + toRect.width / 2;
-  const y2 = toRect.top + toRect.height / 2;
-
-  const wrap = document.createElement('div');
-  wrap.className = 'wiretap-arrow';
-
-  const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
- const defs = document.createElementNS('http://www.w3.org/2000/svg', 'defs');
-  const marker = document.createElementNS('http://www.w3.org/2000/svg', 'marker');
-  marker.setAttribute('id', 'wiretapArrowHead');
-  marker.setAttribute('markerWidth', '10');
-  marker.setAttribute('markerHeight', '10');
-  marker.setAttribute('refX', '10');
-  marker.setAttribute('refY', '5');
-  marker.setAttribute('orient', 'auto');
-  marker.setAttribute('markerUnits', 'strokeWidth');
-  const arrowPath = document.createElementNS('http://www.w3.org/2000/svg', 'path');
-  arrowPath.setAttribute('d', 'M 0 0 L 10 5 L 0 10 z');
-  arrowPath.setAttribute('fill', '#111');
-  marker.appendChild(arrowPath);
-  defs.appendChild(marker);
-  svg.appendChild(defs);
-  svg.setAttribute('viewBox', `0 0 ${window.innerWidth} ${window.innerHeight}`);
-  const line = document.createElementNS('http://www.w3.org/2000/svg', 'line');
-  line.setAttribute('x1', String(x1));
-  line.setAttribute('y1', String(y1));
-  line.setAttribute('x2', String(x2));
-  line.setAttribute('y2', String(y2));
-  line.setAttribute('marker-end', 'url(#wiretapArrowHead)');
-  svg.appendChild(line);
-  wrap.appendChild(svg);
-
-  const eye = document.createElement('div');
-  eye.className = 'wiretap-eye';
-  eye.textContent = '👀';
-  eye.style.left = `${(x1 + x2) / 2}px`;
-  eye.style.top = `${(y1 + y2) / 2}px`;
-  wrap.appendChild(eye);
-
-  document.body.appendChild(wrap);
-  setTimeout(() => {
-    wrap.remove();
-  }, 1500);
-}
-
-function showSweetsPeekArrow(fromSeat, targetUid){
-  const fromTag = document.querySelector(`.player-tag[data-seat="${fromSeat}"]`);
-  const sweetsMini = (targetUid === state.userId)
-    ? mySweetsEl
-    : document.querySelector(`.sweets-wrap[data-sweets-uid="${targetUid}"] .sweets-mini`);
-  if(!fromTag || !sweetsMini) return;
-
-  const fromRect = fromTag.getBoundingClientRect();
-  const toRect = sweetsMini.getBoundingClientRect();
+function createWiretapArrow(fromRect, toRect, options = {}){
+  if(!fromRect || !toRect) return null;
+  const { key = null, duration = 1500, persist = false } = options;
   const x1 = fromRect.left + fromRect.width / 2;
   const y1 = fromRect.top + fromRect.height / 2;
   const x2 = toRect.left + toRect.width / 2;
@@ -5685,10 +5783,55 @@ function showSweetsPeekArrow(fromSeat, targetUid){
   eye.style.top = `${(y1 + y2) / 2}px`;
   wrap.appendChild(eye);
 
+  if(key){
+    removeWiretapArrow(key);
+    activeWiretapArrows.set(key, wrap);
+  }
+
   document.body.appendChild(wrap);
-  setTimeout(() => {
+  if(!persist){
+    setTimeout(() => {
+      if(key && activeWiretapArrows.get(key) !== wrap) return;
+      wrap.remove();
+      if(key) activeWiretapArrows.delete(key);
+    }, duration);
+  }
+  return () => {
     wrap.remove();
-  }, 1500);
+    if(key) activeWiretapArrows.delete(key);
+  };
+}
+
+function showWiretapArrow(fromSeat, toSeat, options = {}){
+  const fromTag = document.querySelector(`.player-tag[data-seat="${fromSeat}"]`);
+  const toTag = document.querySelector(`.player-tag[data-seat="${toSeat}"]`);
+  if(!fromTag || !toTag) return null;
+
+  const fromRect = fromTag.getBoundingClientRect();
+  const toRect = toTag.getBoundingClientRect();
+  return createWiretapArrow(fromRect, toRect, options);
+}
+
+function showWiretapRoleArrow(fromSeat, targetUid, options = {}){
+  const fromTag = document.querySelector(`.player-tag[data-seat="${fromSeat}"]`);
+  const roleEl = document.querySelector(`.role-mini[data-uid="${targetUid}"]`);
+  if(!fromTag || !roleEl) return null;
+
+  const fromRect = fromTag.getBoundingClientRect();
+  const toRect = roleEl.getBoundingClientRect();
+  return createWiretapArrow(fromRect, toRect, options);
+}
+
+function showSweetsPeekArrow(fromSeat, targetUid, options = {}){
+  const fromTag = document.querySelector(`.player-tag[data-seat="${fromSeat}"]`);
+  const sweetsMini = (targetUid === state.userId)
+    ? mySweetsEl
+    : document.querySelector(`.sweets-wrap[data-sweets-uid="${targetUid}"] .sweets-mini`);
+  if(!fromTag || !sweetsMini) return;
+
+  const fromRect = fromTag.getBoundingClientRect();
+  const toRect = sweetsMini.getBoundingClientRect();
+  createWiretapArrow(fromRect, toRect, { duration: 1500, ...options });
 }
 
 function showDiscardedActionCard(cardObj){
@@ -5770,15 +5913,24 @@ if(actionConfirmYes){
         phase: 'reveal',
       });
       const fromSeat = state.turn?.activeSeat ?? state.seatedTable ?? null;
+      const arrowId = `sweetsPeek-${state.userId}-${Date.now()}`;
       if(fromSeat !== null){
         await emitEvent({
-          type:'sweetsPeekArrow',
+          type:'sweetsPeekArrowStart',
           fromSeat,
           targetUid,
           fromUid: state.userId,
+          arrowId,
         });
       }
       const shouldEnd = await showSweetsPeekReveal(sweetsCard);
+      if(fromSeat !== null){
+        await emitEvent({
+          type:'sweetsPeekArrowEnd',
+          fromUid: state.userId,
+          arrowId,
+        });
+      }
       if(shouldEnd){
         clearActionSelection();
         await endTurn('sweetsPeek');
@@ -6925,11 +7077,8 @@ if(started && roleAssigned){
   const roleFrame = document.createElement('div');
   roleFrame.className = 'role-mini-frame';
   const roleImg = document.createElement('img');
-  const roleKey = state.roles?.[p.id];
-  const revealed = revealedRoleUids.has(p.id);
-  const roleInfo = revealed && roleKey ? roleToHelp(roleKey) : null;
-  roleImg.src = roleInfo?.img || 'swroleura.jpg';
-  roleImg.alt = roleInfo?.name || 'role';
+  roleImg.src = 'swroleura.jpg';
+  roleImg.alt = 'role';
   roleFrame.appendChild(roleImg);
   roleMini.appendChild(roleFrame);
 
@@ -7170,13 +7319,7 @@ if(leaderSeat !== null && leaderSeat === p.seatIndex){
   updateActionDeckUI();
   updateSweetsDeckUI();
   requestAnimationFrame(updateSweetsDeckRelocation);
-  if(pendingWiretapZoomUid){
-    const uid = pendingWiretapZoomUid;
-    pendingWiretapZoomUid = null;
-    requestAnimationFrame(() => {
-      triggerWiretapZoom(uid);
-    });
-  }
+  requestAnimationFrame(updateSweetsExcludedDeckRelocation);
 }
 
 /* =========================
@@ -8669,6 +8812,7 @@ function clearOtherCircleHint(){
 }
 function updateOtherCircleHint(x,y,cardObj){
   clearOtherCircleHint();
+  if(cardObj?.kind !== 'instruction') return;
   const el = document.elementFromPoint(x,y);
   const c = el?.closest?.('.otherplayerscircle');
   if(!c) return;
@@ -9096,16 +9240,26 @@ async function runScoutEffect(){
 
   const fromSeat = state.turn?.activeSeat ?? state.seatedTable;
   const toSeat = getSeatByUid(targetUid);
+  const arrowId = `scout-${state.userId}-${Date.now()}`;
   if(fromSeat !== null && toSeat !== null){
     await emitEvent({
-      type:'wiretapArrow',
+      type:'scoutArrowStart',
       fromSeat,
       toSeat,
       fromUid: state.userId,
+      arrowId,
     });
   }
 
   await showScoutReveal(targetUid);
+  if(fromSeat !== null && toSeat !== null){
+    removeWiretapArrow(arrowId);
+    await emitEvent({
+      type:'scoutArrowEnd',
+      fromUid: state.userId,
+      arrowId,
+    });
+  }
 }
 
 async function runPreparationEffect(cardObj){
@@ -9397,18 +9551,24 @@ async function runWiretapEffect(cardObj){
   const targetUid = await beginWiretapSelection();
   if(!targetUid) return;
 
-  revealedRoleUids.add(targetUid);
-  pendingWiretapZoomUid = targetUid;
-  if(latestPlayers.length) renderPlayerCircle(latestPlayers);
-
   const fromSeat = state.turn?.activeSeat ?? state.seatedTable;
-  const toSeat = getSeatByUid(targetUid);
-  if(fromSeat !== null && toSeat !== null){
+  const arrowId = `wiretap-${state.userId}-${Date.now()}`;
+  if(fromSeat !== null){
     await emitEvent({
-      type:'wiretapArrow',
+      type:'wiretapArrowStart',
       fromSeat,
-      toSeat,
+      targetUid,
       fromUid: state.userId,
+      arrowId,
+    });
+  }
+  const roleKey = state.roles?.[targetUid] ?? null;
+  await showRolePeekReveal(roleKey);
+  if(fromSeat !== null){
+    await emitEvent({
+      type:'wiretapArrowEnd',
+      fromUid: state.userId,
+      arrowId,
     });
   }
 }
@@ -9429,16 +9589,12 @@ async function runImprisonEffect(){
 async function showScoutReveal(targetUid){
   if(!scoutRevealOverlay || !scoutRevealGrid) return;
   scoutRevealGrid.innerHTML = '';
-  const showScoutCloseConfirm = () => {
-    if(scoutCloseConfirmPop) scoutCloseConfirmPop.classList.remove('hidden');
-  };
   const cards = Array.isArray(state.hands?.[targetUid]?.action)
     ? state.hands[targetUid].action
     : [];
   if(cards.length){
     cards.forEach(cardObj => {
       const cardEl = buildCardEl(cardObj);
-      cardEl.addEventListener('click', showScoutCloseConfirm);
       scoutRevealGrid.appendChild(cardEl);
     });
   }else{
@@ -9447,30 +9603,18 @@ async function showScoutReveal(targetUid){
     scoutRevealGrid.appendChild(empty);
   }
 
-  if(scoutCloseConfirmPop) scoutCloseConfirmPop.classList.add('hidden');
+  if(scoutCloseConfirmPop) scoutCloseConfirmPop.classList.remove('hidden');
   scoutRevealOverlay.classList.remove('hidden');
 
   return new Promise(resolve => {
     const closeOverlay = () => {
       scoutRevealOverlay.classList.add('hidden');
       if(scoutCloseConfirmPop) scoutCloseConfirmPop.classList.add('hidden');
-      scoutRevealOverlay.removeEventListener('click', onOverlayClick);
       scoutCloseYes?.removeEventListener('click', onCloseYes);
-      scoutCloseNo?.removeEventListener('click', onCloseNo);
       resolve();
     };
-    const onOverlayClick = (e) => {
-      if(e.target !== scoutRevealOverlay) return;
-      showScoutCloseConfirm();
-    };
     const onCloseYes = () => closeOverlay();
-    const onCloseNo = () => {
-      if(scoutCloseConfirmPop) scoutCloseConfirmPop.classList.add('hidden');
-    };
-
-    scoutRevealOverlay.addEventListener('click', onOverlayClick);
     scoutCloseYes?.addEventListener('click', onCloseYes);
-    scoutCloseNo?.addEventListener('click', onCloseNo);
   });
 }
 
@@ -9491,6 +9635,26 @@ function showSweetsPeekReveal(cardObj){
     };
     const onCloseYes = () => closeOverlay(true);
     sweetsPeekCloseYes?.addEventListener('click', onCloseYes);
+  });
+}
+
+function showRolePeekReveal(roleKey){
+  if(!rolePeekOverlay || !rolePeekImg || !rolePeekCard) return Promise.resolve(false);
+  const info = roleToHelp(roleKey);
+  rolePeekImg.src = info?.img || 'swroleura.jpg';
+  rolePeekImg.alt = info?.name || 'role';
+  if(rolePeekCloseConfirmPop) rolePeekCloseConfirmPop.classList.remove('hidden');
+  rolePeekOverlay.classList.remove('hidden');
+
+  return new Promise(resolve => {
+    const closeOverlay = () => {
+      rolePeekOverlay.classList.add('hidden');
+      if(rolePeekCloseConfirmPop) rolePeekCloseConfirmPop.classList.add('hidden');
+      rolePeekCloseYes?.removeEventListener('click', onCloseYes);
+      resolve(true);
+    };
+    const onCloseYes = () => closeOverlay();
+    rolePeekCloseYes?.addEventListener('click', onCloseYes);
   });
 }
 
@@ -9656,10 +9820,54 @@ function canStartSweetsDrag(source){
   return canOpenSweetsPicker();
 }
 
+function adjustSweetsPanelHeight(){
+  if(!sweetsPanelBodyEl || !sweetsGrid) return;
+  const panelEl = sweetsPanelBodyEl.closest('.sweets-panel');
+  if(!panelEl) return;
+  const cardEl = sweetsGrid.querySelector('.sweets-pick-card');
+  if(!cardEl){
+    sweetsPanelBodyEl.style.maxHeight = '';
+    return;
+  }
+  const cardRect = cardEl.getBoundingClientRect();
+  const cardHeight = cardRect.height || 135;
+  const gridStyles = getComputedStyle(sweetsGrid);
+  const gapValue = parseFloat(gridStyles.rowGap || gridStyles.gap) || 10;
+  const totalCards = sweetsGrid.children.length;
+  const cols = sweetsGridCols || 1;
+  const rows = Math.ceil(totalCards / cols);
+  const panelRect = panelEl.getBoundingClientRect();
+  const availableHeight = Math.max(0, window.innerHeight - panelRect.top - 24);
+  const contentHeight = rows * cardHeight + Math.max(0, rows - 1) * gapValue;
+  const pulseBuffer = Math.ceil(cardHeight * 0.16);
+  if(!availableHeight){
+    sweetsPanelBodyEl.style.maxHeight = '';
+    return;
+  }
+  const maxRows = Math.max(1, Math.floor((availableHeight + gapValue) / (cardHeight + gapValue)));
+  const visibleRows = Math.min(rows, maxRows);
+  const targetHeight = visibleRows * cardHeight + Math.max(0, visibleRows - 1) * gapValue;
+  const maxHeight = Math.min(contentHeight, availableHeight);
+  sweetsPanelBodyEl.style.maxHeight = `${Math.min(maxHeight, targetHeight + pulseBuffer)}px`;
+}
+
 async function setSweetsDeckFocus(active){
   if(!state.roomCode) return;
   const focusRef = ref(db, `rooms/${state.roomCode}/game/sweetsDeckFocus`);
   const current = getSweetsDeckFocus();
+  if(active){
+    if(current?.uid === state.userId && current.active) return;
+    await set(focusRef, { uid: state.userId, active: true, ts: Date.now() });
+    return;
+  }
+  if(current?.uid !== state.userId) return;
+  await set(focusRef, null);
+}
+
+async function setSweetsExcludedDeckFocus(active){
+  if(!state.roomCode) return;
+  const focusRef = ref(db, `rooms/${state.roomCode}/game/sweetsExcludedFocus`);
+  const current = getSweetsExcludedDeckFocus();
   if(active){
     if(current?.uid === state.userId && current.active) return;
     await set(focusRef, { uid: state.userId, active: true, ts: Date.now() });
@@ -9688,6 +9896,7 @@ function openSweetsPicker(options = {}){
     ? getRestrictedSweetsIds(sorted)
     : null;
   const cols = Math.ceil(sorted.length / 2);
+  sweetsGridCols = cols;
   sweetsGrid.style.gridTemplateColumns = `repeat(${cols}, 90px)`;
 
   sweetsGrid.innerHTML = '';
@@ -9719,7 +9928,12 @@ function openSweetsPicker(options = {}){
   });
 
   sweetsBackdrop.classList.remove('hidden');
-  if(source === SWEETS_PICK_SOURCE.MAIN){
+  requestAnimationFrame(adjustSweetsPanelHeight);
+  if(source === SWEETS_PICK_SOURCE.EXCLUDED && actionSelection?.type === 'inspiration'){
+    sweetsExcludedFocusActive = true;
+    setSweetsExcludedDeckFocus(true);
+  }
+  if(source === SWEETS_PICK_SOURCE.MAIN && mode !== SWEETS_PANEL_MODE.TRIAL){
     setSweetsDeckFocus(true);
   }
 }
@@ -9729,6 +9943,10 @@ function closeSweetsPicker(){
   sweetsBackdrop.classList.add('hidden');
   setSweetsPanelMode(SWEETS_PANEL_MODE.PICK);
   setSweetsDeckFocus(false);
+  if(sweetsExcludedFocusActive){
+    sweetsExcludedFocusActive = false;
+    setSweetsExcludedDeckFocus(false);
+  }
 }
 
 function getTrialAddedIds(){
@@ -10212,8 +10430,8 @@ let hoverSwarea = null;
 
 function isVoteTargetAllowed(uid, options = {}){
   const { useBonus = getMyBonusVoteChips() > 0 } = options;
-  const bribeTargetUid = getActiveBribeTargetUid();
-  if(bribeTargetUid && uid !== bribeTargetUid) return false;
+  const bribeTargetUids = getActiveBribeTargetUids();
+  if(bribeTargetUids.length && !bribeTargetUids.includes(uid)) return false;
   if(useBonus && uid === state.userId) return false;
   return true;
 }
@@ -10382,6 +10600,10 @@ function syncFloatingDragPositions(){
     robVoteDrag.ghost.style.top  = `${y}px`;
   }
   updateSweetsDeckRelocation();
+  updateSweetsExcludedDeckRelocation();
+  if(sweetsBackdrop && !sweetsBackdrop.classList.contains('hidden')){
+    adjustSweetsPanelHeight();
+  }
 }
 
 mainEl.addEventListener('scroll', syncFloatingDragPositions, { passive: true });
