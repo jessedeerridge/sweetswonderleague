@@ -1268,6 +1268,7 @@ border-radius:0px;
     z-index:500;
   }
   .reveal-overlay.hidden{display:none;}
+  .action-zoom-overlay{z-index:900;}
  .reveal-card,
   .action-zoom-card{
     width:min(calc(var(--myCardW) * 4), 78vw);
@@ -1775,8 +1776,10 @@ body.rob-active .vote-mini:hover{
 }
 
 .sweets-wrap.empty{
-  border-style:dashed;
-  opacity:.35;
+  border-style:solid;
+  border-color:transparent;
+  background:transparent;
+  opacity:1;
 }
 .sweets-wrap.hint-ok{
   border-color:transparent;
@@ -4085,14 +4088,18 @@ function isInstructionTurnBlocked(){
 function getActiveInstructionNames(){
   return new Set(getActiveInstructionCards().map(card => card?.name));
 }
-function getActiveBribeTargetUid(){
-  const card = getActiveInstructionCards().find(c => c?.name === '賄賂');
-  if(card?.fromUid) return card.fromUid;
-  if(card?.fromSeat != null){
-    const p = getPlayerBySeat(card.fromSeat);
-    return p?.id ?? null;
-  }
-  return null;
+function getActiveBribeTargetUids(){
+  return getActiveInstructionCards()
+    .filter(c => c?.name === '賄賂')
+    .map((card) => {
+      if(card?.fromUid) return card.fromUid;
+      if(card?.fromSeat != null){
+        const p = getPlayerBySeat(card.fromSeat);
+        return p?.id ?? null;
+      }
+      return null;
+    })
+    .filter(Boolean);
 }
 
 
@@ -4495,13 +4502,14 @@ function canVoteNow(options = {}){
     if(normalChips <= 0) return false;
   }
   const activeInstructions = getActiveInstructionCards();
-  const bribeTargetUid = getActiveBribeTargetUid();
-  if(activeInstructions.length && !bribeTargetUid) return false;
-  if(bribeTargetUid){
-    if(bribeTargetUid === state.userId) return false;
-    const targetData = state.hands?.[bribeTargetUid];
-    const hasTargetSweets = !!(targetData && Array.isArray(targetData.sweets) && targetData.sweets.length);
-    return hasTargetSweets;
+  const bribeTargetUids = getActiveBribeTargetUids();
+  if(activeInstructions.length && bribeTargetUids.length === 0) return false;
+  if(bribeTargetUids.length){
+    return bribeTargetUids.some((uid) => {
+      if(uid === state.userId) return false;
+      const targetData = state.hands?.[uid];
+      return !!(targetData && Array.isArray(targetData.sweets) && targetData.sweets.length);
+    });
   }
   const owners = getSweetsOwners();
   if(useBonus){
@@ -5475,10 +5483,11 @@ function setActionSelection(next){
 }
 
 function syncSweetsExcludedFocus(){
-  const shouldFocus = actionSelection?.type === 'inspiration' && actionSelection.phase === 'select';
-  if(sweetsExcludedFocusActive === shouldFocus) return;
-  sweetsExcludedFocusActive = shouldFocus;
-  setSweetsExcludedDeckFocus(shouldFocus);
+  const shouldClear = !(actionSelection?.type === 'inspiration' && actionSelection.phase === 'select');
+  if(!shouldClear) return;
+  if(!sweetsExcludedFocusActive) return;
+  sweetsExcludedFocusActive = false;
+  setSweetsExcludedDeckFocus(false);
 }
 
 function clearActionSelection(){
@@ -8776,6 +8785,7 @@ function clearOtherCircleHint(){
 }
 function updateOtherCircleHint(x,y,cardObj){
   clearOtherCircleHint();
+  if(cardObj?.kind !== 'instruction') return;
   const el = document.elementFromPoint(x,y);
   const c = el?.closest?.('.otherplayerscircle');
   if(!c) return;
@@ -9866,6 +9876,10 @@ function openSweetsPicker(options = {}){
 
   sweetsBackdrop.classList.remove('hidden');
   requestAnimationFrame(adjustSweetsPanelHeight);
+  if(source === SWEETS_PICK_SOURCE.EXCLUDED && actionSelection?.type === 'inspiration'){
+    sweetsExcludedFocusActive = true;
+    setSweetsExcludedDeckFocus(true);
+  }
   if(source === SWEETS_PICK_SOURCE.MAIN && mode !== SWEETS_PANEL_MODE.TRIAL){
     setSweetsDeckFocus(true);
   }
@@ -9876,6 +9890,10 @@ function closeSweetsPicker(){
   sweetsBackdrop.classList.add('hidden');
   setSweetsPanelMode(SWEETS_PANEL_MODE.PICK);
   setSweetsDeckFocus(false);
+  if(sweetsExcludedFocusActive){
+    sweetsExcludedFocusActive = false;
+    setSweetsExcludedDeckFocus(false);
+  }
 }
 
 function getTrialAddedIds(){
@@ -10359,8 +10377,8 @@ let hoverSwarea = null;
 
 function isVoteTargetAllowed(uid, options = {}){
   const { useBonus = getMyBonusVoteChips() > 0 } = options;
-  const bribeTargetUid = getActiveBribeTargetUid();
-  if(bribeTargetUid && uid !== bribeTargetUid) return false;
+  const bribeTargetUids = getActiveBribeTargetUids();
+  if(bribeTargetUids.length && !bribeTargetUids.includes(uid)) return false;
   if(useBonus && uid === state.userId) return false;
   return true;
 }
