@@ -5075,16 +5075,22 @@ function renderMySweets(){
   mySweetsEl.style.cursor = '';
   mySweetsEl.classList.remove('swap-selectable','swap-selected','advertise-selectable','accident-selectable');
   const c = getMySweetsCard();
-  if(!c){
+  const renderEmptyMySweetsWithVotes = () => {
     const voteStack = buildVoteStackEl(state.userId);
-    if(voteStack){
-      mySweetsEl.classList.remove('hidden');
-      mySweetsEl.classList.add('empty');
-      mySweetsEl.innerHTML = '';
-      mySweetsEl.appendChild(voteStack);
-      updateRoundPickUI();
-      lastMySweetsSnapshot = null;
-      mySweetsFlyAnimatedFor = null;
+    if(!voteStack){
+      return false;
+    }
+    mySweetsEl.classList.remove('hidden');
+    mySweetsEl.classList.add('empty');
+    mySweetsEl.innerHTML = '';
+    mySweetsEl.appendChild(voteStack);
+    updateRoundPickUI();
+    lastMySweetsSnapshot = null;
+    mySweetsFlyAnimatedFor = null;
+    return true;
+  };
+  if(!c){
+    if(renderEmptyMySweetsWithVotes()){
       return;
     }
     mySweetsEl.classList.add('hidden');
@@ -5094,6 +5100,9 @@ function renderMySweets(){
     return;
   }
   if(collectedSweetsHidden.has(state.userId)){
+    if(renderEmptyMySweetsWithVotes()){
+      return;
+    }
     mySweetsEl.classList.add('hidden');
     mySweetsEl.innerHTML = '';
     updateRoundPickUI();
