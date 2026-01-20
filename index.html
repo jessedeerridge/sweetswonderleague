@@ -5074,48 +5074,39 @@ function renderMySweets(){
   applyTagChipStyle(mySweetsEl, getTagChipStyleByUid(state.userId));
   mySweetsEl.style.cursor = '';
   mySweetsEl.classList.remove('swap-selectable','swap-selected','advertise-selectable','accident-selectable');
+
   const c = getMySweetsCard();
-  const renderEmptyMySweetsWithVotes = () => {
-    const voteStack = buildVoteStackEl(state.userId);
-    if(!voteStack){
-      return false;
-    }
-    mySweetsEl.classList.remove('hidden');
-    mySweetsEl.classList.add('empty');
-    mySweetsEl.innerHTML = '';
-    mySweetsEl.style.visibility = '';
-    mySweetsEl.appendChild(voteStack);
-    updateRoundPickUI();
-    lastMySweetsSnapshot = null;
-    mySweetsFlyAnimatedFor = null;
-    return true;
-  };
-  if(!c){
-    if(renderEmptyMySweetsWithVotes()){
-      return;
-    }
-    mySweetsEl.classList.add('hidden');
-    updateRoundPickUI();
-    lastMySweetsSnapshot = null;
-    mySweetsFlyAnimatedFor = null;
-    return;
-  }
-  if(collectedSweetsHidden.has(state.userId)){
-    if(renderEmptyMySweetsWithVotes()){
-      return;
-    }
-    mySweetsEl.classList.add('hidden');
-    mySweetsEl.innerHTML = '';
-    updateRoundPickUI();
-    return;
-  }
   const decidedUids = getDecidedSweetsUids();
+  const hasVotes = getVoteVoterIds(state.userId).length > 0;
+  const shouldHideCard = !c || collectedSweetsHidden.has(state.userId);
+
   if(decidedUids.includes(state.userId)){
     mySweetsEl.classList.add('hidden');
     mySweetsEl.innerHTML = '';
     updateRoundPickUI();
     return;
   }
+
+  if(shouldHideCard){
+    if(hasVotes){
+      mySweetsEl.classList.remove('hidden');
+      mySweetsEl.classList.add('empty');
+      mySweetsEl.style.visibility = '';
+      mySweetsEl.innerHTML = '';
+      renderMySweetsVoteStack({ forceEmptySlot: true });
+      updateRoundPickUI();
+      lastMySweetsSnapshot = null;
+      mySweetsFlyAnimatedFor = null;
+      return;
+    }
+    mySweetsEl.classList.add('hidden');
+    mySweetsEl.innerHTML = '';
+    updateRoundPickUI();
+    lastMySweetsSnapshot = null;
+    mySweetsFlyAnimatedFor = null;
+    return;
+  }
+
   mySweetsFlyAnimatedFor = null;
   mySweetsEl.classList.remove('hidden');
   mySweetsEl.classList.remove('empty');
@@ -6028,15 +6019,20 @@ let pendingSeatIndexToSteal = null;
 let pendingSeatPlayerIdToSteal = null;
 let isRenderingSeatTabs = false;
 
-function renderMySweetsVoteStack(){
-  // スイーツ未所持なら何もしない（＆残骸があれば消す）
-  const c = getMySweetsCard();
+function renderMySweetsVoteStack({ forceEmptySlot = false } = {}){
   const old = mySweetsEl.querySelector('.vote-stack');
   if(old) old.remove();
-  if(!c) return;
 
   const voterIds = getVoteVoterIds(state.userId);
   if(!voterIds.length) return;
+
+  const c = getMySweetsCard();
+  if(!c || forceEmptySlot){
+    mySweetsEl.classList.remove('hidden');
+    mySweetsEl.classList.add('empty');
+    mySweetsEl.style.visibility = '';
+    mySweetsEl.innerHTML = '';
+  }
 
   const voteStack = document.createElement('div');
   voteStack.className = 'vote-stack';
