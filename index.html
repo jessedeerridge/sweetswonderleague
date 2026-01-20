@@ -1605,6 +1605,12 @@ body.rob-active .vote-mini:hover{
   animation:none;
   transform:none;}
 
+body.roundpick-drag-active,
+body.roundpick-drag-active main{
+  touch-action:none;
+  overscroll-behavior:contain;
+}
+
 
 /* 既存の「V」文字は消す（デザイン統一） */
 .vote-chip::after{ content:''; }
@@ -1978,6 +1984,17 @@ body.imprison-active .my-sweets.roundpick-selectable:hover{
   transform:translate(-50%, var(--sweetsTagMoveY));
   animation:sweetsTagMove .6s ease;
   pointer-events:none;
+}
+.selected-sweets-tag.roundpick-selectable{
+  pointer-events:auto;
+  touch-action:none;
+}
+.selected-sweets-tag.roundpick-selectable .selected-sweets-card{
+  cursor:grab;
+  touch-action:none;
+}
+.selected-sweets-tag.roundpick-selectable:active .selected-sweets-card{
+  cursor:grabbing;
 }
 .selected-sweets-tag.delayed-show{
   opacity:0;
@@ -6939,6 +6956,14 @@ function renderPlayerCircle(players){
             appendAdvertiseEye(cardWrap);
           }
           selected.appendChild(cardWrap);
+          if(canLeaderDragPick(state.userId)){
+            selected.classList.add('roundpick-candidate');
+            selected.classList.add('roundpick-selectable');
+            selected.addEventListener('pointerdown', (e) => {
+              e.stopPropagation();
+              startRoundPickDrag(e, state.userId);
+            });
+          }
 
          const voterIds = getVoteVoterIds(state.userId);
           if(voterIds.length){
@@ -7919,6 +7944,7 @@ function canLeaderDragPick(uid){
 function startRoundPickDrag(e, uid){
   if(!canLeaderDragPick(uid)) return;
   e.preventDefault();
+  document.body.classList.add('roundpick-drag-active');
 
   const source = e.currentTarget;
   const r = source.getBoundingClientRect();
@@ -7992,6 +8018,7 @@ async function onRoundPickDragEnd(e){
 
 function cleanupRoundPickDrag(){
   playCircleEl.classList.remove('roundpick-target');
+  document.body.classList.remove('roundpick-drag-active');
   if(roundPickDrag.ghost){
     roundPickDrag.ghost.removeEventListener('pointermove', onRoundPickDragMove);
     roundPickDrag.ghost.removeEventListener('pointerup', onRoundPickDragEnd);
