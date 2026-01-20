@@ -1979,6 +1979,16 @@ body.imprison-active .my-sweets.roundpick-selectable:hover{
   animation:sweetsTagMove .6s ease;
   pointer-events:none;
 }
+.selected-sweets-tag.roundpick-selectable{
+  pointer-events:auto;
+}
+.selected-sweets-tag.roundpick-selectable .selected-sweets-card{
+  cursor:grab;
+  touch-action:none;
+}
+.selected-sweets-tag.roundpick-selectable:active .selected-sweets-card{
+  cursor:grabbing;
+}
 .selected-sweets-tag.delayed-show{
   opacity:0;
   visibility:hidden;
@@ -6939,6 +6949,14 @@ function renderPlayerCircle(players){
             appendAdvertiseEye(cardWrap);
           }
           selected.appendChild(cardWrap);
+          if(canLeaderDragPick(state.userId)){
+            selected.classList.add('roundpick-candidate');
+            selected.classList.add('roundpick-selectable');
+            selected.addEventListener('pointerdown', (e) => {
+              e.stopPropagation();
+              startRoundPickDrag(e, state.userId);
+            });
+          }
 
          const voterIds = getVoteVoterIds(state.userId);
           if(voterIds.length){
