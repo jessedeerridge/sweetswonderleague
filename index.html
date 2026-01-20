@@ -7925,6 +7925,7 @@ const roundPickDrag = {
   ghost:null,
   offsetX:0,
   offsetY:0,
+  pointerId:null,
   sourceEl:null,
   sourceHidden:false,
   sourceVisibility:'',
@@ -7952,6 +7953,7 @@ function startRoundPickDrag(e, uid){
   roundPickDrag.uid = uid;
   roundPickDrag.offsetX = e.clientX - r.left;
   roundPickDrag.offsetY = e.clientY - r.top;
+  roundPickDrag.pointerId = e.pointerId;
   roundPickDrag.sourceEl = source;
   roundPickDrag.sourceHidden = true;
   roundPickDrag.sourceVisibility = source.style.visibility;
@@ -7984,14 +7986,15 @@ function startRoundPickDrag(e, uid){
   document.body.appendChild(ghost);
   roundPickDrag.ghost = ghost;
 
-  ghost.setPointerCapture(e.pointerId);
-  ghost.addEventListener('pointermove', onRoundPickDragMove);
-  ghost.addEventListener('pointerup', onRoundPickDragEnd);
-  ghost.addEventListener('pointercancel', onRoundPickDragEnd);
+  source.setPointerCapture(e.pointerId);
+  source.addEventListener('pointermove', onRoundPickDragMove);
+  source.addEventListener('pointerup', onRoundPickDragEnd);
+  source.addEventListener('pointercancel', onRoundPickDragEnd);
 }
 
 function onRoundPickDragMove(e){
   if(!roundPickDrag.active || !roundPickDrag.ghost) return;
+  if(roundPickDrag.pointerId !== null && e.pointerId !== roundPickDrag.pointerId) return;
   const x = e.clientX - roundPickDrag.offsetX;
   const y = e.clientY - roundPickDrag.offsetY;
   roundPickDrag.ghost.style.left = `${x}px`;
@@ -8004,6 +8007,7 @@ function onRoundPickDragMove(e){
 
 async function onRoundPickDragEnd(e){
   if(!roundPickDrag.active) return;
+  if(roundPickDrag.pointerId !== null && e.pointerId !== roundPickDrag.pointerId) return;
 
   const pr = playCircleEl.getBoundingClientRect();
   const inPlay = (e.clientX >= pr.left && e.clientX <= pr.right && e.clientY >= pr.top && e.clientY <= pr.bottom);
@@ -8020,10 +8024,12 @@ function cleanupRoundPickDrag(){
   playCircleEl.classList.remove('roundpick-target');
   document.body.classList.remove('roundpick-drag-active');
   if(roundPickDrag.ghost){
-    roundPickDrag.ghost.removeEventListener('pointermove', onRoundPickDragMove);
-    roundPickDrag.ghost.removeEventListener('pointerup', onRoundPickDragEnd);
-    roundPickDrag.ghost.removeEventListener('pointercancel', onRoundPickDragEnd);
     roundPickDrag.ghost.remove();
+  }
+  if(roundPickDrag.sourceEl){
+    roundPickDrag.sourceEl.removeEventListener('pointermove', onRoundPickDragMove);
+    roundPickDrag.sourceEl.removeEventListener('pointerup', onRoundPickDragEnd);
+    roundPickDrag.sourceEl.removeEventListener('pointercancel', onRoundPickDragEnd);
   }
   if(roundPickDrag.sourceEl && roundPickDrag.sourceHidden){
     roundPickDrag.sourceEl.style.visibility = roundPickDrag.sourceVisibility || '';
@@ -8036,6 +8042,7 @@ function cleanupRoundPickDrag(){
   roundPickDrag.ghost = null;
   roundPickDrag.offsetX = 0;
   roundPickDrag.offsetY = 0;
+  roundPickDrag.pointerId = null;
   roundPickDrag.sourceEl = null;
   roundPickDrag.sourceHidden = false;
   roundPickDrag.sourceVisibility = '';
