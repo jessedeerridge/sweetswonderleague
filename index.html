@@ -6876,19 +6876,7 @@ function renderPlayerCircle(players){
         chip.className = 'leader-chip';
         tag.appendChild(chip);
       }
-    if(voteHoldActive && !decidedUids.includes(state.userId)){
-        const voteStack = buildVoteStackEl(state.userId);
-        if(voteStack){
-          tag.appendChild(voteStack);
-        }
-      }
-      const mySweetsCard = getSweetsCardByUid(state.userId);
-      if(!mySweetsCard && getVoteCountFor(state.userId) > 0){
-        const voteStack = buildVoteStackEl(state.userId);
-        if(voteStack){
-          tag.appendChild(voteStack);
-        }
-      }
+      // 自分の投票チップ表示はスイーツ枠側で管理
       if(started && decidedUids.includes(state.userId)){
         const sweetsCard = getSweetsCardByUid(state.userId);
         if(sweetsCard){
