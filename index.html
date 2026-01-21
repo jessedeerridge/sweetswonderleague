@@ -3111,18 +3111,29 @@ function updateSweetsExcludedDeckRelocation(){
     return;
   }
 
-  const sweetsWrap = document.querySelector(`.sweets-wrap[data-sweets-uid="${focus.uid}"]`);
-  const fallbackTag = document.querySelector(`.player-tag[data-uid="${focus.uid}"]`);
-  const targetEl = sweetsWrap || fallbackTag;
-  if(!targetEl){
+  const sweetsWrap = focus.uid === state.userId
+    ? mySweetsEl
+    : document.querySelector(`.sweets-wrap[data-sweets-uid="${focus.uid}"]`);
+  let targetRect = null;
+  if(sweetsWrap){
+    const rect = sweetsWrap.getBoundingClientRect();
+    if(rect.width && rect.height){
+      targetRect = rect;
+    }
+  }
+  if(!targetRect){
+    const cachedRect = getSweetsRectForAnimation(focus.uid);
+    if(cachedRect && cachedRect.width && cachedRect.height){
+      targetRect = cachedRect;
+    }
+  }
+  if(!targetRect){
     sweetsExcludedDeckMover.classList.remove('relocating');
-    setSweetsExcludedDeckMoverTransform('translate(0px, 0px)');
     return;
   }
 
   const baseRect = sweetsExcludedDeckMover.parentElement?.getBoundingClientRect?.();
-  const targetRect = targetEl.getBoundingClientRect();
-  if(!baseRect || !baseRect.width || !baseRect.height || !targetRect.width || !targetRect.height) return;
+  if(!baseRect || !baseRect.width || !baseRect.height) return;
 
   const targetX = targetRect.left + targetRect.width / 2;
   const targetY = targetRect.top + targetRect.height / 2;
