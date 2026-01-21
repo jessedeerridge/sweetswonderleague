@@ -3086,33 +3086,35 @@ function updateSweetsDeckRelocation(){
 
 function updateSweetsExcludedDeckRelocation(){
   if(!sweetsExcludedDeckMover || !sweetsExcludedDeckUI) return;
+
   const focus = getSweetsExcludedDeckFocus();
-  const shouldRelocate = !!(focus && focus.uid && focus.uid !== state.userId);
+  const focusUid = focus?.uid ?? null;
+  const shouldRelocate = !!(focusUid && focusUid !== state.userId);
   if(shouldRelocate){
     sweetsExcludedDeckReturnPending = false;
     cancelSweetsExcludedDeckReturn();
   }
-  if(sweetsExcludedDeckUI.classList.contains('hidden')){
+
+  const isHidden = sweetsExcludedDeckUI.classList.contains('hidden');
+  if(isHidden){
     sweetsExcludedDeckMover.classList.toggle('relocating', shouldRelocate);
     if(!shouldRelocate){
       sweetsExcludedDeckReturnPending = true;
     }
     return;
   }
-  if(sweetsExcludedDeckReturnPending && !shouldRelocate){
-    sweetsExcludedDeckReturnPending = false;
-    sweetsExcludedDeckMover.classList.remove('relocating');
-    scheduleSweetsExcludedDeckReturn();
-    return;
-  }
+
   if(!shouldRelocate){
+    if(sweetsExcludedDeckReturnPending){
+      sweetsExcludedDeckReturnPending = false;
+    }
     sweetsExcludedDeckMover.classList.remove('relocating');
     scheduleSweetsExcludedDeckReturn();
     return;
   }
 
-  const sweetsWrap = document.querySelector(`.sweets-wrap[data-sweets-uid="${focus.uid}"]`);
-  const fallbackTag = document.querySelector(`.player-tag[data-uid="${focus.uid}"]`);
+  const sweetsWrap = document.querySelector(`.sweets-wrap[data-sweets-uid="${focusUid}"]`);
+  const fallbackTag = document.querySelector(`.player-tag[data-uid="${focusUid}"]`);
   const targetEl = sweetsWrap || fallbackTag;
   if(!targetEl){
     sweetsExcludedDeckMover.classList.remove('relocating');
@@ -3128,7 +3130,6 @@ function updateSweetsExcludedDeckRelocation(){
   const targetY = targetRect.top + targetRect.height / 2;
   const deckCenterX = baseRect.left + baseRect.width / 2;
   const deckCenterY = baseRect.top + baseRect.height / 2;
-
   const moveX = targetX - deckCenterX;
   const moveY = targetY - deckCenterY;
 
