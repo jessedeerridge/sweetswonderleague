@@ -3060,8 +3060,7 @@ function updateSweetsDeckRelocation(){
   }
 
   const sweetsWrap = document.querySelector(`.sweets-wrap[data-sweets-uid="${focus.uid}"]`);
-  const fallbackTag = document.querySelector(`.player-tag[data-uid="${focus.uid}"]`);
-  const targetEl = sweetsWrap || fallbackTag;
+  const targetEl = sweetsWrap;
   if(!targetEl){
     sweetsDeckMover.classList.remove('relocating');
     setSweetsDeckMoverTransform('translate(0px, 0px)');
@@ -3112,8 +3111,7 @@ function updateSweetsExcludedDeckRelocation(){
   }
 
   const sweetsWrap = document.querySelector(`.sweets-wrap[data-sweets-uid="${focus.uid}"]`);
-  const fallbackTag = document.querySelector(`.player-tag[data-uid="${focus.uid}"]`);
-  const targetEl = sweetsWrap || fallbackTag;
+  const targetEl = sweetsWrap;
   if(!targetEl){
     sweetsExcludedDeckMover.classList.remove('relocating');
     setSweetsExcludedDeckMoverTransform('translate(0px, 0px)');
