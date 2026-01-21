@@ -2854,8 +2854,10 @@ function calcSweetsTotalPoints(cards){
       (c && typeof c.name === 'string') ? (parseInt(c.name, 10) || 0) :
       0;
     return sum + v;
-  }, 0);
-}
+    const slotState = roundChipAnimState.get(slot) || { lastSrc: '', lastAnimatedAt: 0, animating: false };
+          if(!slotState.animating && (slotState.lastSrc !== src || (nowTime - slotState.lastAnimatedAt) > minIntervalMs)){
+              slotState.animating = false;
+            slotState.animating = true;
 
 /* ✅ 追加：roundchip表示（game.roundChipsを反映） */
 function renderRoundChipsFromGame(){
