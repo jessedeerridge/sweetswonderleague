@@ -892,6 +892,26 @@ display:none;
   transform-origin:bottom center;
     box-shadow:0 2px 6px rgba(0,0,0,.15);
   }
+  .role-mini .received-instruction-stack{
+    position:absolute;
+    left:-6px;
+    top:-6px;
+    width:16px;
+    height:22px;
+    pointer-events:none;
+  }
+  .role-mini .received-instruction-card{
+    position:absolute;
+    left:0;
+    top:0;
+    width:16px;
+    height:22px;
+    border-radius:4px;
+    border:1px solid #bbb;
+    background:url('swactionura.jpg') center/cover no-repeat;
+    transform-origin:bottom center;
+    box-shadow:0 2px 6px rgba(0,0,0,.15);
+  }
   .role-mini .other-vote-chip{
     position:absolute;
     right:-6px;
@@ -7233,6 +7253,20 @@ if(started && roleAssigned){
     badgeImg.alt = '監禁';
     badge.appendChild(badgeImg);
     roleMini.appendChild(badge);
+  }
+
+  const receivedCount = Array.isArray(handData?.received) ? handData.received.length : 0;
+  if(receivedCount > 0 && p.id !== state.userId){
+    const stack = document.createElement('div');
+    stack.className = 'received-instruction-stack';
+    for(let idx = 0; idx < receivedCount; idx += 1){
+      const card = document.createElement('div');
+      card.className = 'received-instruction-card';
+      card.style.transform = `rotate(${idx * 5}deg)`;
+      card.style.zIndex = String(10 + idx);
+      stack.appendChild(card);
+    }
+    roleMini.appendChild(stack);
   }
   tag.appendChild(roleMini);
 
