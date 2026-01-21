@@ -2846,43 +2846,44 @@ function getRoundWinThreshold(playerCount, roundNo){
 }
 
 /* ✅ 追加：選ばれたスイーツ合計点（cards配列のvalue合計） */
-function calcSweetsTotalPoints(cards){
-  const arr = Array.isArray(cards) ? cards : [];
-  return arr.reduce((sum, c) => {
-    const v =
-      (c && typeof c.value === 'number') ? c.value :
-      (c && typeof c.name === 'string') ? (parseInt(c.name, 10) || 0) :
-      0;
-    return sum + v;
-    const slotState = roundChipAnimState.get(slot) || { lastSrc: '', lastAnimatedAt: 0, animating: false };
-          if(!slotState.animating && (slotState.lastSrc !== src || (nowTime - slotState.lastAnimatedAt) > minIntervalMs)){
-              slotState.animating = false;
-            slotState.animating = true;
+    if(!slot) return;
+    const slotState = roundChipAnimState.get(slot) || {
+      currentSrc: '',
+      pendingSrc: null,
+      animating: false,
+    };
 
-/* ✅ 追加：roundchip表示（game.roundChipsを反映） */
-function renderRoundChipsFromGame(){
-  if(!roundChipImgEls || !roundChipImgEls.length) return;
-  const chips = (state.game && typeof state.game === 'object' && state.game.roundChips) ? state.game.roundChips : {};
-  roundChipImgEls.forEach((img, idx) => {
-    const r = String(idx + 1);
-    const src = chips?.[r] || chips?.[idx + 1] || null; // 数字キー/文字キー両対応
-    const slot = roundChipSlotEls[idx];
-    const slotState = roundChipAnimState.get(slot) || { lastSrc: '', lastAnimatedAt: 0 };
-    if(src){
-      if(img.dataset.src !== src){
-        img.src = src;
-        img.dataset.src = src;
-        if(slot){
-          const nowTime = now();
-          const minIntervalMs = 1200;
-          if(slotState.lastSrc !== src || (nowTime - slotState.lastAnimatedAt) > minIntervalMs){
-            slot.classList.remove('round-chip-pop');
-            void slot.offsetWidth;
-            slot.classList.add('round-chip-pop');
-            slot.addEventListener('animationend', () => {
-              slot.classList.remove('round-chip-pop');
-            }, { once: true });
-            slotState.lastAnimatedAt = nowTime;
+    const startPop = (nextSrc) => {
+      if(!nextSrc) return;
+      slotState.currentSrc = nextSrc;
+      slotState.animating = true;
+      img.src = nextSrc;
+      img.dataset.src = nextSrc;
+      img.classList.remove('hidden');
+      slot.classList.remove('round-chip-pop');
+      void slot.offsetWidth;
+      slot.classList.add('round-chip-pop');
+      slot.addEventListener('animationend', () => {
+        slot.classList.remove('round-chip-pop');
+        slotState.animating = false;
+        if(slotState.pendingSrc && slotState.pendingSrc !== slotState.currentSrc){
+          const pending = slotState.pendingSrc;
+          slotState.pendingSrc = null;
+          startPop(pending);
+        }
+      }, { once: true });
+    };
+
+      if(slotState.animating){
+        if(src !== slotState.currentSrc){
+          slotState.pendingSrc = src;
+      }else if(src !== slotState.currentSrc){
+        startPop(src);
+      }else{
+        img.classList.remove('hidden');
+      roundChipAnimState.set(slot, slotState);
+      slot.classList.remove('round-chip-pop');
+      roundChipAnimState.delete(slot);
             slotState.lastSrc = src;
             roundChipAnimState.set(slot, slotState);
           }
