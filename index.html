@@ -1860,7 +1860,7 @@ body.imprison-active .sweets-wrap.roundpick-selectable:hover{
   transform:none;
 }
 .sweets-wrap.swap-selectable{
-  animation:pulseCard 1.05s ease-in-out infinite;
+  animation:pulseCardAccident  1.05s ease-in-out infinite;
   cursor:pointer;
 }
 .sweets-wrap.swap-selectable:hover{
@@ -3805,7 +3805,7 @@ const ACTION_COUNTS_BASE = [
 
   { name:'強奪', count:2, kind:'normal' },
   { name:'偵察', count:2, kind:'normal' },
-  { name:'ひらめき', count:20, kind:'normal' },
+  { name:'ひらめき', count:2, kind:'normal' },
   { name:'仕込み', count:2, kind:'normal' },
   { name:'交換', count:2, kind:'normal' },
   { name:'試行錯誤',     count:2, kind:'normal' },
@@ -5387,6 +5387,7 @@ function renderHands(){
   renderMyVoteChip();
   if (latestPlayers.length) renderPlayerCircle(latestPlayers);
   updatePassRoundBtn();
+  syncActionDiscardZoneVisibility();
 }
 
 function isActionSelectionActive(){
@@ -8856,6 +8857,7 @@ const drag = {
   active:false,
   card:null,
   el:null,
+  fromHand:false,
   offsetX:0, offsetY:0,
   originRect:null,
   lastClientX:null,
@@ -8909,6 +8911,7 @@ function updateOtherCircleHint(x,y,cardObj){
 
 function showActionDiscardZone(){
   if(!actionDiscardZone) return;
+  if(!drag.active || !drag.fromHand) return;
   actionDiscardZone.classList.remove('hidden');
 }
 
@@ -8916,6 +8919,13 @@ function hideActionDiscardZone(){
   if(!actionDiscardZone) return;
   actionDiscardZone.classList.add('hidden');
   actionDiscardZone.classList.remove('active');
+}
+
+function syncActionDiscardZoneVisibility(){
+  if(!actionDiscardZone) return;
+  const shouldShow = drag.active && drag.fromHand;
+  actionDiscardZone.classList.toggle('hidden', !shouldShow);
+  if(!shouldShow) actionDiscardZone.classList.remove('active');
 }
 
 function isInDiscardZone(x,y){
@@ -8958,6 +8968,7 @@ function startDragCard(e, cardObj, cardEl){
   drag.active = true;
   drag.card = cardObj;
   drag.el = cardEl;
+  drag.fromHand = !!cardEl.closest('#myHand');
   drag.originRect = cardEl.getBoundingClientRect();
 
   const r = drag.originRect;
@@ -8975,9 +8986,7 @@ function startDragCard(e, cardObj, cardEl){
   playCircleEl.classList.toggle('hint-ok', canUseOnPlayCircle(cardObj));
   playCircleEl.classList.toggle('hint-ng', !canUseOnPlayCircle(cardObj));
 
-  if(cardEl.closest('#myHand')){
-    showActionDiscardZone();
-  }
+  showActionDiscardZone();
 
   cardEl.addEventListener('pointermove', onDragMove);
   cardEl.addEventListener('pointerup', onDragEnd);
@@ -9096,6 +9105,7 @@ function cleanupDrag(){
   drag.active = false;
   drag.card = null;
   drag.el = null;
+  drag.fromHand = false;
   drag.originRect = null;
   drag.lastClientX = null;
   drag.lastClientY = null;
@@ -9812,7 +9822,7 @@ function setSweetsPanelMode(mode){
   if(!sweetsPanelTitleEl || !sweetsDropZone) return;
   if(mode === SWEETS_PANEL_MODE.TRIAL){
     sweetsPanelTitleEl.textContent = 'スイーツ（除外エリアにドラッグ）';
-    sweetsDropZone.textContent = '除外したいカードを下の除外エリアへドラッグしてください。';
+    sweetsDropZone.textContent = 'スイーツ山札から除外したいカードをここにドラッグしてください。';
     sweetsDropZone.setAttribute('aria-label', 'スイーツ除外エリア');
     sweetsDropZone.classList.add('trial');
     sweetsBackdrop?.classList.add('trial');
