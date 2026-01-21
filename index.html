@@ -9324,6 +9324,7 @@ function getActionBlockReason(cardObj){
     if(sweetsOwners.length <= 1) return '場に交換できるスイーツがありません。';
   }
   if(cardObj.name === '強奪'){
+    if(sweetsOwners.length <= 1) return '場に移動できる投票チップがありません。';
     if(getTotalVoteChipsOnField() <= 0) return '場に投票チップがありません。';
   }
   if(cardObj.name === '試行錯誤'){
