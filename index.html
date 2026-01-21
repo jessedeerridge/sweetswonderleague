@@ -1626,8 +1626,7 @@ body.roundpick-drag-active main{
   .roundpick-dragging{
     position:fixed !important;
     z-index:85 !important;
-    pointer-events:auto;
-    touch-action:none;
+    pointer-events:none;
     border-radius:12px;
     border:1px solid rgba(255,255,255,.35);
     box-shadow:0 18px 40px rgba(0,0,0,.35);
@@ -7931,7 +7930,6 @@ const roundPickDrag = {
   sourceHidden:false,
   sourceVisibility:'',
   sourceOpacity:'',
-  sourcePointerEvents:'',
   voteChipHidden:false,
   voteChipVisibility:'',
 };
@@ -7961,10 +7959,8 @@ function startRoundPickDrag(e, uid){
   roundPickDrag.sourceHidden = true;
   roundPickDrag.sourceVisibility = source.style.visibility;
   roundPickDrag.sourceOpacity = source.style.opacity;
-  roundPickDrag.sourcePointerEvents = source.style.pointerEvents;
   source.style.visibility = 'visible';
   source.style.opacity = '0';
-  source.style.pointerEvents = 'none';
   if(uid === state.userId){
     roundPickDrag.voteChipHidden = true;
     roundPickDrag.voteChipVisibility = myVoteChipEl.style.visibility;
@@ -7993,10 +7989,10 @@ function startRoundPickDrag(e, uid){
   document.body.appendChild(ghost);
   roundPickDrag.ghost = ghost;
 
-  ghost.setPointerCapture(e.pointerId);
-  ghost.addEventListener('pointermove', onRoundPickDragMove);
-  ghost.addEventListener('pointerup', onRoundPickDragEnd);
-  ghost.addEventListener('pointercancel', onRoundPickDragEnd);
+  source.setPointerCapture(e.pointerId);
+  source.addEventListener('pointermove', onRoundPickDragMove);
+  source.addEventListener('pointerup', onRoundPickDragEnd);
+  source.addEventListener('pointercancel', onRoundPickDragEnd);
 }
 
 function onRoundPickDragMove(e){
@@ -8031,15 +8027,16 @@ function cleanupRoundPickDrag(){
   playCircleEl.classList.remove('roundpick-target');
   document.body.classList.remove('roundpick-drag-active');
   if(roundPickDrag.ghost){
-    roundPickDrag.ghost.removeEventListener('pointermove', onRoundPickDragMove);
-    roundPickDrag.ghost.removeEventListener('pointerup', onRoundPickDragEnd);
-    roundPickDrag.ghost.removeEventListener('pointercancel', onRoundPickDragEnd);
     roundPickDrag.ghost.remove();
+  }
+  if(roundPickDrag.sourceEl){
+    roundPickDrag.sourceEl.removeEventListener('pointermove', onRoundPickDragMove);
+    roundPickDrag.sourceEl.removeEventListener('pointerup', onRoundPickDragEnd);
+    roundPickDrag.sourceEl.removeEventListener('pointercancel', onRoundPickDragEnd);
   }
   if(roundPickDrag.sourceEl && roundPickDrag.sourceHidden){
     roundPickDrag.sourceEl.style.visibility = roundPickDrag.sourceVisibility || '';
     roundPickDrag.sourceEl.style.opacity = roundPickDrag.sourceOpacity || '';
-    roundPickDrag.sourceEl.style.pointerEvents = roundPickDrag.sourcePointerEvents || '';
   }
   if(roundPickDrag.voteChipHidden){
     myVoteChipEl.style.visibility = roundPickDrag.voteChipVisibility || '';
@@ -8054,7 +8051,6 @@ function cleanupRoundPickDrag(){
   roundPickDrag.sourceHidden = false;
   roundPickDrag.sourceVisibility = '';
   roundPickDrag.sourceOpacity = '';
-  roundPickDrag.sourcePointerEvents = '';
   roundPickDrag.voteChipHidden = false;
   roundPickDrag.voteChipVisibility = '';
 }
