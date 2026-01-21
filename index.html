@@ -8,7 +8,12 @@
   :root{
     --leaderChipSize: 21.6px;
     --leaderChipOffset: 22px;
-    --actionZoomEffectSize: 24px;
+    --actionZoomEffectSize: 18px;
+    --helpActionCardW: 90px;
+    --helpActionEffectTop: 66%;
+    --helpActionEffectPadding: 3px;
+    --helpActionEffectSize: 10px;
+    --helpActionEffectLineHeight: 1.25;
   }
   html, body{height:100%; overflow:hidden;}
   body{margin:0;font-family:system-ui,-apple-system,Segoe UI,Roboto,sans-serif;background:#fff;color:#111;}
@@ -1230,12 +1235,12 @@ border-radius:0px;
     touch-action:auto;
   }
   .help-action-grid .action-card .effect-frame{
-    top:66%;
-    padding:3px;
+    top:var(--helpActionEffectTop);
+    padding:var(--helpActionEffectPadding);
   }
   .help-action-grid .action-card .effect-text{
-    font-size:10px;
-    line-height:1.25;
+    font-size:var(--helpActionEffectSize);
+    line-height:var(--helpActionEffectLineHeight);
   }
 
   /* =========================
@@ -1285,7 +1290,20 @@ border-radius:0px;
     z-index:95;
     pointer-events:auto;
   }
- .reveal-card,
+ .reveal-card{
+    width:var(--helpActionCardW);
+    aspect-ratio: 2 / 3;
+    border-radius:12px;
+    border:none;
+    box-shadow:0 10px 22px rgba(0,0,0,.18);
+    background:transparent;
+    overflow:hidden;
+    position:relative;
+  }
+  .reveal-card{
+    transform:rotate(-2deg);
+    transform-origin:center;
+  }
   .action-zoom-card{
     width:min(calc(var(--myCardW) * 4), 78vw);
     aspect-ratio: 2 / 3;
@@ -1296,15 +1314,10 @@ border-radius:0px;
     overflow:hidden;
     position:relative;
   }
-  .reveal-card{
-    transform:scale(0.4) rotate(2deg);
-    transform-origin:center;
-    box-shadow:0 10px 22px rgba(0,0,0,.18);
-  }
   @keyframes revealPop{
-    0%{ transform:scale(0.42) rotate(-2deg); }
-    70%{ transform:scale(0.54) rotate(-2deg); }
-    100%{ transform:scale(0.5) rotate(-2deg); }
+    0%{ transform:scale(0.95) rotate(-2deg); }
+    70%{ transform:scale(1.02) rotate(-2deg); }
+    100%{ transform:scale(1) rotate(-2deg); }
   }
   .reveal-card img,
   .action-zoom-card img{width:100%;height:100%;object-fit:cover;display:block;border:none;background:transparent;}
@@ -1314,7 +1327,21 @@ border-radius:0px;
     text-shadow:0 2px 10px rgba(255,255,255,.75);
   }
   .reveal-card .label.hidden{display:none;}
-  .reveal-card .effect-frame,
+  .reveal-card .effect-frame{
+    position:absolute;
+    left:0;
+    right:0;
+    top:var(--helpActionEffectTop);
+    bottom:0;
+    background:rgb(195,179,237);
+    border-top:1px solid rgba(0,0,0,.15);
+    padding:var(--helpActionEffectPadding);
+    display:flex;
+    align-items:flex-start;
+    justify-content:flex-start;
+    box-sizing:border-box;
+    pointer-events:none;
+  }
   .action-zoom-card .effect-frame{
     position:absolute;
     left:0;
@@ -1332,7 +1359,16 @@ border-radius:0px;
   }
   .reveal-card .effect-frame.hidden,
   .action-zoom-card .effect-frame.hidden{display:none;}
-  .reveal-card .effect-text,
+  .reveal-card .effect-text{
+    width:100%;
+    font-weight:800;
+    line-height:var(--helpActionEffectLineHeight);
+    color:#111;
+    font-size:var(--helpActionEffectSize);
+    word-break:break-word;
+    hyphens:auto;
+    overflow:hidden;
+  }
   .action-zoom-card .effect-text{
     width:100%;
     font-weight:800;
