@@ -2292,6 +2292,8 @@ top:calc(50% - 6.5px);
   box-shadow:0 6px 14px rgba(0,0,0,.10) inset;
   position:relative;
   overflow:hidden;
+  transform:scale(1);
+  transform-origin:center;
 }
 
 .round-chip-slot::after{
@@ -2318,6 +2320,15 @@ display:none;
 }
 
 .round-chip-img.hidden{ display:none; }
+
+.round-chip-slot.round-chip-pop{
+  animation:roundChipPop 220ms ease-out;
+}
+
+@keyframes roundChipPop{
+  0%{ transform:scale(1.4); }
+  100%{ transform:scale(1); }
+}
 
 
 </style>
@@ -2733,6 +2744,8 @@ const requiredSweetsTagEl = document.getElementById('requiredSweetsTag');
 /* ✅ 追加：ラウンドチップ（R1/R2/R3） */
 const roundChipsEl = document.getElementById('roundChips');
 const roundChipImgEls = Array.from(document.querySelectorAll('#roundChips .round-chip-img'));
+const roundChipSlotEls = Array.from(document.querySelectorAll('#roundChips .round-chip-slot'));
+const roundChipAnimState = new Map();
 
 
 /* 中央の山札UI */
@@ -2833,30 +2846,60 @@ function getRoundWinThreshold(playerCount, roundNo){
 }
 
 /* ✅ 追加：選ばれたスイーツ合計点（cards配列のvalue合計） */
-function calcSweetsTotalPoints(cards){
-  const arr = Array.isArray(cards) ? cards : [];
-  return arr.reduce((sum, c) => {
-    const v =
-      (c && typeof c.value === 'number') ? c.value :
-      (c && typeof c.name === 'string') ? (parseInt(c.name, 10) || 0) :
-      0;
-    return sum + v;
-  }, 0);
-}
+    if(!slot) return;
+    const slotState = roundChipAnimState.get(slot) || {
+      currentSrc: '',
+      pendingSrc: null,
+      animating: false,
+    };
 
-/* ✅ 追加：roundchip表示（game.roundChipsを反映） */
-function renderRoundChipsFromGame(){
-  if(!roundChipImgEls || !roundChipImgEls.length) return;
-  const chips = (state.game && typeof state.game === 'object' && state.game.roundChips) ? state.game.roundChips : {};
-  roundChipImgEls.forEach((img, idx) => {
-    const r = String(idx + 1);
-    const src = chips?.[r] || chips?.[idx + 1] || null; // 数字キー/文字キー両対応
-    if(src){
-      img.src = src;
+    const startPop = (nextSrc) => {
+      if(!nextSrc) return;
+      slotState.currentSrc = nextSrc;
+      slotState.animating = true;
+      img.src = nextSrc;
+      img.dataset.src = nextSrc;
+      img.classList.remove('hidden');
+      slot.classList.remove('round-chip-pop');
+      void slot.offsetWidth;
+      slot.classList.add('round-chip-pop');
+      slot.addEventListener('animationend', () => {
+        slot.classList.remove('round-chip-pop');
+        slotState.animating = false;
+        if(slotState.pendingSrc && slotState.pendingSrc !== slotState.currentSrc){
+          const pending = slotState.pendingSrc;
+          slotState.pendingSrc = null;
+          startPop(pending);
+        }
+      }, { once: true });
+    };
+
+      if(slotState.animating){
+        if(src !== slotState.currentSrc){
+          slotState.pendingSrc = src;
+      }else if(src !== slotState.currentSrc){
+        startPop(src);
+      }else{
+        img.classList.remove('hidden');
+      roundChipAnimState.set(slot, slotState);
+      slot.classList.remove('round-chip-pop');
+      roundChipAnimState.delete(slot);
+            slotState.lastSrc = src;
+            roundChipAnimState.set(slot, slotState);
+          }
+        }
+      }
       img.classList.remove('hidden');
     }else{
       img.removeAttribute('src');
+      img.dataset.src = '';
       img.classList.add('hidden');
+      if(slot){
+        slot.classList.remove('round-chip-pop');
+      }
+      if(slot){
+        roundChipAnimState.delete(slot);
+      }
     }
   });
 }
