@@ -3112,16 +3112,10 @@ function updateSweetsExcludedDeckRelocation(){
   }
 
   const sweetsWrap = document.querySelector(`.sweets-wrap[data-sweets-uid="${focus.uid}"]`);
-  const fallbackTag = document.querySelector(`.player-tag[data-uid="${focus.uid}"]`);
-  const targetEl = sweetsWrap || fallbackTag;
-  if(!targetEl){
-    sweetsExcludedDeckMover.classList.remove('relocating');
-    setSweetsExcludedDeckMoverTransform('translate(0px, 0px)');
-    return;
-  }
+  if(!sweetsWrap) return;
 
   const baseRect = sweetsExcludedDeckMover.parentElement?.getBoundingClientRect?.();
-  const targetRect = targetEl.getBoundingClientRect();
+  const targetRect = sweetsWrap.getBoundingClientRect();
   if(!baseRect || !baseRect.width || !baseRect.height || !targetRect.width || !targetRect.height) return;
 
   const targetX = targetRect.left + targetRect.width / 2;
