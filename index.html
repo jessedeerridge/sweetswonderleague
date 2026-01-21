@@ -2666,6 +2666,7 @@ let leaderPickApplyKey = null;
 let lastLeaderSeat = null;
 let lastRoundNo = null;
 let actionSelection = null;
+let uiStateRestored = false;
 let sweetsExcludedFocusActive = null;
 let sweetsGridCols = 0;
 let mySweetsSelectHandlersBound = false;
@@ -2828,6 +2829,89 @@ function shuffle(arr){
 }
 function clamp(n,min,max){ return Math.max(min, Math.min(max, n)); }
 function now(){ return Date.now(); }
+function getUiStateBasePath(){
+  return state.roomCode ? `rooms/${state.roomCode}/uiState` : null;
+}
+function getUiStateSessionId(){
+  return state.game?.sessionId ?? currentGameSessionId ?? null;
+}
+function serializeActionSelection(selection){
+  if(!selection) return null;
+  const payload = {
+    type: selection.type ?? null,
+    phase: selection.phase ?? null,
+  };
+  if(selection.targetUid) payload.targetUid = selection.targetUid;
+  if(selection.selectedUids) payload.selectedUids = [...selection.selectedUids];
+  if(selection.fromTargetUid) payload.fromTargetUid = selection.fromTargetUid;
+  if(selection.toTargetUid) payload.toTargetUid = selection.toTargetUid;
+  if(selection.voterUid) payload.voterUid = selection.voterUid;
+  if(selection.addedIds) payload.addedIds = [...selection.addedIds];
+  if(selection.pendingCard) payload.pendingCard = selection.pendingCard;
+  return payload;
+}
+async function persistActionSelection(selection){
+  const base = getUiStateBasePath();
+  if(!base || !state.userId) return;
+  const refPath = ref(db, `${base}/users/${state.userId}/actionSelection`);
+  const payload = serializeActionSelection(selection);
+  if(!payload){
+    await remove(refPath);
+    return;
+  }
+  await set(refPath, {
+    ...payload,
+    sessionId: getUiStateSessionId(),
+    turnNo: state.turn?.turnNo ?? null,
+    updatedAt: now(),
+  });
+}
+async function persistActionZoomState(card){
+  const base = getUiStateBasePath();
+  if(!base || !state.userId) return;
+  const refPath = ref(db, `${base}/users/${state.userId}/actionZoom`);
+  if(!card){
+    await remove(refPath);
+    return;
+  }
+  await set(refPath, {
+    card,
+    sessionId: getUiStateSessionId(),
+    turnNo: state.turn?.turnNo ?? null,
+    updatedAt: now(),
+  });
+}
+async function persistRevealState(card, ownerUid){
+  const base = getUiStateBasePath();
+  if(!base) return;
+  const refPath = ref(db, `${base}/reveal`);
+  if(!card){
+    await remove(refPath);
+    return;
+  }
+  await set(refPath, {
+    card,
+    ownerUid: ownerUid ?? null,
+    sessionId: getUiStateSessionId(),
+    turnNo: state.turn?.turnNo ?? null,
+    updatedAt: now(),
+  });
+}
+async function persistArrowState(arrowId, data){
+  const base = getUiStateBasePath();
+  if(!base || !arrowId) return;
+  const refPath = ref(db, `${base}/arrows/${arrowId}`);
+  if(!data){
+    await remove(refPath);
+    return;
+  }
+  await set(refPath, {
+    ...data,
+    sessionId: getUiStateSessionId(),
+    turnNo: state.turn?.turnNo ?? null,
+    updatedAt: now(),
+  });
+}
 
 /* ✅ 追加：勝利点テーブル（人数×ラウンド） */
 function getRoundWinThreshold(playerCount, roundNo){
@@ -2949,6 +3033,7 @@ function resetLocalGameEffects(){
   resetCollectedSweetsHiddenCache();
   centerMoveOffsetByKey.clear();
   clearAdvertiseLocalState();
+  uiStateRestored = false;
 
   miniShuffleToken += 1;
   miniShuffleRunning = false;
@@ -2957,7 +3042,9 @@ function resetLocalGameEffects(){
 
   revealOverlay.classList.add('hidden');
   revealOwnerId = null;
+  void persistRevealState(null);
 
+  closeActionZoom();
   clearActionSelection();
 
   if(sweetsOverrideClearTimer){
@@ -3575,6 +3662,7 @@ function subscribePlayers(){
     renderPlayerCircle(players);
 updateLeaderboardBoardByPlayerCount(players.length); 
     updatePassRoundBtn();
+    void restoreUiStateFromDB();
   });
 }
 function subscribeHands(){
@@ -3619,6 +3707,7 @@ function subscribeGame(){
     if (latestPlayers.length) renderPlayerCircle(latestPlayers);
     await renderRoundChipsFromGame();
     syncAdvertiseEffects();
+    void restoreUiStateFromDB();
 
     // ★ ホスト：全員PASSになったらラウンド終了処理へ
     if(state.isHost){
@@ -4170,7 +4259,7 @@ async function emitEvent(payload){
    中央拡大（全員1秒）
    ========================= */
 let revealOwnerId = null;
-function showReveal(card){
+function showReveal(card, options = {}){
   if(!card) return;
   revealImg.src = card.img || '';
   revealLabel.textContent = card.name || '';
@@ -4183,10 +4272,13 @@ function showReveal(card){
   revealOverlay.classList.remove('pop');
   void revealOverlay.offsetHeight;
   revealOverlay.classList.add('pop');
-  revealOwnerId = state.turn?.activePlayerId ?? null;
+  revealOwnerId = options.ownerUid ?? state.turn?.activePlayerId ?? null;
+  if(!options.skipPersist && state.userId === revealOwnerId){
+    void persistRevealState(card, revealOwnerId);
+  }
 }
 
-function openActionZoom(card){
+function openActionZoom(card, options = {}){
   if(!card || !actionZoomOverlay) return;
   actionZoomImg.src = card.img || '';
   actionZoomImg.alt = card.name || '';
@@ -4194,10 +4286,16 @@ function openActionZoom(card){
   actionZoomEffect.textContent = effectText;
   actionZoomEffectFrame.classList.toggle('hidden', !effectText);
   actionZoomOverlay.classList.remove('hidden');
+  if(!options.skipPersist){
+    void persistActionZoomState(card);
+  }
 }
 
-function closeActionZoom(){
+function closeActionZoom(options = {}){
   actionZoomOverlay?.classList.add('hidden');
+  if(!options.skipPersist){
+    void persistActionZoomState(null);
+  }
 }
 
 if(actionZoomOverlay){
@@ -5721,8 +5819,11 @@ function showActionBlockedMessage(message){
   }, 1600);
 }
 
-function setActionSelection(next){
+function setActionSelection(next, options = {}){
   actionSelection = next;
+  if(!options.skipPersist){
+    void persistActionSelection(actionSelection);
+  }
   document.body.classList.toggle('rob-active', actionSelection?.type === 'rob' && actionSelection.phase === 'select');
   syncSweetsExcludedFocus();
   updateActionSelectionUI();
@@ -5745,6 +5846,80 @@ function syncSweetsExcludedFocus(){
 
 function clearActionSelection(){
   setActionSelection(null);
+}
+
+function isUiStateFresh(entry){
+  if(!entry || typeof entry !== 'object') return false;
+  const sessionId = getUiStateSessionId();
+  if(sessionId && !entry.sessionId) return false;
+  if(entry.sessionId && !sessionId) return false;
+  if(sessionId && entry.sessionId && entry.sessionId !== sessionId) return false;
+  const turnNo = state.turn?.turnNo ?? null;
+  if(turnNo !== null && entry.turnNo !== null && entry.turnNo !== undefined && entry.turnNo !== turnNo) return false;
+  return true;
+}
+
+function buildActionSelectionFromStored(stored){
+  if(!stored || !stored.type) return null;
+  return {
+    type: stored.type,
+    phase: stored.phase,
+    targetUid: stored.targetUid ?? null,
+    selectedUids: Array.isArray(stored.selectedUids) ? [...stored.selectedUids] : [],
+    fromTargetUid: stored.fromTargetUid ?? null,
+    toTargetUid: stored.toTargetUid ?? null,
+    voterUid: stored.voterUid ?? null,
+    addedIds: Array.isArray(stored.addedIds) ? [...stored.addedIds] : [],
+    pendingCard: stored.pendingCard ?? null,
+  };
+}
+
+function applyUiStateFromData(data){
+  if(!data || typeof data !== 'object') return;
+  const userState = data.users?.[state.userId] || null;
+  if(userState?.actionSelection && isUiStateFresh(userState.actionSelection)){
+    const selection = buildActionSelectionFromStored(userState.actionSelection);
+    if(selection){
+      setActionSelection(selection, { skipPersist: true });
+    }
+  }
+  if(userState?.actionZoom?.card && isUiStateFresh(userState.actionZoom)){
+    openActionZoom(userState.actionZoom.card, { skipPersist: true });
+  }
+
+  const revealState = data.reveal;
+  if(revealState?.card && isUiStateFresh(revealState)){
+    const currentOwner = state.turn?.activePlayerId ?? null;
+    if(!revealState.ownerUid || revealState.ownerUid === currentOwner){
+      showReveal(revealState.card, { ownerUid: revealState.ownerUid ?? null, skipPersist: true });
+    }
+  }
+
+  const arrows = data.arrows || {};
+  Object.entries(arrows).forEach(([arrowId, arrow]) => {
+    if(!arrow || !isUiStateFresh(arrow)) return;
+    if(arrow.fromUid === state.userId) return;
+    if(arrow.type === 'wiretap' && arrow.fromSeat !== null && arrow.targetUid){
+      showWiretapRoleArrow(arrow.fromSeat, arrow.targetUid, { key: arrowId, persist: true });
+    }
+    if(arrow.type === 'scout' && arrow.fromSeat !== null && arrow.toSeat !== null){
+      showScoutArrow(arrow.fromSeat, arrow.toSeat, { key: arrowId, persist: true });
+    }
+    if(arrow.type === 'sweetsPeek' && arrow.fromSeat !== null && arrow.targetUid){
+      showSweetsPeekArrow(arrow.fromSeat, arrow.targetUid, { key: arrowId, persist: true });
+    }
+  });
+}
+
+async function restoreUiStateFromDB(force = false){
+  if(!state.roomCode) return;
+  if(uiStateRestored && !force) return;
+  uiStateRestored = true;
+  const base = getUiStateBasePath();
+  if(!base) return;
+  const snap = await get(ref(db, base));
+  const data = snap.val() || {};
+  requestAnimationFrame(() => applyUiStateFromData(data));
 }
 
 function beginWiretapSelection(){
@@ -5865,18 +6040,22 @@ function beginTrialSelection(){
 function handleWiretapCandidate(uid){
   if(!actionSelection || actionSelection.type !== 'wiretap') return;
   if(actionSelection.phase !== 'select') return;
-  actionSelection.phase = 'confirm';
-  actionSelection.targetUid = uid;
-  updateActionSelectionUI();
+  setActionSelection({
+    ...actionSelection,
+    phase: 'confirm',
+    targetUid: uid,
+  });
   if(latestPlayers.length) renderPlayerCircle(latestPlayers);
 }
 
 function handleImprisonCandidate(uid){
   if(!actionSelection || actionSelection.type !== 'imprison') return;
   if(actionSelection.phase !== 'select') return;
-  actionSelection.phase = 'confirm';
-  actionSelection.targetUid = uid;
-  updateActionSelectionUI();
+  setActionSelection({
+    ...actionSelection,
+    phase: 'confirm',
+    targetUid: uid,
+  });
   if(latestPlayers.length) renderPlayerCircle(latestPlayers);
   renderMyRole();
 }
@@ -5884,9 +6063,11 @@ function handleImprisonCandidate(uid){
 function handleScoutCandidate(uid){
   if(!actionSelection || actionSelection.type !== 'scout') return;
   if(actionSelection.phase !== 'select') return;
-  actionSelection.phase = 'confirm';
-  actionSelection.targetUid = uid;
-  updateActionSelectionUI();
+  setActionSelection({
+    ...actionSelection,
+    phase: 'confirm',
+    targetUid: uid,
+  });
   if(latestPlayers.length) renderPlayerCircle(latestPlayers);
 }
 
@@ -5950,6 +6131,126 @@ function handleSweetsPeekCandidate(uid){
     phase: 'confirm',
     targetUid: uid,
   });
+}
+
+async function applyWiretapEffectForTarget(targetUid){
+  if(!targetUid || !state.room?.gameStarted) return;
+  const fromSeat = state.turn?.activeSeat ?? state.seatedTable;
+  const arrowId = `wiretap-${state.userId}-${Date.now()}`;
+  if(fromSeat !== null){
+    await emitEvent({
+      type:'wiretapArrowStart',
+      fromSeat,
+      targetUid,
+      fromUid: state.userId,
+      arrowId,
+    });
+    await persistArrowState(arrowId, {
+      type: 'wiretap',
+      fromSeat,
+      targetUid,
+      fromUid: state.userId,
+    });
+  }
+  const roleKey = state.roles?.[targetUid] ?? null;
+  await showRolePeekReveal(roleKey);
+  if(fromSeat !== null){
+    await emitEvent({
+      type:'wiretapArrowEnd',
+      fromUid: state.userId,
+      arrowId,
+    });
+    await persistArrowState(arrowId, null);
+  }
+}
+
+async function applyScoutEffectForTarget(targetUid){
+  if(!targetUid || !state.room?.gameStarted) return;
+  const fromSeat = state.turn?.activeSeat ?? state.seatedTable;
+  const toSeat = getSeatByUid(targetUid);
+  const arrowId = `scout-${state.userId}-${Date.now()}`;
+  if(fromSeat !== null && toSeat !== null){
+    await emitEvent({
+      type:'scoutArrowStart',
+      fromSeat,
+      toSeat,
+      fromUid: state.userId,
+      arrowId,
+    });
+    await persistArrowState(arrowId, {
+      type: 'scout',
+      fromSeat,
+      toSeat,
+      fromUid: state.userId,
+    });
+  }
+  await showScoutReveal(targetUid);
+  if(fromSeat !== null && toSeat !== null){
+    removeWiretapArrow(arrowId);
+    await emitEvent({
+      type:'scoutArrowEnd',
+      fromUid: state.userId,
+      arrowId,
+    });
+    await persistArrowState(arrowId, null);
+  }
+}
+
+async function applyImprisonEffectForTarget(targetUid){
+  if(!targetUid || !state.roomCode || !state.room?.gameStarted) return;
+  const imprisonRef = ref(db, `rooms/${state.roomCode}/game/imprisoned`);
+  await set(imprisonRef, {
+    uid: targetUid,
+    byUid: state.userId,
+    startedAt: Date.now(),
+    roundNo: state.game?.roundNo ?? 1,
+  });
+}
+
+async function applyAdvertiseEffectForTarget(targetUid){
+  if(!targetUid || !state.room?.gameStarted) return;
+  await revealAdvertisedSweets(targetUid);
+}
+
+async function applyAccidentEffectForTarget(targetUid){
+  if(!targetUid || !state.room?.gameStarted) return;
+  await emitEvent({ type:'sweetsReturn', uid: targetUid });
+  await returnSweetsToDeckByUid(targetUid);
+}
+
+async function applyExchangeEffectForTargets(selectedUids){
+  if(!state.room?.gameStarted) return;
+  if(!Array.isArray(selectedUids) || selectedUids.length < 2) return;
+  const [firstUid, secondUid] = selectedUids;
+  if(!firstUid || !secondUid || firstUid === secondUid) return;
+  await swapSweetsBetweenUids(firstUid, secondUid);
+}
+
+async function applyActionSelectionFallback(selection){
+  if(!selection) return;
+  if(selection.type === 'wiretap'){
+    await applyWiretapEffectForTarget(selection.targetUid);
+    return;
+  }
+  if(selection.type === 'imprison'){
+    await applyImprisonEffectForTarget(selection.targetUid);
+    return;
+  }
+  if(selection.type === 'scout'){
+    await applyScoutEffectForTarget(selection.targetUid);
+    return;
+  }
+  if(selection.type === 'advertise'){
+    await applyAdvertiseEffectForTarget(selection.targetUid);
+    return;
+  }
+  if(selection.type === 'accident'){
+    await applyAccidentEffectForTarget(selection.targetUid);
+    return;
+  }
+  if(selection.type === 'exchange'){
+    await applyExchangeEffectForTargets(selection.selectedUids);
+  }
 }
 
 function removeWiretapArrow(key){
@@ -6094,6 +6395,7 @@ if(actionConfirmYes){
   actionConfirmYes.addEventListener('click', async () => {
     if(!actionSelection) return;
     if(actionSelection.phase !== 'confirm') return;
+    const selectionSnapshot = actionSelection;
     const targetUid = actionSelection.targetUid;
     const resolve = actionSelection.resolve;
     if(actionSelection.type === 'exchange'){
@@ -6102,7 +6404,11 @@ if(actionConfirmYes){
         : [];
       if(selectedUids.length < 2) return;
       clearActionSelection();
-      if(resolve) resolve(selectedUids);
+      if(resolve){
+        resolve(selectedUids);
+      }else{
+        await applyExchangeEffectForTargets(selectedUids);
+      }
       return;
     }
     if(actionSelection.type === 'rob'){
@@ -6165,6 +6471,12 @@ if(actionConfirmYes){
           fromUid: state.userId,
           arrowId,
         });
+        await persistArrowState(arrowId, {
+          type: 'sweetsPeek',
+          fromSeat,
+          targetUid,
+          fromUid: state.userId,
+        });
       }
       const shouldEnd = await showSweetsPeekReveal(sweetsCard);
       if(fromSeat !== null){
@@ -6173,6 +6485,7 @@ if(actionConfirmYes){
           fromUid: state.userId,
           arrowId,
         });
+        await persistArrowState(arrowId, null);
       }
       if(shouldEnd){
         clearActionSelection();
@@ -6185,7 +6498,11 @@ if(actionConfirmYes){
       return;
     }
     clearActionSelection();
-    if(resolve) resolve(targetUid);
+    if(resolve){
+      resolve(targetUid);
+    }else{
+      await applyActionSelectionFallback(selectionSnapshot);
+    }
   });
 }
 if(actionConfirmNo){
@@ -6222,20 +6539,22 @@ if(actionConfirmNo){
       openTrialSweetsPicker();
       return;
     }
-    if(actionSelection.type === 'sweetsPeek'){
-      setActionSelection({
-        ...actionSelection,
-        phase:'select',
-        targetUid: null,
-      });
-      return;
-    }
-    actionSelection.phase = 'select';
-    actionSelection.targetUid = null;
-    updateActionSelectionUI();
-    if(latestPlayers.length) renderPlayerCircle(latestPlayers);
-    renderMySweets();
+  if(actionSelection.type === 'sweetsPeek'){
+    setActionSelection({
+      ...actionSelection,
+      phase:'select',
+      targetUid: null,
+    });
+    return;
+  }
+  setActionSelection({
+    ...actionSelection,
+    phase: 'select',
+    targetUid: null,
   });
+  if(latestPlayers.length) renderPlayerCircle(latestPlayers);
+  renderMySweets();
+});
 }
 
 /* =========================
@@ -9502,29 +9821,7 @@ async function runScoutEffect(){
   if(!state.room?.gameStarted) return;
   const targetUid = await beginScoutSelection();
   if(!targetUid) return;
-
-  const fromSeat = state.turn?.activeSeat ?? state.seatedTable;
-  const toSeat = getSeatByUid(targetUid);
-  const arrowId = `scout-${state.userId}-${Date.now()}`;
-  if(fromSeat !== null && toSeat !== null){
-    await emitEvent({
-      type:'scoutArrowStart',
-      fromSeat,
-      toSeat,
-      fromUid: state.userId,
-      arrowId,
-    });
-  }
-
-  await showScoutReveal(targetUid);
-  if(fromSeat !== null && toSeat !== null){
-    removeWiretapArrow(arrowId);
-    await emitEvent({
-      type:'scoutArrowEnd',
-      fromUid: state.userId,
-      arrowId,
-    });
-  }
+  await applyScoutEffectForTarget(targetUid);
 }
 
 async function runPreparationEffect(cardObj){
@@ -9565,7 +9862,7 @@ async function runAdvertiseEffect(){
   if(!candidates.length) return;
   const targetUid = await beginAdvertiseSelection();
   if(!targetUid) return;
-  await revealAdvertisedSweets(targetUid);
+  await applyAdvertiseEffectForTarget(targetUid);
 }
 
 async function runExchangeEffect(){
@@ -9574,9 +9871,7 @@ async function runExchangeEffect(){
   if(candidates.length < 2) return;
   const selection = await beginExchangeSelection();
   if(!selection || selection.length < 2) return;
-  const [firstUid, secondUid] = selection;
-  if(!firstUid || !secondUid || firstUid === secondUid) return;
-  await swapSweetsBetweenUids(firstUid, secondUid);
+  await applyExchangeEffectForTargets(selection);
 }
 
 async function runAccidentEffect(){
@@ -9585,8 +9880,7 @@ async function runAccidentEffect(){
   if(!candidates.length) return;
   const targetUid = await beginAccidentSelection();
   if(!targetUid) return;
-  await emitEvent({ type:'sweetsReturn', uid: targetUid });
-  await returnSweetsToDeckByUid(targetUid);
+  await applyAccidentEffectForTarget(targetUid);
 }
 
 async function runRobEffect(){
@@ -9815,40 +10109,14 @@ async function runWiretapEffect(cardObj){
   if(!state.room?.gameStarted) return;
   const targetUid = await beginWiretapSelection();
   if(!targetUid) return;
-
-  const fromSeat = state.turn?.activeSeat ?? state.seatedTable;
-  const arrowId = `wiretap-${state.userId}-${Date.now()}`;
-  if(fromSeat !== null){
-    await emitEvent({
-      type:'wiretapArrowStart',
-      fromSeat,
-      targetUid,
-      fromUid: state.userId,
-      arrowId,
-    });
-  }
-  const roleKey = state.roles?.[targetUid] ?? null;
-  await showRolePeekReveal(roleKey);
-  if(fromSeat !== null){
-    await emitEvent({
-      type:'wiretapArrowEnd',
-      fromUid: state.userId,
-      arrowId,
-    });
-  }
+  await applyWiretapEffectForTarget(targetUid);
 }
 
 async function runImprisonEffect(){
   if(!state.room?.gameStarted) return;
   const targetUid = await beginImprisonSelection();
-  if(!targetUid || !state.roomCode) return;
-  const imprisonRef = ref(db, `rooms/${state.roomCode}/game/imprisoned`);
-  await set(imprisonRef, {
-    uid: targetUid,
-    byUid: state.userId,
-    startedAt: Date.now(),
-    roundNo: state.game?.roundNo ?? 1,
-  });
+  if(!targetUid) return;
+  await applyImprisonEffectForTarget(targetUid);
 }
 
 async function showScoutReveal(targetUid){
@@ -11007,6 +11275,99 @@ async function renderSeatTabs(){
   }
 }
 
+function replaceUidInArray(arr, oldUid, newUid){
+  if(!Array.isArray(arr)) return arr;
+  return arr.map(uid => (uid === oldUid ? newUid : uid));
+}
+
+async function transferPlayerState(oldUid, newUid){
+  if(!state.roomCode || !oldUid || !newUid || oldUid === newUid) return;
+  const base = `rooms/${state.roomCode}`;
+  const [handsSnap, rolesSnap, votesSnap, gameSnap, uiSnap] = await Promise.all([
+    get(ref(db, `${base}/hands`)),
+    get(ref(db, `${base}/roles`)),
+    get(ref(db, `${base}/votes`)),
+    get(ref(db, `${base}/game`)),
+    get(ref(db, `${base}/uiState/users`)),
+  ]);
+
+  const updates = {};
+  const hands = handsSnap.val() || {};
+  const roles = rolesSnap.val() || {};
+  const votes = votesSnap.val() || {};
+  const game = gameSnap.val() || {};
+  const uiStates = uiSnap.val() || {};
+
+  if(hands[oldUid]){
+    updates[`hands/${newUid}`] = hands[oldUid];
+    updates[`hands/${oldUid}`] = null;
+  }
+  if(roles[oldUid]){
+    updates[`roles/${newUid}`] = roles[oldUid];
+    updates[`roles/${oldUid}`] = null;
+  }
+  if(uiStates[oldUid]){
+    updates[`uiState/users/${newUid}`] = uiStates[oldUid];
+    updates[`uiState/users/${oldUid}`] = null;
+  }
+
+  Object.entries(votes).forEach(([targetUid, voterMap]) => {
+    if(!voterMap || typeof voterMap !== 'object') return;
+    if(Object.prototype.hasOwnProperty.call(voterMap, oldUid)){
+      updates[`votes/${targetUid}/${newUid}`] = voterMap[oldUid];
+      updates[`votes/${targetUid}/${oldUid}`] = null;
+    }
+  });
+  if(votes[oldUid]){
+    updates[`votes/${newUid}`] = votes[oldUid];
+    updates[`votes/${oldUid}`] = null;
+  }
+
+  if(game?.turn?.activePlayerId === oldUid){
+    updates[`game/turn/activePlayerId`] = newUid;
+  }
+  if(game?.passes?.[oldUid]){
+    updates[`game/passes/${newUid}`] = true;
+    updates[`game/passes/${oldUid}`] = null;
+  }
+  if(game?.imprisoned?.uid === oldUid){
+    updates[`game/imprisoned/uid`] = newUid;
+  }
+  if(game?.imprisoned?.byUid === oldUid){
+    updates[`game/imprisoned/byUid`] = newUid;
+  }
+  if(game?.advertisedSweets?.[oldUid]){
+    updates[`game/advertisedSweets/${newUid}`] = game.advertisedSweets[oldUid];
+    updates[`game/advertisedSweets/${oldUid}`] = null;
+  }
+
+  const roundPick = game?.roundPick || null;
+  if(roundPick){
+    const nextRoundPick = {
+      ...roundPick,
+      leaderId: roundPick.leaderId === oldUid ? newUid : roundPick.leaderId,
+      candidates: replaceUidInArray(roundPick.candidates, oldUid, newUid),
+      baseSelected: replaceUidInArray(roundPick.baseSelected, oldUid, newUid),
+      selected: replaceUidInArray(roundPick.selected, oldUid, newUid),
+    };
+    updates[`game/roundPick`] = nextRoundPick;
+  }
+  const leaderPick = game?.leaderPick || null;
+  if(leaderPick){
+    const nextLeaderPick = {
+      ...leaderPick,
+      leaderId: leaderPick.leaderId === oldUid ? newUid : leaderPick.leaderId,
+      decidedId: leaderPick.decidedId === oldUid ? newUid : leaderPick.decidedId,
+      candidates: replaceUidInArray(leaderPick.candidates, oldUid, newUid),
+    };
+    updates[`game/leaderPick`] = nextLeaderPick;
+  }
+
+  if(Object.keys(updates).length){
+    await update(ref(db, base), updates);
+  }
+}
+
 btnSeatCancel.onclick = () => {
   seatPop.classList.add('hidden');
   state.seatedTable = null;
@@ -11045,6 +11406,8 @@ btnKickYes.addEventListener('click', async (e) => {
   const tables = tablesSnap.val() || {};
   const tagChipStyle = pickRandomTagChipStyle(tables);
   await set(tRef, { playerId: state.userId, playerName: state.userName || '名無し', tagChipStyle });
+  await transferPlayerState(pendingSeatPlayerIdToSteal, state.userId);
+  await restoreUiStateFromDB(true);
 
   if (roomData.hostId && pendingSeatPlayerIdToSteal && roomData.hostId === pendingSeatPlayerIdToSteal) {
     await update(roomRef, { hostId: state.userId });
