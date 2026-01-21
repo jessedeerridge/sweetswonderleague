@@ -3086,10 +3086,54 @@ function updateSweetsDeckRelocation(){
 
 function updateSweetsExcludedDeckRelocation(){
   if(!sweetsExcludedDeckMover || !sweetsExcludedDeckUI) return;
-  sweetsExcludedDeckReturnPending = false;
-  cancelSweetsExcludedDeckReturn();
-  sweetsExcludedDeckMover.classList.remove('relocating');
-  setSweetsExcludedDeckMoverTransform('translate(0px, 0px)');
+  const focus = getSweetsExcludedDeckFocus();
+  const shouldRelocate = !!(focus && focus.uid && focus.uid !== state.userId);
+  if(shouldRelocate){
+    sweetsExcludedDeckReturnPending = false;
+    cancelSweetsExcludedDeckReturn();
+  }
+  if(sweetsExcludedDeckUI.classList.contains('hidden')){
+    sweetsExcludedDeckMover.classList.toggle('relocating', shouldRelocate);
+    if(!shouldRelocate){
+      sweetsExcludedDeckReturnPending = true;
+    }
+    return;
+  }
+  if(sweetsExcludedDeckReturnPending && !shouldRelocate){
+    sweetsExcludedDeckReturnPending = false;
+    sweetsExcludedDeckMover.classList.remove('relocating');
+    scheduleSweetsExcludedDeckReturn();
+    return;
+  }
+  if(!shouldRelocate){
+    sweetsExcludedDeckMover.classList.remove('relocating');
+    scheduleSweetsExcludedDeckReturn();
+    return;
+  }
+
+  const sweetsWrap = document.querySelector(`.sweets-wrap[data-sweets-uid="${focus.uid}"]`);
+  const fallbackTag = document.querySelector(`.player-tag[data-uid="${focus.uid}"]`);
+  const targetEl = sweetsWrap || fallbackTag;
+  if(!targetEl){
+    sweetsExcludedDeckMover.classList.remove('relocating');
+    setSweetsExcludedDeckMoverTransform('translate(0px, 0px)');
+    return;
+  }
+
+  const baseRect = sweetsExcludedDeckMover.parentElement?.getBoundingClientRect?.();
+  const targetRect = targetEl.getBoundingClientRect();
+  if(!baseRect || !baseRect.width || !baseRect.height || !targetRect.width || !targetRect.height) return;
+
+  const targetX = targetRect.left + targetRect.width / 2;
+  const targetY = targetRect.top + targetRect.height / 2;
+  const deckCenterX = baseRect.left + baseRect.width / 2;
+  const deckCenterY = baseRect.top + baseRect.height / 2;
+
+  const moveX = targetX - deckCenterX;
+  const moveY = targetY - deckCenterY;
+
+  sweetsExcludedDeckMover.classList.add('relocating');
+  setSweetsExcludedDeckMoverTransform(`translate(${moveX}px, ${moveY}px)`);
 }
 
 function setSweetsDeckMoverTransform(value){
