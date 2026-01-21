@@ -2315,9 +2315,20 @@ display:none;
   height:100%;
   object-fit:cover;
   display:block;
+  transform-origin:center;
 }
 
 .round-chip-img.hidden{ display:none; }
+
+.round-chip-img.round-chip-pop{
+  animation:round-chip-pop 260ms ease-out both;
+}
+
+@keyframes round-chip-pop{
+  0%{ transform:scale(1.3); opacity:0; }
+  55%{ transform:scale(0.94); opacity:1; }
+  100%{ transform:scale(1); opacity:1; }
+}
 
 
 </style>
@@ -2851,12 +2862,23 @@ function renderRoundChipsFromGame(){
   roundChipImgEls.forEach((img, idx) => {
     const r = String(idx + 1);
     const src = chips?.[r] || chips?.[idx + 1] || null; // 数字キー/文字キー両対応
+    const wasHidden = img.classList.contains('hidden');
+    const prevSrc = img.dataset.src || '';
     if(src){
       img.src = src;
       img.classList.remove('hidden');
+      img.dataset.src = src;
+      if(wasHidden || prevSrc !== src){
+        img.classList.remove('round-chip-pop');
+        requestAnimationFrame(() => {
+          img.classList.add('round-chip-pop');
+        });
+      }
     }else{
       img.removeAttribute('src');
       img.classList.add('hidden');
+      img.classList.remove('round-chip-pop');
+      delete img.dataset.src;
     }
   });
 }
