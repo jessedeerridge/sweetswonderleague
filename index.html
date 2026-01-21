@@ -1262,13 +1262,26 @@ border-radius:0px;
      ★ 全員に見せる「中央拡大」(1秒)
      ========================= */
   .reveal-overlay{
-    position:fixed; inset:0;
-    background:rgba(0,0,0,.35);
-    display:flex; align-items:center; justify-content:center;
-    z-index:90;
+    position:fixed;
+    left:50%;
+    top:50%;
+    transform:translate(-50%, calc(-50% - 48px));
+    background:transparent;
+    display:flex;
+    align-items:center;
+    justify-content:center;
+    z-index:5;
+    pointer-events:none;
   }
   .reveal-overlay.hidden{display:none;}
-  .action-zoom-overlay{z-index:95;}
+  .action-zoom-overlay{
+    position:fixed;
+    inset:0;
+    background:rgba(0,0,0,.35);
+    transform:none;
+    z-index:95;
+    pointer-events:auto;
+  }
  .reveal-card,
   .action-zoom-card{
     width:min(calc(var(--myCardW) * 4), 78vw);
@@ -1279,6 +1292,10 @@ border-radius:0px;
     background:transparent;
     overflow:hidden;
     position:relative;
+  }
+  .reveal-card{
+    transform:scale(0.5) rotate(-2deg);
+    transform-origin:center;
   }
   .reveal-card img,
   .action-zoom-card img{width:100%;height:100%;object-fit:cover;display:block;border:none;background:transparent;}
@@ -2801,11 +2818,8 @@ function resetLocalGameEffects(){
   sweetsExcludeAnimating = false;
   turnBlockedByShuffle = false;
 
-  if(revealTimer){
-    clearTimeout(revealTimer);
-    revealTimer = null;
-  }
   revealOverlay.classList.add('hidden');
+  revealOwnerId = null;
 
   clearActionSelection();
 
@@ -4018,7 +4032,7 @@ async function emitEvent(payload){
 /* =========================
    中央拡大（全員1秒）
    ========================= */
-let revealTimer = null;
+let revealOwnerId = null;
 function showReveal(card){
   if(!card) return;
   revealImg.src = card.img || '';
@@ -4029,10 +4043,7 @@ function showReveal(card){
   revealEffect.textContent = effectText;
   revealEffectFrame.classList.toggle('hidden', !effectText);
   revealOverlay.classList.remove('hidden');
-  if(revealTimer) clearTimeout(revealTimer);
-  revealTimer = setTimeout(()=>{
-    revealOverlay.classList.add('hidden');
-  }, 1800);
+  revealOwnerId = state.turn?.activePlayerId ?? null;
 }
 
 function openActionZoom(card){
@@ -7385,6 +7396,10 @@ if(leaderSeat !== null && leaderSeat === p.seatIndex){
    ターンUI更新
    ========================= */
 function updateTurnUI(){
+  if(revealOwnerId && (!state.turn || state.turn.activePlayerId !== revealOwnerId)){
+    revealOverlay?.classList.add('hidden');
+    revealOwnerId = null;
+  }
   if(!state.turn || state.game?.status !== 'playing' || allSeatedPlayersPassed()){
     if(actionSelection){
       clearActionSelection();
