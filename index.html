@@ -1908,7 +1908,9 @@ body.rob-active .vote-mini:hover{
 }
 .sweets-wrap.roundpick-selectable{
   cursor:pointer;
+  touch-action:none;
 }
+
 .sweets-wrap.roundpick-selectable:hover{
   animation:none;
   transform:scale(1.12);
@@ -2012,6 +2014,7 @@ body.imprison-active .sweets-wrap.roundpick-selectable:hover{
 }
 .my-sweets.roundpick-selectable{
   cursor:pointer;
+  touch-action:none;
 }
 .my-sweets.roundpick-selectable:hover{
   animation:none;
@@ -2315,6 +2318,8 @@ display:none;
   height:100%;
   object-fit:cover;
   display:block;
+  transform-origin:center;
+  will-change:transform;
 }
 
 .round-chip-img.hidden{ display:none; }
@@ -2844,21 +2849,61 @@ function calcSweetsTotalPoints(cards){
   }, 0);
 }
 
+const roundChipAnims = new WeakMap();
+
+function animateRoundChipPop(img){
+  if(!img) return Promise.resolve();
+  if(window.matchMedia('(prefers-reduced-motion: reduce)').matches) return Promise.resolve();
+  const prev = roundChipAnims.get(img);
+  if(prev){
+    try{ prev.cancel(); }catch(_){}
+  }
+  return new Promise(resolve => {
+    const anim = img.animate([
+      { transform: 'scale(2.8)', opacity: 0.98 },
+      { transform: 'scale(1)', opacity: 1 },
+    ], {
+      duration: 420,
+      easing: 'cubic-bezier(0.2, 0.85, 0.2, 1)',
+      fill: 'forwards',
+    });
+    roundChipAnims.set(img, anim);
+    const cleanup = () => {
+      roundChipAnims.delete(img);
+      img.style.transform = '';
+      resolve();
+    };
+    anim.onfinish = cleanup;
+    anim.oncancel = cleanup;
+  });
+}
+
 /* ✅ 追加：roundchip表示（game.roundChipsを反映） */
-function renderRoundChipsFromGame(){
+async function renderRoundChipsFromGame(){
   if(!roundChipImgEls || !roundChipImgEls.length) return;
   const chips = (state.game && typeof state.game === 'object' && state.game.roundChips) ? state.game.roundChips : {};
+  const anims = [];
   roundChipImgEls.forEach((img, idx) => {
     const r = String(idx + 1);
     const src = chips?.[r] || chips?.[idx + 1] || null; // 数字キー/文字キー両対応
     if(src){
+      const prevSrc = img.dataset.roundSrc || '';
+      const shouldAnimate = img.classList.contains('hidden') || prevSrc !== src;
       img.src = src;
       img.classList.remove('hidden');
+      img.dataset.roundSrc = src;
+      if(shouldAnimate){
+        anims.push(animateRoundChipPop(img));
+      }
     }else{
       img.removeAttribute('src');
       img.classList.add('hidden');
+      img.dataset.roundSrc = '';
     }
   });
+  if(anims.length){
+    await Promise.all(anims);
+  }
 }
 
 
@@ -3550,7 +3595,7 @@ function subscribeRoles(){
 }
 function subscribeGame(){
   const gameRef = ref(db, `rooms/${state.roomCode}/game`);
-  onValue(gameRef, snap => {
+  onValue(gameRef, async snap => {
     const prevLeaderSeat = state.turn?.leaderSeat ?? null;
     state.game = snap.val() || {};
     state.turn = state.game.turn || null;
@@ -3572,7 +3617,7 @@ function subscribeGame(){
     updateTurnUI();
     renderMyRole();
     if (latestPlayers.length) renderPlayerCircle(latestPlayers);
-    renderRoundChipsFromGame();
+    await renderRoundChipsFromGame();
     syncAdvertiseEffects();
 
     // ★ ホスト：全員PASSになったらラウンド終了処理へ
