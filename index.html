@@ -2555,7 +2555,6 @@ let lastLeaderSeat = null;
 let lastRoundNo = null;
 let actionSelection = null;
 let sweetsExcludedFocusActive = null;
-let sweetsExcludedFocusOverride = null;
 let sweetsGridCols = 0;
 let mySweetsSelectHandlersBound = false;
 const ADVERTISE_PULSE_DURATION_MS = 1400;
@@ -3027,9 +3026,6 @@ function getSweetsDeckFocus(){
 }
 
 function getSweetsExcludedDeckFocus(){
-  if(sweetsExcludedFocusOverride?.active){
-    return sweetsExcludedFocusOverride;
-  }
   const focus = state.game?.sweetsExcludedFocus;
   if(!focus || typeof focus !== 'object') return null;
   if(!focus.uid || !focus.active) return null;
@@ -5541,7 +5537,6 @@ function syncSweetsExcludedFocus(){
   if(!shouldClear) return;
   if(!sweetsExcludedFocusActive) return;
   sweetsExcludedFocusActive = false;
-  sweetsExcludedFocusOverride = null;
   setSweetsExcludedDeckFocus(false);
 }
 
@@ -9979,7 +9974,6 @@ function closeSweetsPicker(){
   setSweetsDeckFocus(false);
   if(sweetsExcludedFocusActive){
     sweetsExcludedFocusActive = false;
-    sweetsExcludedFocusOverride = null;
     setSweetsExcludedDeckFocus(false);
   }
 }
@@ -10091,7 +10085,6 @@ sweetsExcludedDeckUI.addEventListener('click', () => {
   if(!canOpenExcludedSweetsPicker()) return;
   if(actionSelection?.type === 'inspiration'){
     sweetsExcludedFocusActive = true;
-    sweetsExcludedFocusOverride = { uid: state.userId, active: true, ts: Date.now() };
     setSweetsExcludedDeckFocus(true);
     requestAnimationFrame(updateSweetsExcludedDeckRelocation);
   }
