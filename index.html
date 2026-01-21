@@ -3508,7 +3508,7 @@ function subscribeEvents(){
     }
     if(ev.type === 'scoutArrowStart'){
       if(ev.fromUid !== state.userId && ev.fromSeat !== null && ev.toSeat !== null){
-        showWiretapArrow(ev.fromSeat, ev.toSeat, { key: ev.arrowId, persist: true });
+        showScoutArrow(ev.fromSeat, ev.toSeat, { key: ev.arrowId, persist: true });
       }
     }
     if(ev.type === 'scoutArrowEnd'){
@@ -5832,11 +5832,33 @@ function showWiretapArrow(fromSeat, toSeat, options = {}){
 
 function showWiretapRoleArrow(fromSeat, targetUid, options = {}){
   const fromTag = document.querySelector(`.player-tag[data-seat="${fromSeat}"]`);
-  const roleEl = document.querySelector(`.role-mini[data-uid="${targetUid}"]`);
+  const roleEl = (targetUid === state.userId)
+    ? myRoleEl
+    : document.querySelector(`.role-mini[data-uid="${targetUid}"]`);
   if(!fromTag || !roleEl) return null;
 
   const fromRect = fromTag.getBoundingClientRect();
   const toRect = roleEl.getBoundingClientRect();
+  return createWiretapArrow(fromRect, toRect, options);
+}
+
+function showScoutArrow(fromSeat, toSeat, options = {}){
+  const fromTag = document.querySelector(`.player-tag[data-seat="${fromSeat}"]`);
+  if(!fromTag || toSeat === null) return null;
+
+  const mySeat = getSeatByUid(state.userId) ?? state.seatedTable ?? null;
+  let targetEl = null;
+
+  if(mySeat !== null && toSeat === mySeat){
+    targetEl = myHandEl || document.querySelector('.my-hand');
+  }else{
+    const toTag = document.querySelector(`.player-tag[data-seat="${toSeat}"]`);
+    targetEl = toTag?.querySelector('.mini-hand') || toTag;
+  }
+
+  if(!targetEl) return null;
+  const fromRect = fromTag.getBoundingClientRect();
+  const toRect = targetEl.getBoundingClientRect();
   return createWiretapArrow(fromRect, toRect, options);
 }
 
