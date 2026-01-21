@@ -3112,16 +3112,10 @@ function updateSweetsExcludedDeckRelocation(){
   }
 
   const sweetsWrap = document.querySelector(`.sweets-wrap[data-sweets-uid="${focus.uid}"]`);
-  const fallbackTag = document.querySelector(`.player-tag[data-uid="${focus.uid}"]`);
-  const targetEl = sweetsWrap || fallbackTag;
-  if(!targetEl){
-    sweetsExcludedDeckMover.classList.remove('relocating');
-    setSweetsExcludedDeckMoverTransform('translate(0px, 0px)');
-    return;
-  }
+  if(!sweetsWrap) return;
 
   const baseRect = sweetsExcludedDeckMover.parentElement?.getBoundingClientRect?.();
-  const targetRect = targetEl.getBoundingClientRect();
+  const targetRect = sweetsWrap.getBoundingClientRect();
   if(!baseRect || !baseRect.width || !baseRect.height || !targetRect.width || !targetRect.height) return;
 
   const targetX = targetRect.left + targetRect.width / 2;
@@ -6858,6 +6852,7 @@ function renderPlayerCircle(players){
     : [];
   const leaderPickCanSelect = leaderPickActive && leaderPick?.leaderId === state.userId;
   const sweetsFocusUid = getSweetsDeckFocus()?.uid ?? null;
+  const excludedFocusUid = getSweetsExcludedDeckFocus()?.uid ?? null;
   const voteHoldActive = shouldHoldVoteChips();
   const decidedUids = getDecidedSweetsUids();
   const started = !!state.room?.gameStarted;
@@ -7155,7 +7150,7 @@ if(started && roleAssigned){
   const showVoteHold = (!hasTheirSweets && getVoteCountFor(p.id) > 0) || (voteHoldActive && getVoteCountFor(p.id) > 0);
   const sweetsCard = getSweetsCardByUid(p.id);
 
-  const showSweetsSlot = hasTheirSweets || showVoteHold || sweetsFocusUid === p.id;
+  const showSweetsSlot = hasTheirSweets || showVoteHold || sweetsFocusUid === p.id || excludedFocusUid === p.id;
   if(showSweetsSlot){
     const cardsRow = document.createElement('div');
     cardsRow.className = 'other-cards-row';
