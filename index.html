@@ -29,14 +29,14 @@
   main{
     position:relative;
     height:calc(100vh - 60px);
-    overflow:auto;
+    overflow:hidden;
     -webkit-overflow-scrolling:touch;
     background-size:cover;
     background-position:center;
     background-repeat:no-repeat;
   }
-  main.prejoin{ background-image:url('swtop.jpg'); }
-  main.joined{ background-image:url('swmain.jpg'); }
+  main.prejoin{ background-image:url('swtop.jpg'); overflow:auto; }
+  main.joined{ background-image:url('swmain.jpg'); overflow:hidden; }
 
   /* ★ 着席ポップ */
   .seat-pop{
