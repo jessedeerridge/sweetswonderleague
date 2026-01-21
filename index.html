@@ -2292,6 +2292,8 @@ top:calc(50% - 6.5px);
   box-shadow:0 6px 14px rgba(0,0,0,.10) inset;
   position:relative;
   overflow:hidden;
+  transform:scale(1);
+  transform-origin:center;
 }
 
 .round-chip-slot::after{
@@ -2315,13 +2317,11 @@ display:none;
   height:100%;
   object-fit:cover;
   display:block;
-  transform:scale(1);
-  transform-origin:center;
 }
 
 .round-chip-img.hidden{ display:none; }
 
-.round-chip-img.round-chip-pop{
+.round-chip-slot.round-chip-pop{
   animation:roundChipPop 220ms ease-out;
 }
 
@@ -2744,6 +2744,7 @@ const requiredSweetsTagEl = document.getElementById('requiredSweetsTag');
 /* ✅ 追加：ラウンドチップ（R1/R2/R3） */
 const roundChipsEl = document.getElementById('roundChips');
 const roundChipImgEls = Array.from(document.querySelectorAll('#roundChips .round-chip-img'));
+const roundChipSlotEls = Array.from(document.querySelectorAll('#roundChips .round-chip-slot'));
 
 
 /* 中央の山札UI */
@@ -2862,23 +2863,28 @@ function renderRoundChipsFromGame(){
   roundChipImgEls.forEach((img, idx) => {
     const r = String(idx + 1);
     const src = chips?.[r] || chips?.[idx + 1] || null; // 数字キー/文字キー両対応
+    const slot = roundChipSlotEls[idx];
     if(src){
       if(img.dataset.src !== src){
         img.src = src;
         img.dataset.src = src;
-        img.classList.remove('round-chip-pop');
-        void img.offsetWidth;
-        img.classList.add('round-chip-pop');
-        img.addEventListener('animationend', () => {
-          img.classList.remove('round-chip-pop');
-        }, { once: true });
+        if(slot){
+          slot.classList.remove('round-chip-pop');
+          void slot.offsetWidth;
+          slot.classList.add('round-chip-pop');
+          slot.addEventListener('animationend', () => {
+            slot.classList.remove('round-chip-pop');
+          }, { once: true });
+        }
       }
       img.classList.remove('hidden');
     }else{
       img.removeAttribute('src');
       img.dataset.src = '';
       img.classList.add('hidden');
-      img.classList.remove('round-chip-pop');
+      if(slot){
+        slot.classList.remove('round-chip-pop');
+      }
     }
   });
 }
