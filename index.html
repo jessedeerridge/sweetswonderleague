@@ -3112,16 +3112,10 @@ function updateSweetsExcludedDeckRelocation(){
   }
 
   const sweetsWrap = document.querySelector(`.sweets-wrap[data-sweets-uid="${focus.uid}"]`);
-  const fallbackTag = document.querySelector(`.player-tag[data-uid="${focus.uid}"]`);
-  const targetEl = sweetsWrap || fallbackTag;
-  if(!targetEl){
-    sweetsExcludedDeckMover.classList.remove('relocating');
-    setSweetsExcludedDeckMoverTransform('translate(0px, 0px)');
-    return;
-  }
+  if(!sweetsWrap) return;
 
-  const baseRect = sweetsExcludedDeckMover.parentElement?.getBoundingClientRect?.();
-  const targetRect = targetEl.getBoundingClientRect();
+  const baseRect = getMoverBaseRect(sweetsExcludedDeckMover);
+  const targetRect = sweetsWrap.getBoundingClientRect();
   if(!baseRect || !baseRect.width || !baseRect.height || !targetRect.width || !targetRect.height) return;
 
   const targetX = targetRect.left + targetRect.width / 2;
@@ -3134,6 +3128,37 @@ function updateSweetsExcludedDeckRelocation(){
 
   sweetsExcludedDeckMover.classList.add('relocating');
   setSweetsExcludedDeckMoverTransform(`translate(${moveX}px, ${moveY}px)`);
+}
+
+function getMoverBaseRect(el){
+  if(!el) return null;
+  const rect = el.getBoundingClientRect();
+  if(!rect || !rect.width || !rect.height) return null;
+  const { x: offsetX, y: offsetY } = getElementTranslate(el);
+  return {
+    left: rect.left - offsetX,
+    top: rect.top - offsetY,
+    right: rect.right - offsetX,
+    bottom: rect.bottom - offsetY,
+    width: rect.width,
+    height: rect.height,
+  };
+}
+
+function getElementTranslate(el){
+  const style = getComputedStyle(el);
+  const transform = style.transform;
+  if(!transform || transform === 'none') return { x: 0, y: 0 };
+  const matrixMatch = transform.match(/matrix3d\(([^)]+)\)/) || transform.match(/matrix\(([^)]+)\)/);
+  if(!matrixMatch) return { x: 0, y: 0 };
+  const values = matrixMatch[1].split(',').map((value) => parseFloat(value.trim()));
+  if(values.length === 16){
+    return { x: values[12] || 0, y: values[13] || 0 };
+  }
+  if(values.length === 6){
+    return { x: values[4] || 0, y: values[5] || 0 };
+  }
+  return { x: 0, y: 0 };
 }
 
 function setSweetsDeckMoverTransform(value){
@@ -6858,6 +6883,7 @@ function renderPlayerCircle(players){
     : [];
   const leaderPickCanSelect = leaderPickActive && leaderPick?.leaderId === state.userId;
   const sweetsFocusUid = getSweetsDeckFocus()?.uid ?? null;
+  const excludedFocusUid = getSweetsExcludedDeckFocus()?.uid ?? null;
   const voteHoldActive = shouldHoldVoteChips();
   const decidedUids = getDecidedSweetsUids();
   const started = !!state.room?.gameStarted;
@@ -7155,7 +7181,7 @@ if(started && roleAssigned){
   const showVoteHold = (!hasTheirSweets && getVoteCountFor(p.id) > 0) || (voteHoldActive && getVoteCountFor(p.id) > 0);
   const sweetsCard = getSweetsCardByUid(p.id);
 
-  const showSweetsSlot = hasTheirSweets || showVoteHold || sweetsFocusUid === p.id;
+  const showSweetsSlot = hasTheirSweets || showVoteHold || sweetsFocusUid === p.id || excludedFocusUid === p.id;
   if(showSweetsSlot){
     const cardsRow = document.createElement('div');
     cardsRow.className = 'other-cards-row';
