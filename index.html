@@ -970,6 +970,13 @@ display:none;
   }
 
   /* ★ 自分の正体カード（自分のアクションカードの左側） */
+  .my-role-stack{
+    display:flex;
+    flex-direction:column;
+    align-items:center;
+    gap:6px;
+    flex:0 0 auto;
+  }
   .my-role{
     width:78px;height:118px;border-radius:12px;border:1px solid #ddd;
     box-shadow:0 10px 24px rgba(0,0,0,.18);
@@ -979,6 +986,21 @@ display:none;
     flex:0 0 auto;
   }
   .my-role img{width:100%;height:100%;object-fit:cover;display:block;}
+  .my-vote-slots{
+    display:grid;
+    grid-template-columns:repeat(2, var(--voteChipSize));
+    gap:6px;
+    align-items:center;
+    justify-content:center;
+    width:calc(var(--voteChipSize) * 2 + 6px);
+    height:var(--voteChipSize);
+  }
+  .my-vote-slot{
+    width:var(--voteChipSize);
+    height:var(--voteChipSize);
+    background:transparent;
+    border:none;
+  }
 
   /* ★★ 自分のスイーツ（正体カードの左／同サイズ） */
   .my-sweets{
@@ -1606,9 +1628,9 @@ border-radius:0px;
   }
 
   /* =========================
-     ★ 投票チップ（自分の手元：全カードの右側）
+     ★ 投票チップ（自分の正体カードの下）
      ========================= */
-/* 投票チップ（自分の手元：全カードの右側） */
+/* 投票チップ（自分の正体カードの下） */
 .vote-chip{
   width:var(--voteChipSize);
   height:var(--voteChipSize);
@@ -1617,17 +1639,14 @@ border-radius:0px;
   background:var(--voteChipFill);
   box-shadow:0 10px 24px rgba(0,0,0,.18);
   flex:0 0 auto;
-  align-self:flex-start;
   cursor:grab;
   user-select:none;
   touch-action:none;
   position:relative;
   transition:transform .2s ease;
-top:96px;
-left:-260px;
 }
 .vote-chip.bonus{
-  margin-left:4px;
+  margin-left:0;
 }
 .bonus-vote-active .action-card{
   pointer-events:none;
@@ -2402,10 +2421,16 @@ display:none;
         <!-- ★ 自分のスイーツ（正体カードの左・同サイズ） -->
         <div id="mySweets" class="my-sweets hidden"></div>
 
-        <div id="myRole" class="my-role hidden"></div>
+        <div class="my-role-stack">
+          <div id="myRole" class="my-role hidden"></div>
+          <div class="my-vote-slots" aria-label="投票チップスロット">
+            <div id="myVoteSlotLeft" class="my-vote-slot" data-slot="left"></div>
+            <div id="myVoteSlotRight" class="my-vote-slot" data-slot="right"></div>
+          </div>
+        </div>
         <div id="myHand" class="my-hand"></div>
 
-        <!-- ★ 投票チップ（全所有カードより右） -->
+        <!-- ★ 投票チップ（正体カードの下） -->
         <div id="myVoteChip" class="vote-chip hidden" aria-label="投票チップ"></div>
         <div id="myBonusVoteChip" class="vote-chip bonus hidden" aria-label="激推し投票チップ"></div>
       </div>
@@ -2696,6 +2721,8 @@ const mySweetsEl = document.getElementById('mySweets');
 const myAreaEl = document.getElementById('myArea');
 const myVoteChipEl = document.getElementById('myVoteChip');
 const myBonusVoteChipEl = document.getElementById('myBonusVoteChip');
+const myVoteSlotLeftEl = document.getElementById('myVoteSlotLeft');
+const myVoteSlotRightEl = document.getElementById('myVoteSlotRight');
 const leaderboardBoardEl = document.getElementById('leaderboardBoard');
 const leaderboardImgEl   = document.getElementById('leaderboardImg');
 const actionDiscardZone = document.getElementById('actionDiscardZone');
@@ -4680,6 +4707,7 @@ function renderMyVoteChip(){
     myBonusVoteChipEl.classList.add('hidden');
     myBonusVoteChipEl.classList.remove('pulsing');
     document.body.classList.remove('bonus-vote-active');
+    placeMyVoteChips();
     return;
   }
 
@@ -4690,6 +4718,31 @@ function renderMyVoteChip(){
   myVoteChipEl.classList.toggle('pulsing', bonusChips <= 0 && canVoteNow({ useBonus: false }));
   myBonusVoteChipEl.classList.toggle('hidden', bonusChips <= 0);
   myBonusVoteChipEl.classList.toggle('pulsing', bonusChips > 0 && canVoteNow({ useBonus: true }));
+  placeMyVoteChips();
+}
+
+function placeMyVoteChips(){
+  if(!myVoteSlotLeftEl || !myVoteSlotRightEl) return;
+  const hasNormal = !myVoteChipEl.classList.contains('hidden');
+  const hasBonus = !myBonusVoteChipEl.classList.contains('hidden');
+
+  if(hasNormal && hasBonus){
+    myVoteSlotLeftEl.appendChild(myVoteChipEl);
+    myVoteSlotRightEl.appendChild(myBonusVoteChipEl);
+    return;
+  }
+  if(hasNormal){
+    myVoteSlotRightEl.appendChild(myVoteChipEl);
+    myVoteSlotLeftEl.appendChild(myBonusVoteChipEl);
+    return;
+  }
+  if(hasBonus){
+    myVoteSlotRightEl.appendChild(myBonusVoteChipEl);
+    myVoteSlotLeftEl.appendChild(myVoteChipEl);
+    return;
+  }
+  myVoteSlotLeftEl.appendChild(myVoteChipEl);
+  myVoteSlotRightEl.appendChild(myBonusVoteChipEl);
 }
 
 let lastVoteSnapshot = null;
