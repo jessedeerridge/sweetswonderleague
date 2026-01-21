@@ -2745,6 +2745,7 @@ const requiredSweetsTagEl = document.getElementById('requiredSweetsTag');
 const roundChipsEl = document.getElementById('roundChips');
 const roundChipImgEls = Array.from(document.querySelectorAll('#roundChips .round-chip-img'));
 const roundChipSlotEls = Array.from(document.querySelectorAll('#roundChips .round-chip-slot'));
+const roundChipAnimState = new Map();
 
 
 /* 中央の山札UI */
@@ -2864,17 +2865,25 @@ function renderRoundChipsFromGame(){
     const r = String(idx + 1);
     const src = chips?.[r] || chips?.[idx + 1] || null; // 数字キー/文字キー両対応
     const slot = roundChipSlotEls[idx];
+    const slotState = roundChipAnimState.get(slot) || { lastSrc: '', lastAnimatedAt: 0 };
     if(src){
       if(img.dataset.src !== src){
         img.src = src;
         img.dataset.src = src;
         if(slot){
-          slot.classList.remove('round-chip-pop');
-          void slot.offsetWidth;
-          slot.classList.add('round-chip-pop');
-          slot.addEventListener('animationend', () => {
+          const nowTime = now();
+          const minIntervalMs = 1200;
+          if(slotState.lastSrc !== src || (nowTime - slotState.lastAnimatedAt) > minIntervalMs){
             slot.classList.remove('round-chip-pop');
-          }, { once: true });
+            void slot.offsetWidth;
+            slot.classList.add('round-chip-pop');
+            slot.addEventListener('animationend', () => {
+              slot.classList.remove('round-chip-pop');
+            }, { once: true });
+            slotState.lastAnimatedAt = nowTime;
+            slotState.lastSrc = src;
+            roundChipAnimState.set(slot, slotState);
+          }
         }
       }
       img.classList.remove('hidden');
@@ -2884,6 +2893,9 @@ function renderRoundChipsFromGame(){
       img.classList.add('hidden');
       if(slot){
         slot.classList.remove('round-chip-pop');
+      }
+      if(slot){
+        roundChipAnimState.delete(slot);
       }
     }
   });
