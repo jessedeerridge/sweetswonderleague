@@ -781,6 +781,39 @@ display:none;
   object-fit:cover;
   display:block;
 }
+/* ★ ゲーム終了：正体カード中央表示 */
+.final-role-overlay{
+  position:fixed;
+  inset:0;
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  background:rgba(0,0,0,.42);
+  z-index:120;
+}
+.final-role-overlay.hidden{display:none;}
+.final-role-card{
+  width:min(260px, 70vw);
+  border-radius:14px;
+  overflow:hidden;
+  box-shadow:0 18px 36px rgba(0,0,0,.35);
+  transform:scale(1);
+  opacity:1;
+}
+.final-role-card img{width:100%;height:auto;display:block;}
+.final-role-card.final-role-animate{
+  animation: finalRolePopShake 1.6s ease-in-out forwards;
+}
+@keyframes finalRolePopShake{
+  0%{ transform:scale(0.55) rotate(0deg); opacity:0; }
+  18%{ transform:scale(1.05) rotate(0deg); opacity:1; }
+  30%{ transform:scale(1) rotate(2deg); }
+  45%{ transform:scale(1) rotate(-2deg); }
+  60%{ transform:scale(1) rotate(1.5deg); }
+  75%{ transform:scale(1) rotate(-1.5deg); }
+  90%{ transform:scale(1) rotate(0deg); opacity:1; }
+  100%{ transform:scale(0.96) rotate(0deg); opacity:0; }
+}
 .action-deal-card{
   position:fixed;
   left:0;
@@ -2467,6 +2500,11 @@ display:none;
     <img id="rolePeekImg" alt="role peek" />
   </div>
 </div>
+<div id="finalRoleOverlay" class="final-role-overlay hidden" aria-hidden="true">
+  <div id="finalRoleCard" class="final-role-card">
+    <img id="finalRoleImg" alt="final role" />
+  </div>
+</div>
 <div id="scoutCloseConfirmPop" class="leader-pick-pop action-pop hidden">
   <div class="action-pop-text">閉じてもいいですか。</div>
   <div class="action-pop-actions">
@@ -2678,6 +2716,9 @@ const advertisedPulseTimers = new Map();
 const advertisedStarHideTimers = new Map();
 const advertisedKeyByUid = new Map();
 const activeWiretapArrows = new Map();
+let finalRoleSequenceKey = null;
+let finalRolesRevealed = false;
+let finalRoleTimer = null;
 /* =========================
    DOM
    ========================= */
@@ -2712,6 +2753,9 @@ const rolePeekCard = document.getElementById('rolePeekCard');
 const rolePeekImg = document.getElementById('rolePeekImg');
 const rolePeekCloseConfirmPop = document.getElementById('rolePeekCloseConfirmPop');
 const rolePeekCloseYes = document.getElementById('rolePeekCloseYes');
+const finalRoleOverlay = document.getElementById('finalRoleOverlay');
+const finalRoleCard = document.getElementById('finalRoleCard');
+const finalRoleImg = document.getElementById('finalRoleImg');
 
 const seatPop = document.getElementById('seatPop');
 const seatTabs = document.getElementById('seatTabs');
@@ -2933,6 +2977,14 @@ function calcSweetsTotalPoints(cards){
   }, 0);
 }
 
+function isGameOver(){
+  return !!state.game?.gameOver?.winner;
+}
+
+function getFinalWinnerRole(){
+  return state.game?.gameOver?.winner ?? null;
+}
+
 const roundChipAnims = new WeakMap();
 
 function animateRoundChipPop(img){
@@ -2990,6 +3042,50 @@ async function renderRoundChipsFromGame(){
   }
 }
 
+function resetFinalRoleSequence(){
+  finalRoleSequenceKey = null;
+  finalRolesRevealed = false;
+  if(finalRoleTimer){
+    clearTimeout(finalRoleTimer);
+    finalRoleTimer = null;
+  }
+  if(finalRoleOverlay){
+    finalRoleOverlay.classList.add('hidden');
+  }
+  if(finalRoleCard){
+    finalRoleCard.classList.remove('final-role-animate');
+  }
+}
+
+function runFinalRoleSequence(){
+  const winnerRole = getFinalWinnerRole();
+  if(!winnerRole || !finalRoleOverlay || !finalRoleCard || !finalRoleImg) return;
+
+  const decidedAt = state.game?.gameOver?.decidedAt ?? '';
+  const key = `${winnerRole}:${decidedAt}`;
+  if(finalRoleSequenceKey === key) return;
+
+  resetFinalRoleSequence();
+  finalRoleSequenceKey = key;
+
+  const info = roleToHelp(winnerRole);
+  finalRoleImg.src = info?.img || 'swroleura.jpg';
+  finalRoleImg.alt = info?.name || 'role';
+  finalRoleOverlay.classList.remove('hidden');
+  finalRoleCard.classList.remove('final-role-animate');
+  void finalRoleCard.offsetWidth;
+  finalRoleCard.classList.add('final-role-animate');
+
+  finalRoleTimer = setTimeout(() => {
+    finalRoleOverlay.classList.add('hidden');
+    finalRoleCard.classList.remove('final-role-animate');
+    finalRolesRevealed = true;
+    if(latestPlayers.length){
+      renderPlayerCircle(latestPlayers);
+    }
+  }, 1600);
+}
+
 
 
 const roundRevealState = {
@@ -3034,6 +3130,7 @@ function resetLocalGameEffects(){
   centerMoveOffsetByKey.clear();
   clearAdvertiseLocalState();
   uiStateRestored = false;
+  resetFinalRoleSequence();
 
   miniShuffleToken += 1;
   miniShuffleRunning = false;
@@ -3471,8 +3568,9 @@ function updateRequiredSweetsTag(){
   if(!requiredSweetsTagEl) return;
   const started = !!state.room?.gameStarted;
   const hasPlayers = latestPlayers.length > 0;
-  requiredSweetsTagEl.classList.toggle('hidden', !(started && hasPlayers));
-  if(!(started && hasPlayers)) return;
+  const hideTag = !(started && hasPlayers) || isGameOver();
+  requiredSweetsTagEl.classList.toggle('hidden', hideTag);
+  if(hideTag) return;
   const count = getRequiredSweetsCount();
   requiredSweetsTagEl.textContent = `🍰${count}`;
 }
@@ -3706,6 +3804,11 @@ function subscribeGame(){
     renderMyRole();
     if (latestPlayers.length) renderPlayerCircle(latestPlayers);
     await renderRoundChipsFromGame();
+    if(state.game?.gameOver?.winner){
+      runFinalRoleSequence();
+    }else if(finalRoleSequenceKey){
+      resetFinalRoleSequence();
+    }
     syncAdvertiseEffects();
     void restoreUiStateFromDB();
 
@@ -3902,6 +4005,7 @@ function isTurnBlocked(){
 
 async function hostGrantTurnAfterMiniShuffle(){
   if(!state.isHost || !state.roomCode) return;
+  if(state.game?.gameOver?.winner) return;
   if(state.game?.turn) return;
   const seats = getSeatedSeatOrder();
   if(!seats.length) return;
@@ -3922,11 +4026,15 @@ async function hostGrantTurnAfterMiniShuffle(){
 
 async function hostRestartTurnAfterActionDeal(leaderSeat){
   if(!state.isHost || !state.roomCode) return;
+  if(state.game?.gameOver?.winner) return;
   if(leaderSeat == null) return;
 
   const base = `rooms/${state.roomCode}/game`;
   const gameSnap = await get(ref(db, base));
   const gameNow = gameSnap.val() || {};
+  if(gameNow.gameOver?.winner){
+    return;
+  }
   const seatOrder = Array.isArray(gameNow.seatOrder) && gameNow.seatOrder.length
     ? gameNow.seatOrder
     : getSeatedSeatOrder();
@@ -3973,6 +4081,7 @@ function getNextOccupiedSeatSkippingPassed(currentSeat){
 function isMyTurn(){
   if(!state.turn) return false;
   if(isTurnBlocked()) return false;
+  if(isGameOver()) return false;
   if(state.game?.roundEnding) return false;
   if(allSeatedPlayersPassed()) return false;
   return (state.turn.activePlayerId === state.userId);
@@ -4230,6 +4339,7 @@ async function hostGameStart(){
     advertisedSweets: {},
     roundNo: 1,
     roundChips: {},
+    gameOver: null,
     turn: null
 
   });
@@ -4719,41 +4829,54 @@ async function hostFinalizeReturnSweetsToDeck(revealedCards = []){
     };
   }
 
-  await update(ref(db, base), {
-    'hands': hands,
-    'decks/sweets': newDeck,
-    'decks/sweetsExcluded': [],   // 除外は空に
-    'game/leaderPick': leaderPickPayload,
-    'game/actionDealKey': null,
-    'game/imprisoned': null,
-    'game/advertisedSweets': {},
-    /* ✅ 追加：ここから勝敗判定→roundchip→round+1 */
-    ...( (() => {
-      const playerCount = Array.isArray(gameNow.seatOrder) ? gameNow.seatOrder.length : (latestPlayers?.length || 0);
-      const currentRound = (typeof gameNow.roundNo === 'number') ? gameNow.roundNo : 1;
+  const playerCount = Array.isArray(gameNow.seatOrder) ? gameNow.seatOrder.length : (latestPlayers?.length || 0);
+  const currentRound = (typeof gameNow.roundNo === 'number') ? gameNow.roundNo : 1;
 
-      const pts = calcSweetsTotalPoints(revealedCards);          // 選ばれたスイーツ合計点
-      const th  = getRoundWinThreshold(playerCount || 1, currentRound);
-      const win = pts >= th;
+  const pts = calcSweetsTotalPoints(revealedCards);          // 選ばれたスイーツ合計点
+  const th  = getRoundWinThreshold(playerCount || 1, currentRound);
+  const win = pts >= th;
 
-      // roundchipは1〜3のスロットにのみ描画（キーは "1","2","3" で持つ）
-      const prev = (gameNow.roundChips && typeof gameNow.roundChips === 'object') ? gameNow.roundChips : {};
-      const nextChips = { ...prev };
-      if(currentRound >= 1 && currentRound <= 3){
-        nextChips[String(currentRound)] = win ? 'winchip.png' : 'losechip.png';
-      }
+  // roundchipは1〜3のスロットにのみ描画（キーは "1","2","3" で持つ）
+  const prev = (gameNow.roundChips && typeof gameNow.roundChips === 'object') ? gameNow.roundChips : {};
+  const nextChips = { ...prev };
+  if(currentRound >= 1 && currentRound <= 3){
+    nextChips[String(currentRound)] = win ? 'winchip.png' : 'losechip.png';
+  }
 
-      return {
-        'game/roundChips': nextChips,
-        'game/roundNo': currentRound + 1,          // 処理が終わった後で +1
-        'game/lastRoundPoints': pts,               // （任意：デバッグ用。不要なら消してOK）
-        'game/lastRoundThreshold': th,             // （任意：デバッグ用）
-      };
-    })() )
+  const winCount = Object.values(nextChips).filter(src => src === 'winchip.png').length;
+  const loseCount = Object.values(nextChips).filter(src => src === 'losechip.png').length;
+  const finalWinner = (winCount >= 2) ? 'usakoma' : (loseCount >= 2 ? 'uragiri' : null);
+  const gameOverPayload = finalWinner
+    ? { winner: finalWinner, decidedAt: Date.now(), roundNo: currentRound }
+    : null;
+  const nextRoundNo = gameOverPayload ? currentRound : currentRound + 1;
 
-  });
+  const updates = {
+    'game/roundChips': nextChips,
+    'game/roundNo': nextRoundNo,
+    'game/lastRoundPoints': pts,
+    'game/lastRoundThreshold': th,
+    ...(gameOverPayload ? { 'game/gameOver': gameOverPayload } : {}),
+  };
 
-  if(!leaderPickPayload){
+  if(!gameOverPayload){
+    Object.assign(updates, {
+      'hands': hands,
+      'decks/sweets': newDeck,
+      'decks/sweetsExcluded': [],   // 除外は空に
+      'game/leaderPick': leaderPickPayload,
+      'game/actionDealKey': null,
+      'game/imprisoned': null,
+      'game/advertisedSweets': {},
+    });
+  }else{
+    updates['game/leaderPick'] = null;
+    updates['game/actionDealKey'] = null;
+  }
+
+  await update(ref(db, base), updates);
+
+  if(!leaderPickPayload && !gameOverPayload){
     await set(ref(db, `${base}/votes`), {});
   }
 }
@@ -5290,7 +5413,7 @@ function updatePassRoundBtn(){
   } else {
     state.lastPassEligible = false;
   }
-  const show = started && mine && !ending && !passed && !state.turnEnding && eligible && state.passReadyBlockedTurnNo !== state.turn?.turnNo;
+  const show = started && mine && !ending && !passed && !state.turnEnding && eligible && !isGameOver() && state.passReadyBlockedTurnNo !== state.turn?.turnNo;
   passRoundBtn.classList.toggle('visible', show);
   passRoundBtn.disabled = !show;
 }
@@ -7384,6 +7507,7 @@ function renderPlayerCircle(players){
   const voteHoldActive = shouldHoldVoteChips();
   const decidedUids = getDecidedSweetsUids();
   const started = !!state.room?.gameStarted;
+  const revealRoles = finalRolesRevealed;
   if(roundPick?.phase === 'done' && decidedUids.length){
     ensureDecidedRoundStart(decidedUids);
   }
@@ -7621,7 +7745,8 @@ circle.appendChild(tag);
 
 // handData は後でミニ手札にも使うので先に取る
 const handData = state.hands?.[p.id];
-const roleAssigned = !!state.roles?.[p.id];
+const roleKey = state.roles?.[p.id] ?? null;
+const roleAssigned = !!roleKey;
 const voteChips = getPlayerTotalVoteChips(p.id);
 let roleMini = null;
 
@@ -7633,8 +7758,14 @@ if(started && roleAssigned){
   const roleFrame = document.createElement('div');
   roleFrame.className = 'role-mini-frame';
   const roleImg = document.createElement('img');
-  roleImg.src = 'swroleura.jpg';
-  roleImg.alt = 'role';
+  if(revealRoles){
+    const roleInfo = roleToHelp(roleKey);
+    roleImg.src = roleInfo?.img || 'swroleura.jpg';
+    roleImg.alt = roleInfo?.name || 'role';
+  }else{
+    roleImg.src = 'swroleura.jpg';
+    roleImg.alt = 'role';
+  }
   roleFrame.appendChild(roleImg);
   roleMini.appendChild(roleFrame);
 
@@ -8027,6 +8158,7 @@ async function maybeHostStartRoundEndFlow(){
   if(!state.roomCode) return;
   if(!state.room?.gameStarted) return;
   if(state.game?.roundEnding) return;
+  if(state.game?.gameOver?.winner) return;
   if(!allSeatedPlayersPassed()) return;
 
   const nPlayers = latestPlayers.length;
@@ -8297,6 +8429,7 @@ function schedulePostActionDealMiniShuffle(leaderSeat, delayMs){
 
 async function hostDealActionCardsFromLeader(leaderSeat){
   if(!state.isHost || !state.roomCode) return;
+  if(state.game?.gameOver?.winner) return;
   if(leaderSeat == null) return;
 
   const base = `rooms/${state.roomCode}`;
@@ -8363,6 +8496,7 @@ async function hostDealActionCardsFromLeader(leaderSeat){
 
 function maybeHostApplyLeaderPick(){
   if(!state.isHost || !state.roomCode) return;
+  if(state.game?.gameOver?.winner) return;
   const lp = getLeaderPick();
   if(!lp || lp.phase === 'done'){
     if(leaderPickApplyTimer){
