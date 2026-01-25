@@ -10749,6 +10749,12 @@ function startDragSweets(e, cardObj, srcEl){
   sweetsDrag.card = cardObj;
   sweetsDrag.srcEl = srcEl;
   sweetsDrag.source = sweetsPickSource;
+  if(sweetsDrag.source === SWEETS_PICK_SOURCE.EXCLUDED && actionSelection?.type === 'inspiration'){
+    if(!sweetsExcludedFocusActive){
+      sweetsExcludedFocusActive = true;
+    }
+    setSweetsExcludedDeckFocus(true);
+  }
   const r = srcEl.getBoundingClientRect();
   sweetsDrag.offsetX = e.clientX - r.left;
   sweetsDrag.offsetY = e.clientY - r.top;
