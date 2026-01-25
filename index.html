@@ -1739,6 +1739,12 @@ body.rob-active .vote-mini:hover{
   animation:none;
   transform:none;}
 
+body.roundpick-drag-active,
+body.roundpick-drag-active main{
+  touch-action:none;
+  overscroll-behavior:contain;
+}
+
 
 /* 既存の「V」文字は消す（デザイン統一） */
 .vote-chip::after{ content:''; }
@@ -2115,6 +2121,17 @@ body.imprison-active .my-sweets.roundpick-selectable:hover{
   transform:translate(-50%, var(--sweetsTagMoveY));
   animation:sweetsTagMove .6s ease;
   pointer-events:none;
+}
+.selected-sweets-tag.roundpick-selectable{
+  pointer-events:auto;
+  touch-action:none;
+}
+.selected-sweets-tag.roundpick-selectable .selected-sweets-card{
+  cursor:grab;
+  touch-action:none;
+}
+.selected-sweets-tag.roundpick-selectable:active .selected-sweets-card{
+  cursor:grabbing;
 }
 .selected-sweets-tag.delayed-show{
   opacity:0;
@@ -7608,6 +7625,14 @@ function renderPlayerCircle(players){
             appendAdvertiseEye(cardWrap);
           }
           selected.appendChild(cardWrap);
+          if(canLeaderDragPick(state.userId)){
+            selected.classList.add('roundpick-candidate');
+            selected.classList.add('roundpick-selectable');
+            selected.addEventListener('pointerdown', (e) => {
+              e.stopPropagation();
+              startRoundPickDrag(e, state.userId);
+            });
+          }
 
          const voterIds = getVoteVoterIds(state.userId);
           if(voterIds.length){
@@ -8597,9 +8622,11 @@ const roundPickDrag = {
   ghost:null,
   offsetX:0,
   offsetY:0,
+  pointerId:null,
   sourceEl:null,
   sourceHidden:false,
   sourceVisibility:'',
+  sourceOpacity:'',
   voteChipHidden:false,
   voteChipVisibility:'',
 };
@@ -8616,6 +8643,7 @@ function canLeaderDragPick(uid){
 function startRoundPickDrag(e, uid){
   if(!canLeaderDragPick(uid)) return;
   e.preventDefault();
+  document.body.classList.add('roundpick-drag-active');
 
   const source = e.currentTarget;
   const r = source.getBoundingClientRect();
@@ -8623,10 +8651,13 @@ function startRoundPickDrag(e, uid){
   roundPickDrag.uid = uid;
   roundPickDrag.offsetX = e.clientX - r.left;
   roundPickDrag.offsetY = e.clientY - r.top;
+  roundPickDrag.pointerId = e.pointerId;
   roundPickDrag.sourceEl = source;
   roundPickDrag.sourceHidden = true;
   roundPickDrag.sourceVisibility = source.style.visibility;
-  source.style.visibility = 'hidden';
+  roundPickDrag.sourceOpacity = source.style.opacity;
+  source.style.visibility = 'visible';
+  source.style.opacity = '0';
   if(uid === state.userId){
     roundPickDrag.voteChipHidden = true;
     roundPickDrag.voteChipVisibility = myVoteChipEl.style.visibility;
@@ -8655,14 +8686,15 @@ function startRoundPickDrag(e, uid){
   document.body.appendChild(ghost);
   roundPickDrag.ghost = ghost;
 
-  ghost.setPointerCapture(e.pointerId);
-  ghost.addEventListener('pointermove', onRoundPickDragMove);
-  ghost.addEventListener('pointerup', onRoundPickDragEnd);
-  ghost.addEventListener('pointercancel', onRoundPickDragEnd);
+  source.setPointerCapture(e.pointerId);
+  source.addEventListener('pointermove', onRoundPickDragMove);
+  source.addEventListener('pointerup', onRoundPickDragEnd);
+  source.addEventListener('pointercancel', onRoundPickDragEnd);
 }
 
 function onRoundPickDragMove(e){
   if(!roundPickDrag.active || !roundPickDrag.ghost) return;
+  if(roundPickDrag.pointerId !== null && e.pointerId !== roundPickDrag.pointerId) return;
   const x = e.clientX - roundPickDrag.offsetX;
   const y = e.clientY - roundPickDrag.offsetY;
   roundPickDrag.ghost.style.left = `${x}px`;
@@ -8675,6 +8707,7 @@ function onRoundPickDragMove(e){
 
 async function onRoundPickDragEnd(e){
   if(!roundPickDrag.active) return;
+  if(roundPickDrag.pointerId !== null && e.pointerId !== roundPickDrag.pointerId) return;
 
   const pr = playCircleEl.getBoundingClientRect();
   const inPlay = (e.clientX >= pr.left && e.clientX <= pr.right && e.clientY >= pr.top && e.clientY <= pr.bottom);
@@ -8689,14 +8722,18 @@ async function onRoundPickDragEnd(e){
 
 function cleanupRoundPickDrag(){
   playCircleEl.classList.remove('roundpick-target');
+  document.body.classList.remove('roundpick-drag-active');
   if(roundPickDrag.ghost){
-    roundPickDrag.ghost.removeEventListener('pointermove', onRoundPickDragMove);
-    roundPickDrag.ghost.removeEventListener('pointerup', onRoundPickDragEnd);
-    roundPickDrag.ghost.removeEventListener('pointercancel', onRoundPickDragEnd);
     roundPickDrag.ghost.remove();
+  }
+  if(roundPickDrag.sourceEl){
+    roundPickDrag.sourceEl.removeEventListener('pointermove', onRoundPickDragMove);
+    roundPickDrag.sourceEl.removeEventListener('pointerup', onRoundPickDragEnd);
+    roundPickDrag.sourceEl.removeEventListener('pointercancel', onRoundPickDragEnd);
   }
   if(roundPickDrag.sourceEl && roundPickDrag.sourceHidden){
     roundPickDrag.sourceEl.style.visibility = roundPickDrag.sourceVisibility || '';
+    roundPickDrag.sourceEl.style.opacity = roundPickDrag.sourceOpacity || '';
   }
   if(roundPickDrag.voteChipHidden){
     myVoteChipEl.style.visibility = roundPickDrag.voteChipVisibility || '';
@@ -8706,9 +8743,11 @@ function cleanupRoundPickDrag(){
   roundPickDrag.ghost = null;
   roundPickDrag.offsetX = 0;
   roundPickDrag.offsetY = 0;
+  roundPickDrag.pointerId = null;
   roundPickDrag.sourceEl = null;
   roundPickDrag.sourceHidden = false;
   roundPickDrag.sourceVisibility = '';
+  roundPickDrag.sourceOpacity = '';
   roundPickDrag.voteChipHidden = false;
   roundPickDrag.voteChipVisibility = '';
 }
